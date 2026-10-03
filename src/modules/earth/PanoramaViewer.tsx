@@ -1,0 +1,544 @@
+import { useEffect, useMemo, useRef, type MutableRefObject, type ReactNode } from 'react'
+import { Box } from '@mui/material'
+import * as THREE from 'three'
+import { directionToVector, vectorToDirection, type Direction, type View } from './panoramaMath'
+import { clamp, wrapDeg } from '../../utils/format'
+import { ProjectionContext, type FrameListener, type ProjectionHub, type ViewerApi } from './viewerProjection'
+import { toTreatedDataUrl } from '../tickets/snapshotRenderer'
+
+export type ViewerStatus = 'loading' | 'ready' | 'error'
+
+interface Props {
+  src: string
+  /** Commanded (target) orientation. The rendered view eases toward it. */
+  view: View
+  fovRange: [number, number]
+  pitchRange: [number, number]
+  /** Rate (1/s) at which the rendered view closes on the target. Higher is snappier. */
+  smoothing?: number
+  onViewChange: (view: View) => void
+  onPointClick?: (dir: Direction, screen: { clientX: number; clientY: number }) => void
+  onPointContextMenu?: (dir: Direction, screen: { clientX: number; clientY: number }) => void
+  onStatus?: (status: ViewerStatus) => void
+  /** Rendered orientation, reported ~10×/s while in motion and once when settled. */
+  onCurrentChange?: (view: View) => void
+  /** Fires once each time the rendered view reaches the commanded target. */
+  onSettled?: () => void
+  /** Draws a frame on this viewer showing where the paired camera is aimed. */
+  pairedView?: View | null
+  pairedColor?: string
+  cssFilter?: string
+  /** Receives a handle for grabbing still frames from this camera. */
+  apiRef?: MutableRefObject<ViewerApi | null>
+  children?: ReactNode
+}
+
+const textureCache = new Map<string, Promise<THREE.Texture>>()
+
+function loadTexture(src: string) {
+  let pending = textureCache.get(src)
+  if (!pending) {
+    pending = new Promise<THREE.Texture>((resolve, reject) => {
+      new THREE.TextureLoader().load(
+        src,
+        (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace
+          tex.minFilter = THREE.LinearMipmapLinearFilter
+          tex.magFilter = THREE.LinearFilter
+          tex.generateMipmaps = true
+          resolve(tex)
+        },
+        undefined,
+        (err) => {
+          textureCache.delete(src)
+          reject(err)
+        },
+      )
+    })
+    textureCache.set(src, pending)
+  }
+  return pending
+}
+
+const SETTLE_EPS = 0.02
+
+/** Ease `current` toward `target`; returns true when there is still visible motion left. */
+function approach(current: View, target: View, alpha: number): boolean {
+  const dYaw = wrapDeg(target.yaw - current.yaw)
+  const dPitch = target.pitch - current.pitch
+  const dFov = target.fov - current.fov
+  if (Math.abs(dYaw) < SETTLE_EPS && Math.abs(dPitch) < SETTLE_EPS && Math.abs(dFov) < SETTLE_EPS) {
+    current.yaw = target.yaw
+    current.pitch = target.pitch
+    current.fov = target.fov
+    return false
+  }
+  current.yaw = wrapDeg(current.yaw + dYaw * alpha)
+  current.pitch += dPitch * alpha
+  current.fov += dFov * alpha
+  return true
+}
+
+export default function PanoramaViewer({
+  src,
+  view,
+  fovRange,
+  pitchRange,
+  smoothing = 8,
+  onViewChange,
+  onPointClick,
+  onPointContextMenu,
+  onStatus,
+  onCurrentChange,
+  onSettled,
+  pairedView,
+  pairedColor = '#0A84FF',
+  cssFilter,
+  apiRef,
+  children,
+}: Props) {
+  const hostRef = useRef<HTMLDivElement>(null)
+  const frameRef = useRef<HTMLDivElement>(null)
+  const targetRef = useRef<View>(view)
+  const currentRef = useRef<View>({ ...view })
+  const pairedTargetRef = useRef<View | null | undefined>(pairedView)
+  const pairedCurrentRef = useRef<View | null>(pairedView ? { ...pairedView } : null)
+  const movingRef = useRef(false)
+  const draggingRef = useRef(false)
+  const dirtyRef = useRef(true)
+  const rangesRef = useRef({ fovRange, pitchRange })
+  const smoothingRef = useRef(smoothing)
+  const callbacksRef = useRef({ onViewChange, onPointClick, onPointContextMenu, onStatus, onCurrentChange, onSettled })
+  const listenersRef = useRef(new Set<FrameListener>())
+  const hub = useMemo<ProjectionHub>(
+    () => ({
+      subscribe: (listener) => {
+        listenersRef.current.add(listener)
+        dirtyRef.current = true
+        return () => {
+          listenersRef.current.delete(listener)
+        }
+      },
+      requestFrame: () => {
+        dirtyRef.current = true
+      },
+    }),
+    [],
+  )
+
+  useEffect(() => {
+    callbacksRef.current = { onViewChange, onPointClick, onPointContextMenu, onStatus, onCurrentChange, onSettled }
+  })
+
+  useEffect(() => {
+    rangesRef.current = { fovRange, pitchRange }
+    smoothingRef.current = smoothing
+  }, [fovRange, pitchRange, smoothing])
+
+  useEffect(() => {
+    targetRef.current = view
+    movingRef.current = true
+    dirtyRef.current = true
+  }, [view])
+
+  useEffect(() => {
+    pairedTargetRef.current = pairedView
+    if (pairedView && !pairedCurrentRef.current) pairedCurrentRef.current = { ...pairedView }
+    if (!pairedView) pairedCurrentRef.current = null
+    dirtyRef.current = true
+  }, [pairedView])
+
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.domElement.style.display = 'block'
+    renderer.domElement.style.touchAction = 'none'
+    host.appendChild(renderer.domElement)
+
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(currentRef.current.fov, 1, 0.1, 1100)
+    const geometry = new THREE.SphereGeometry(500, 80, 56)
+    geometry.scale(-1, 1, 1)
+    const material = new THREE.MeshBasicMaterial({ color: 0x000000 })
+    const sphere = new THREE.Mesh(geometry, material)
+    scene.add(sphere)
+
+    let disposed = false
+    callbacksRef.current.onStatus?.('loading')
+    loadTexture(src).then(
+      (tex) => {
+        if (disposed) return
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy()
+        material.map = tex
+        material.color.set(0xffffff)
+        material.needsUpdate = true
+        dirtyRef.current = true
+        callbacksRef.current.onStatus?.('ready')
+      },
+      () => {
+        if (!disposed) callbacksRef.current.onStatus?.('error')
+      },
+    )
+
+    const resize = () => {
+      const { clientWidth: w, clientHeight: h } = host
+      if (w === 0 || h === 0) return
+      renderer.setSize(w, h, false)
+      camera.aspect = w / h
+      camera.updateProjectionMatrix()
+      dirtyRef.current = true
+    }
+    resize()
+    const ro = new ResizeObserver(resize)
+    ro.observe(host)
+
+    const lookTarget = new THREE.Vector3()
+    const projected = new THREE.Vector3()
+
+    const updatePairedFrame = () => {
+      const frame = frameRef.current
+      if (!frame) return
+      const paired = pairedCurrentRef.current
+      if (!paired) {
+        frame.style.display = 'none'
+        return
+      }
+      directionToVector(paired, projected)
+      const facing = projected.dot(camera.getWorldDirection(lookTarget)) > 0.05
+      projected.project(camera)
+      if (!facing || Math.abs(projected.x) > 1.4 || Math.abs(projected.y) > 1.4) {
+        frame.style.display = 'none'
+        return
+      }
+      const w = host.clientWidth
+      const h = host.clientHeight
+      const x = ((projected.x + 1) / 2) * w
+      const y = ((1 - projected.y) / 2) * h
+      const frameH = (paired.fov / currentRef.current.fov) * h
+      const frameW = frameH * (16 / 9)
+      frame.style.display = 'block'
+      frame.style.width = `${Math.max(28, frameW)}px`
+      frame.style.height = `${Math.max(16, frameH)}px`
+      frame.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`
+    }
+
+    const projVec = new THREE.Vector3()
+    const camDir = new THREE.Vector3()
+    const project = (dir: Direction) => {
+      directionToVector(dir, projVec)
+      const facing = projVec.dot(camera.getWorldDirection(camDir)) > 0.05
+      projVec.project(camera)
+      const visible = facing && Math.abs(projVec.x) <= 1.15 && Math.abs(projVec.y) <= 1.15
+      return {
+        x: ((projVec.x + 1) / 2) * host.clientWidth,
+        y: ((1 - projVec.y) / 2) * host.clientHeight,
+        visible,
+      }
+    }
+
+    // Snapshots re-render the scene through a dedicated camera so the frame is centred on the
+    // requested direction regardless of where the operator is currently looking.
+    const snapCamera = new THREE.PerspectiveCamera(30, 480 / 300, 0.1, 1100)
+    const snapTarget = new THREE.WebGLRenderTarget(480, 300)
+    // Off-screen targets are linear by default; tag it sRGB so grabbed frames match the canvas.
+    snapTarget.texture.colorSpace = THREE.SRGBColorSpace
+    const snapBuffer = new Uint8Array(480 * 300 * 4)
+    const snapCanvas = document.createElement('canvas')
+    snapCanvas.width = 480
+    snapCanvas.height = 300
+
+    const captureAt: ViewerApi['captureAt'] = (dir, fov = 30, treatment = 'none') => {
+      if (!material.map) return null
+      snapCamera.fov = fov
+      snapCamera.updateProjectionMatrix()
+      snapCamera.lookAt(directionToVector(dir))
+      renderer.setRenderTarget(snapTarget)
+      renderer.render(scene, snapCamera)
+      renderer.readRenderTargetPixels(snapTarget, 0, 0, 480, 300, snapBuffer)
+      renderer.setRenderTarget(null)
+      dirtyRef.current = true
+      const ctx = snapCanvas.getContext('2d')
+      if (!ctx) return null
+      const image = ctx.createImageData(480, 300)
+      // WebGL reads bottom-up; flip into canvas order.
+      for (let y = 0; y < 300; y++) {
+        const src = (299 - y) * 480 * 4
+        image.data.set(snapBuffer.subarray(src, src + 480 * 4), y * 480 * 4)
+      }
+      ctx.putImageData(image, 0, 0)
+      return toTreatedDataUrl(snapCanvas, treatment)
+    }
+    if (apiRef) apiRef.current = { captureAt }
+
+    let raf = 0
+    let last = performance.now()
+    let lastReport = 0
+    const loop = (now: number) => {
+      raf = requestAnimationFrame(loop)
+      const dt = Math.min(0.25, (now - last) / 1000)
+      last = now
+
+      // Dragging tracks the pointer tightly; commands glide like a motorised head.
+      const rate = draggingRef.current ? 18 : smoothingRef.current
+      const alpha = 1 - Math.exp(-rate * dt)
+
+      let stillMoving = false
+      if (movingRef.current) {
+        stillMoving = approach(currentRef.current, targetRef.current, alpha)
+        dirtyRef.current = true
+        if (!stillMoving) {
+          movingRef.current = false
+          callbacksRef.current.onCurrentChange?.({ ...currentRef.current })
+          callbacksRef.current.onSettled?.()
+        } else if (now - lastReport > 100) {
+          lastReport = now
+          callbacksRef.current.onCurrentChange?.({ ...currentRef.current })
+        }
+      }
+
+      const pairedTarget = pairedTargetRef.current
+      if (pairedTarget && pairedCurrentRef.current) {
+        if (approach(pairedCurrentRef.current, pairedTarget, alpha)) dirtyRef.current = true
+      }
+
+      if (!dirtyRef.current) return
+      dirtyRef.current = false
+      const v = currentRef.current
+      camera.fov = v.fov
+      camera.updateProjectionMatrix()
+      directionToVector(v, lookTarget)
+      camera.lookAt(lookTarget)
+      renderer.render(scene, camera)
+      updatePairedFrame()
+      if (listenersRef.current.size) {
+        const size = { width: host.clientWidth, height: host.clientHeight }
+        listenersRef.current.forEach((fn) => fn(project, size))
+      }
+    }
+    raf = requestAnimationFrame(loop)
+
+    // ----- interaction -----
+    const raycaster = new THREE.Raycaster()
+    const ndc = new THREE.Vector2()
+    let pointerId: number | null = null
+    let startX = 0
+    let startY = 0
+    let lastX = 0
+    let lastY = 0
+    let moved = 0
+    let downAt = 0
+    let holdTimer: number | null = null
+    let holdOpened = false
+    let lastTapAt = 0
+    let lastTapX = 0
+    let lastTapY = 0
+
+    const commit = (next: Partial<View>) => {
+      const { fovRange: fr, pitchRange: pr } = rangesRef.current
+      const base = targetRef.current
+      const merged: View = {
+        yaw: wrapDeg(next.yaw ?? base.yaw),
+        pitch: clamp(next.pitch ?? base.pitch, pr[0], pr[1]),
+        fov: clamp(next.fov ?? base.fov, fr[0], fr[1]),
+      }
+      targetRef.current = merged
+      movingRef.current = true
+      callbacksRef.current.onViewChange(merged)
+    }
+
+    const pickAt = (clientX: number, clientY: number) => {
+      const rect = renderer.domElement.getBoundingClientRect()
+      ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -(((clientY - rect.top) / rect.height) * 2 - 1))
+      raycaster.setFromCamera(ndc, camera)
+      return vectorToDirection(raycaster.ray.direction)
+    }
+
+    const clearHold = () => {
+      if (holdTimer !== null) {
+        window.clearTimeout(holdTimer)
+        holdTimer = null
+      }
+    }
+
+    const openTicketMenu = (clientX: number, clientY: number) => {
+      callbacksRef.current.onPointContextMenu?.(pickAt(clientX, clientY), { clientX, clientY })
+    }
+
+    // Long-press is only for real touch screens. Trackpads often report pointerType
+    // "touch" but remain pointer:fine — those must pan/aim, not open Create Ticket.
+    const isCoarseTouch = (e: PointerEvent) =>
+      e.pointerType === 'touch' && window.matchMedia('(pointer: coarse)').matches
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 || pointerId !== null) return
+      pointerId = e.pointerId
+      startX = lastX = e.clientX
+      startY = lastY = e.clientY
+      moved = 0
+      downAt = performance.now()
+      holdOpened = false
+      draggingRef.current = true
+      renderer.domElement.setPointerCapture(e.pointerId)
+      renderer.domElement.style.cursor = 'grabbing'
+      if (isCoarseTouch(e) && callbacksRef.current.onPointContextMenu) {
+        holdTimer = window.setTimeout(() => {
+          holdTimer = null
+          if (moved >= 8) return
+          holdOpened = true
+          draggingRef.current = false
+          openTicketMenu(startX, startY)
+        }, 550)
+      }
+    }
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return
+      const dx = e.clientX - lastX
+      const dy = e.clientY - lastY
+      lastX = e.clientX
+      lastY = e.clientY
+      moved += Math.abs(dx) + Math.abs(dy)
+      if (moved >= 8) clearHold()
+      if (holdOpened) return
+      const degPerPx = currentRef.current.fov / host.clientHeight
+      commit({ yaw: targetRef.current.yaw - dx * degPerPx, pitch: targetRef.current.pitch + dy * degPerPx })
+    }
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return
+      pointerId = null
+      draggingRef.current = false
+      renderer.domElement.style.cursor = 'grab'
+      clearHold()
+      if (holdOpened) {
+        holdOpened = false
+        return
+      }
+      const isClick = moved < 6 && performance.now() - downAt < 500
+      if (isClick) {
+        const now = performance.now()
+        const doubled = now - lastTapAt < 320 && Math.hypot(startX - lastTapX, startY - lastTapY) < 12
+        lastTapAt = now
+        lastTapX = startX
+        lastTapY = startY
+        if (doubled || e.detail >= 2) {
+          openTicketMenu(startX, startY)
+          return
+        }
+        callbacksRef.current.onPointClick?.(pickAt(startX, startY), { clientX: startX, clientY: startY })
+      }
+    }
+
+    const onClick = (e: MouseEvent) => {
+      if (e.detail < 2) return
+      e.preventDefault()
+      openTicketMenu(e.clientX, e.clientY)
+    }
+
+    const onDblClick = (e: MouseEvent) => {
+      e.preventDefault()
+      if (!callbacksRef.current.onPointContextMenu) return
+      openTicketMenu(e.clientX, e.clientY)
+    }
+
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault()
+      if (!callbacksRef.current.onPointContextMenu) return
+      if (holdOpened) return
+      if (pointerId !== null && moved >= 8) return
+      openTicketMenu(e.clientX, e.clientY)
+    }
+
+    const onForceWillBegin = (e: Event) => e.preventDefault()
+    const onForceDown = (e: Event) => {
+      e.preventDefault()
+      const mouse = e as MouseEvent
+      if (pointerId !== null && moved >= 8) return
+      openTicketMenu(mouse.clientX, mouse.clientY)
+    }
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const scale = Math.exp(e.deltaY * 0.0015)
+      commit({ fov: targetRef.current.fov * scale })
+    }
+
+    const el = renderer.domElement
+    el.style.cursor = 'grab'
+    el.addEventListener('pointerdown', onPointerDown)
+    el.addEventListener('pointermove', onPointerMove)
+    el.addEventListener('pointerup', onPointerUp)
+    el.addEventListener('pointercancel', onPointerUp)
+    el.addEventListener('click', onClick)
+    el.addEventListener('dblclick', onDblClick)
+    el.addEventListener('contextmenu', onContextMenu)
+    el.addEventListener('webkitmouseforcewillbegin', onForceWillBegin)
+    el.addEventListener('webkitmouseforcedown', onForceDown)
+    el.addEventListener('wheel', onWheel, { passive: false })
+
+    return () => {
+      disposed = true
+      clearHold()
+      if (apiRef) apiRef.current = null
+      snapTarget.dispose()
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+      el.removeEventListener('pointerdown', onPointerDown)
+      el.removeEventListener('pointermove', onPointerMove)
+      el.removeEventListener('pointerup', onPointerUp)
+      el.removeEventListener('pointercancel', onPointerUp)
+      el.removeEventListener('click', onClick)
+      el.removeEventListener('dblclick', onDblClick)
+      el.removeEventListener('contextmenu', onContextMenu)
+      el.removeEventListener('webkitmouseforcewillbegin', onForceWillBegin)
+      el.removeEventListener('webkitmouseforcedown', onForceDown)
+      el.removeEventListener('wheel', onWheel)
+      geometry.dispose()
+      material.dispose()
+      renderer.dispose()
+      host.removeChild(el)
+    }
+  }, [src, apiRef])
+
+  return (
+    <Box sx={{ position: 'absolute', inset: 0, overflow: 'hidden', bgcolor: '#000' }}>
+      <Box
+        ref={hostRef}
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          filter: cssFilter,
+          '& canvas': { width: '100% !important', height: '100% !important' },
+        }}
+      />
+      <Box
+        ref={frameRef}
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          display: 'none',
+          pointerEvents: 'none',
+          border: `2px solid ${pairedColor}`,
+          borderRadius: '6px',
+          boxShadow: `0 0 0 1px rgba(0,0,0,0.45), 0 0 18px ${pairedColor}66`,
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            bgcolor: pairedColor,
+            transform: 'translate(-50%, -50%)',
+          },
+        }}
+      />
+      <ProjectionContext.Provider value={hub}>{children}</ProjectionContext.Provider>
+    </Box>
+  )
+}

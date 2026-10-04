@@ -86,13 +86,19 @@ function snapshotFromDatabase(value: unknown): Snapshot | undefined {
   }
 }
 
+function databaseStatus(status: Ticket['status']): string {
+  if (status === 'open') return 'to do'
+  if (status === 'in_progress') return 'in progress'
+  return status
+}
+
 function databaseRowForTicket(ticket: Ticket, includeIdentity = false): DatabaseRow {
   return {
     ...(includeIdentity ? { id: ticket.id, ticket_id: ticket.id, created_at: ticket.createdAt } : {}),
     title: ticket.title,
     description: ticket.description,
     priority: ticket.priority,
-    status: ticket.status === 'open' ? 'to do' : ticket.status,
+    status: databaseStatus(ticket.status),
     reporter: ticket.creator,
     assignee: ticket.assignee || 'Unassigned',
     camera_name: ticket.cameraId,
@@ -482,22 +488,31 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     const at = new Date().toISOString()
     return log({ ...ticket, comments: [...ticket.comments, { at, by, text }] }, by, 'Added a comment')
   }), [patch])
-  const transition = useCallback((id: string, state: LifecycleState, input: TransitionInput) => patch(id, (ticket) => {
-    const at = new Date().toISOString()
-    return {
-      ...ticket,
-      status: STATE_RESULT[state],
-      updatedAt: at,
-      ...(state === 'done'
-        ? {
-            completedAt: at,
-            completion: { by: input.by, at, notes: input.notes ?? '' },
-            snapshots: input.snapshot ? { ...ticket.snapshots, after: input.snapshot } : ticket.snapshots,
-          }
-        : {}),
-      timeline: [...ticket.timeline, { at, by: input.by, text: `Moved to ${state}`, state }],
-    }
-  }), [patch])
+  const transition = useCallback((id: string, state: LifecycleState, input: TransitionInput) => {
+    if (!ticketsRef.current.some((ticket) => ticket.id === id)) return
+    const toState = databaseStatus(STATE_RESULT[state])
+    const previousWrite = writeQueues.current.get(id) ?? Promise.resolve()
+    const write = previousWrite.catch(() => undefined).then(async () => {
+      try {
+        const { data, error } = await supabase.rpc('change_ticket_state', {
+          p_ticket_id: id,
+          p_to_state: toState,
+          p_changed_by: input.by,
+        })
+        if (error) throw new Error(`change_ticket_state failed for ${id}: ${error.message}`)
+        const saved = ticketFromDatabase(Array.isArray(data) ? data[0] : data)
+        const next = ticketsRef.current.map((ticket) => ticket.id === id ? saved : ticket)
+        ticketsRef.current = next
+        setTickets(next)
+      } catch (error) {
+        console.error(`Unable to change state of ticket ${id}:`, error)
+      }
+    })
+    writeQueues.current.set(id, write)
+    void write.finally(() => {
+      if (writeQueues.current.get(id) === write) writeQueues.current.delete(id)
+    })
+  }, [])
 
   const attachSnapshot = useCallback((id: string, slot: 'before' | 'after', snapshot: Snapshot) => patch(id, (ticket) => {
     const freshSnaps = { ...ticket.snapshots, [slot]: snapshot }

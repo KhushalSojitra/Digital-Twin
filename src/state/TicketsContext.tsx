@@ -54,7 +54,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
           // BRIDGE MAPPING: Reconstruct the absolute matching camera ID name so overlays can render
           let mappedCameraId = row.camera_name || 'ellis-360';
           if (mappedCameraId === 'ellis-360' || mappedCameraId === 'Ellis 360 – Ferry Landing') {
-            mappedCameraId = 'ellis-360'; // Match your system config identification variable array path
+            mappedCameraId = 'ellis-360';
           }
 
           return {
@@ -336,6 +336,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   const attachSnapshot = useCallback(
     (id: string, slot: 'before' | 'after', snapshot: Snapshot) =>
       patch(id, (t) => ({ ...t, snapshots: { ...t.snapshots, [slot]: snapshot } })),
+    [patch],
   )
 
   const value = useMemo(

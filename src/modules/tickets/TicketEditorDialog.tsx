@@ -65,7 +65,7 @@ interface Props {
   draft?: CreateDraft | null
   initialTab?: 'details' | 'activity'
   onClose: () => void
-  onCreate?: (input: NewTicketInput) => void
+  onCreate?: (input: NewTicketInput) => Promise<Ticket>
 }
 
 export default function TicketEditorDialog({ open, mode, ticket, draft, initialTab = 'details', onClose, onCreate }: Props) {
@@ -161,7 +161,7 @@ function CreateForm({
   draft: CreateDraft
   creator: string
   onClose: () => void
-  onCreate: (input: NewTicketInput) => void
+  onCreate: (input: NewTicketInput) => Promise<Ticket>
 }) {
   const { defaultIntegration, integrations } = useIntegrations()
   const capture = useCapture()
@@ -172,34 +172,44 @@ function CreateForm({
   const [assignee, setAssignee] = useState(ASSIGNEES.includes(creator) ? creator : ASSIGNEES[0])
   const [platformId, setPlatformId] = useState(defaultIntegration.id)
   const [touched, setTouched] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [createError, setCreateError] = useState('')
   const selected = integrations.find((i) => i.id === platformId) ?? defaultIntegration
   const snapshotPolicy = selected.snapshotPolicy
   const [proof, setProof] = useState(snapshotPolicy !== 'disabled')
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
     setTouched(true)
     if (!title.trim()) return
     const captureProof = snapshotPolicy === 'always' ? true : snapshotPolicy === 'disabled' ? false : proof
     const snapshots = snapshotFromProof(captureProof)
     const src = snapshots.captureCreation ? capture?.(draft.camera.id, { yaw: draft.yaw, pitch: draft.pitch }, 'before') : null
-    onCreate({
-      title: title.trim(),
-      description: description.trim() || 'Raised from Live View at the marked location.',
-      type: 'intrusion',
-      priority,
-      zone: draft.camera.name.split(' — ')[1] ?? 'Perimeter',
-      assignee,
-      creator,
-      platform: selected.platform,
-      platformName: selected.platformName,
-      snapshotConfig: snapshots,
-      creationSnapshot: src ? { src, at: new Date().toISOString(), by: creator, yaw: draft.yaw, pitch: draft.pitch } : undefined,
-      cameraId: draft.camera.id,
-      yaw: draft.yaw,
-      pitch: draft.pitch,
-      zoom: draft.zoom,
-    })
+    setIsSubmitting(true)
+    setCreateError('')
+    try {
+      await onCreate({
+        title: title.trim(),
+        description: description.trim() || 'Raised from Live View at the marked location.',
+        type: 'intrusion',
+        priority,
+        zone: draft.camera.name.split(' — ')[1] ?? 'Perimeter',
+        assignee,
+        creator,
+        platform: selected.platform,
+        platformName: selected.platformName,
+        snapshotConfig: snapshots,
+        creationSnapshot: src ? { src, at: new Date().toISOString(), by: creator, yaw: draft.yaw, pitch: draft.pitch } : undefined,
+        cameraId: draft.camera.id,
+        yaw: draft.yaw,
+        pitch: draft.pitch,
+        zoom: draft.zoom,
+      })
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : 'Ticket could not be saved to the cloud.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -314,10 +324,11 @@ function CreateForm({
             </Box>
           </Stack>
         )}
+        {createError && <Typography color="error" variant="body2" sx={{ mt: 1 }}>{createError}</Typography>}
       </DialogContent>
       <DialogActions sx={{ px: 2, pb: 1.5 }}>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button type="submit" variant="contained">
+        <Button onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+        <Button type="submit" variant="contained" disabled={isSubmitting}>
           Create
         </Button>
       </DialogActions>

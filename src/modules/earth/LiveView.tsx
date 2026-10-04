@@ -211,16 +211,17 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
     setEditor({ mode: 'view', ticket })
   }, [focus, ready, tickets, site.id, goToTicket])
 
-  const createTicket = (input: NewTicketInput) => {
-    const created = addTicket(input)
+  const createTicket = async (input: NewTicketInput) => {
+    const created = await addTicket(input)
     setEditor({ mode: 'view', ticket: created })
     setSelectedTicketId(created.id)
     setContext(null)
+    return created
   }
 
-  const markerLayer = (compact: boolean, device: CameraDevice) => (
+  const markerLayer = (compact: boolean) => (
     <TicketMarkerLayer
-      tickets={overlayTickets.filter((ticket) => ticket.cameraId === device.id)}
+      tickets={overlayTickets.filter((ticket) => ticket.siteId === site.id)}
       selectedId={selectedTicketId}
       targetId={targetTicketId}
       draft={editor?.mode === 'create' && editor.draft && !compact ? { yaw: editor.draft.yaw, pitch: editor.draft.pitch } : null}
@@ -255,7 +256,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
         topInset={compact ? 0 : TOP_INSET}
         phase={cam360.phase}
       />
-      {markerLayer(compact, site.cam360)}
+      {markerLayer(compact)}
     </PanoramaViewer>
   )
 
@@ -285,7 +286,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
         topInset={compact ? 0 : TOP_INSET}
         phase={ptz.phase}
       />
-      {markerLayer(compact, site.ptz)}
+      {markerLayer(compact)}
     </PanoramaViewer>
   )
 

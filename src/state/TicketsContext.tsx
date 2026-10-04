@@ -3,7 +3,6 @@ import { supabase } from '../supabaseClient'
 import { ALL_DEVICES } from '../data/cameras'
 import {
   DEFAULT_SNAPSHOT_CONFIG,
-  SEED_TICKETS,
   STATE_RESULT,
   createTicket,
   locateOnEarth,
@@ -21,7 +20,8 @@ export interface TransitionInput {
 
 interface TicketsValue {
   tickets: Ticket[]
-  addTicket: (input: NewTicketInput) => Ticket
+  addTicket: (input: NewTicketInput) => Promise<Ticket>
+  deleteTicket: (id: string) => void
   assign: (id: string, assignee: string, by: string) => void
   toggleFollow: (id: string, person: string) => void
   addFollowers: (id: string, people: string[], by: string) => void
@@ -119,26 +119,6 @@ function databaseRowForTicket(ticket: Ticket, includeIdentity = false): Database
     replies: ticket.comments,
     updated_at: ticket.updatedAt,
   }
-}
-
-function seedTicketPool(): Ticket[] {
-  const archiveIndexes = new Map([[3, 31], [5, 32], [6, 33]])
-  return SEED_TICKETS.slice(0, 9).map((ticket, index) => {
-    const ageDays = archiveIndexes.get(index)
-    if (!ageDays) return ticket
-    const createdAt = new Date(Date.now() - ageDays * 86_400_000).toISOString()
-    const timeShift = new Date(createdAt).getTime() - new Date(ticket.createdAt).getTime()
-    const shiftDate = (at: string) => new Date(new Date(at).getTime() + timeShift).toISOString()
-    return {
-      ...ticket,
-      createdAt,
-      updatedAt: shiftDate(ticket.updatedAt),
-      timeline: ticket.timeline.map((event) => ({ ...event, at: shiftDate(event.at) })),
-      comments: ticket.comments.map((comment) => ({ ...comment, at: shiftDate(comment.at) })),
-      completedAt: ticket.completedAt ? shiftDate(ticket.completedAt) : undefined,
-      completion: ticket.completion ? { ...ticket.completion, at: shiftDate(ticket.completion.at) } : undefined,
-    }
-  })
 }
 
 function ticketFromDatabase(value: unknown): Ticket {
@@ -267,97 +247,34 @@ function ticketFromDatabase(value: unknown): Ticket {
 export function TicketsProvider({ children }: { children: ReactNode }) {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const ticketsRef = useRef<Ticket[]>([])
+  const writeQueues = useRef(new Map<string, Promise<void>>())
 
   useEffect(() => {
     ticketsRef.current = tickets
   }, [tickets])
 
-  const persistTicket = useCallback(async (ticket: Ticket) => {
+  const persistTicket = useCallback(async (ticket: Ticket): Promise<Ticket> => {
     const update = databaseRowForTicket(ticket)
     const { data, error } = await supabase
       .from('tickets')
       .update(update)
       .eq('id', ticket.id)
-      .select('id')
+      .select('*')
     if (error) {
-      console.error(`Supabase ticket update error for ${ticket.id}:`, error.message)
-      return
+      throw new Error(`Supabase ticket update error for ${ticket.id}: ${error.message}`)
     }
-    if (data?.length) return
+    if (data?.[0]) return ticketFromDatabase(data[0])
 
     const fallbackUpdate = await supabase
       .from('tickets')
       .update(update)
       .eq('ticket_id', ticket.id)
-      .select('id')
+      .select('*')
     if (fallbackUpdate.error) {
-      console.error(`Supabase ticket update error for ${ticket.id}:`, fallbackUpdate.error.message)
-    } else if (!fallbackUpdate.data?.length) {
-      console.error(`Supabase ticket update matched no row for ${ticket.id}`)
+      throw new Error(`Supabase ticket update error for ${ticket.id}: ${fallbackUpdate.error.message}`)
     }
-  }, [])
-
-  // 1. READ PIPELINE - REBUILDS EXPLICIT MANDATORY SCHEMAS FOR INNER UI CONSUMERS
-  useEffect(() => {
-    async function loadInitialTickets() {
-      const { data, error } = await supabase
-        .from('tickets')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) {
-        console.error('Supabase ticket fetch error:', error.message)
-        return
-      }
-
-      const rows = data ?? []
-      const fetchedTickets: Ticket[] = []
-      for (const row of rows) {
-        try {
-          fetchedTickets.push(ticketFromDatabase(row))
-        } catch (mappingError) {
-          console.error('Unable to map Supabase ticket row:', mappingError)
-        }
-      }
-
-      if (rows.length === 0) {
-        const seedTickets = seedTicketPool()
-        ticketsRef.current = seedTickets
-        setTickets(seedTickets)
-        const { error: seedError } = await supabase
-          .from('tickets')
-          .upsert(seedTickets.map((ticket) => databaseRowForTicket(ticket, true)), { onConflict: 'id', ignoreDuplicates: true })
-        if (seedError) {
-          console.error('Supabase ticket seed error:', seedError.message)
-          return
-        }
-
-        const { data: seededRows, error: seededFetchError } = await supabase
-          .from('tickets')
-          .select('*')
-          .order('created_at', { ascending: false })
-        if (seededFetchError) {
-          console.error('Supabase seeded ticket fetch error:', seededFetchError.message)
-          return
-        }
-        for (const row of seededRows ?? []) {
-          try {
-            fetchedTickets.push(ticketFromDatabase(row))
-          } catch (mappingError) {
-            console.error('Unable to map seeded Supabase ticket row:', mappingError)
-          }
-        }
-      }
-
-      setTickets((previous) => {
-        const merged = new Map(previous.map((ticket) => [ticket.id, ticket]))
-        for (const ticket of fetchedTickets) merged.set(ticket.id, ticket)
-        const next = [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        ticketsRef.current = next
-        return next
-      })
-    }
-    void loadInitialTickets()
+    if (!fallbackUpdate.data?.[0]) throw new Error(`Supabase ticket update matched no row for ${ticket.id}`)
+    return ticketFromDatabase(fallbackUpdate.data[0])
   }, [])
 
   const patch = useCallback((id: string, fn: (ticket: Ticket) => Ticket) => {
@@ -367,7 +284,26 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     const next = ticketsRef.current.map((ticket) => ticket.id === id ? updated : ticket)
     ticketsRef.current = next
     setTickets(next)
-    void persistTicket(updated)
+    const previousWrite = writeQueues.current.get(id) ?? Promise.resolve()
+    const write = previousWrite.catch(() => undefined).then(async () => {
+      try {
+        const saved = await persistTicket(updated)
+        if (ticketsRef.current.find((ticket) => ticket.id === id) !== updated) return
+        const persistedTickets = ticketsRef.current.map((ticket) => ticket.id === id ? saved : ticket)
+        ticketsRef.current = persistedTickets
+        setTickets(persistedTickets)
+      } catch (error) {
+        console.error(`Unable to save ticket ${id}:`, error)
+        if (ticketsRef.current.find((ticket) => ticket.id === id) !== updated) return
+        const restored = ticketsRef.current.map((ticket) => ticket.id === id ? current : ticket)
+        ticketsRef.current = restored
+        setTickets(restored)
+      }
+    })
+    writeQueues.current.set(id, write)
+    void write.finally(() => {
+      if (writeQueues.current.get(id) === write) writeQueues.current.delete(id)
+    })
   }, [persistTicket])
 
   const log = (t: Ticket, by: string, text: string, state?: LifecycleState): Ticket => {
@@ -375,24 +311,87 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     return { ...t, updatedAt: at, timeline: [...(t.timeline ?? []), { at, by, text, state }] }
   }
 
-  // 2. CREATE TICKET ACTION - FORCES UNIQUE TIME ID FORMATS TO PREVENT OVERWRITES
-  const addTicket = useCallback((input: NewTicketInput) => {
+  // 2. CREATE TICKET ACTION
+  const addTicket = useCallback(async (input: NewTicketInput) => {
     const createdAtMs = Date.now()
     const uniqueId = `OE-${createdAtMs.toString().slice(-6)}-${crypto.randomUUID()}`
     const ticket = createTicket(input, uniqueId)
 
-    ticketsRef.current = [ticket, ...ticketsRef.current]
-    setTickets(ticketsRef.current)
-    void supabase
+    const { data, error } = await supabase
       .from('tickets')
       .insert(databaseRowForTicket(ticket, true))
-      .then(({ error }) => {
-        if (error) console.error(`Supabase ticket insert error for ${ticket.id}:`, error.message)
-      })
-    return ticket
+      .select('*')
+      .single()
+    if (error) throw new Error(`Supabase ticket insert error for ${ticket.id}: ${error.message}`)
+
+    const savedTicket = ticketFromDatabase(data)
+    const next = [savedTicket, ...ticketsRef.current.filter((existing) => existing.id !== savedTicket.id)]
+    ticketsRef.current = next
+    setTickets(next)
+    return savedTicket
   }, [])
-  // 3. REALTIME SYNC ROUTER EXTENSION CHANNEL
+
+  const deleteTicket = useCallback((id: string) => {
+    void (async () => {
+      try {
+        let result = await supabase.from('tickets').delete().eq('id', id).select('id')
+        if (!result.error && !result.data?.length) {
+          result = await supabase.from('tickets').delete().eq('ticket_id', id).select('id')
+        }
+        if (result.error) {
+          console.error(`Supabase ticket delete error for ${id}:`, result.error.message)
+          return
+        }
+        if (!result.data?.length) {
+          console.error(`Supabase ticket delete matched no row for ${id}`)
+          return
+        }
+        const next = ticketsRef.current.filter((ticket) => ticket.id !== id)
+        ticketsRef.current = next
+        setTickets(next)
+      } catch (error) {
+        console.error(`Unable to delete ticket ${id}:`, error)
+      }
+    })()
+  }, [])
+  // 3. READ AND REALTIME SYNC
   useEffect(() => {
+    let active = true
+    const loadInitialTickets = async () => {
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Supabase ticket fetch error:', error.message)
+        return
+      }
+      if (!active) return
+
+      const fetchedTickets: Ticket[] = []
+      for (const row of data ?? []) {
+        try {
+          fetchedTickets.push(ticketFromDatabase(row))
+        } catch (mappingError) {
+          console.error('Unable to map Supabase ticket row:', mappingError)
+        }
+      }
+
+      setTickets((previous) => {
+        const merged = new Map(previous.map((ticket) => [ticket.id, ticket]))
+        for (const ticket of fetchedTickets) {
+          const current = merged.get(ticket.id)
+          if (!current || Date.parse(ticket.updatedAt) > Date.parse(current.updatedAt)) {
+            merged.set(ticket.id, ticket)
+          }
+        }
+        const next = [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        ticketsRef.current = next
+        return next
+      })
+    }
+
     const channel = supabase
       .channel('schema-db-changes')
       .on(
@@ -445,12 +444,15 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         }
       )
       .subscribe((status, error) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        if (status === 'SUBSCRIBED') {
+          void loadInitialTickets()
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.error('Supabase ticket realtime subscription error:', error?.message ?? status)
         }
       })
 
     return () => {
+      active = false
       supabase.removeChannel(channel);
     };
   }, []);
@@ -479,7 +481,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   const updateDetails = useCallback((id: string, next: { title: string; description: string; priority: Ticket['priority'] }, by: string) => patch(id, (ticket) => log({ ...ticket, ...next }, by, 'Updated details')), [patch])
   const addComment = useCallback((id: string, text: string, by: string) => patch(id, (ticket) => {
     const at = new Date().toISOString()
-    return { ...ticket, updatedAt: at, comments: [...ticket.comments, { at, by, text }] }
+    return log({ ...ticket, comments: [...ticket.comments, { at, by, text }] }, by, 'Added a comment')
   }), [patch])
   const transition = useCallback((id: string, state: LifecycleState, input: TransitionInput) => patch(id, (ticket) => {
     const at = new Date().toISOString()
@@ -498,14 +500,14 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     }
   }), [patch])
 
-  const attachSnapshot = useCallback((id: string, slot: 'before' | 'after', snapshot: Snapshot) => patch(id, (t) => {
-    const freshSnaps = { ...t.snapshots, [slot]: snapshot };
-    return { ...t, snapshots: freshSnaps };
+  const attachSnapshot = useCallback((id: string, slot: 'before' | 'after', snapshot: Snapshot) => patch(id, (ticket) => {
+    const freshSnaps = { ...ticket.snapshots, [slot]: snapshot }
+    return log({ ...ticket, snapshots: freshSnaps }, snapshot.by, `Attached ${slot} snapshot`)
   }), [patch]);
 
   const value = useMemo(
-    () => ({ tickets, addTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot }),
-    [tickets, addTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot],
+    () => ({ tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot }),
+    [tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot],
   )
 
   return <TicketsContext.Provider value={value}>{children}</TicketsContext.Provider>

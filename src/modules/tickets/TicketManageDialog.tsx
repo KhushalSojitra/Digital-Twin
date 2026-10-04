@@ -23,6 +23,7 @@ import EditRoundedIcon from '@mui/icons-material/EditRounded'
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
 import FilterListRoundedIcon from '@mui/icons-material/FilterListRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import TicketGlyph from '../../components/TicketGlyph'
 import TicketFilters from './TicketFilters'
 import { applyTicketQuery, type TicketFilterState } from './ticketFilters'
@@ -72,7 +73,7 @@ export default function TicketManageDialog({
 }: Props) {
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
-  const { transition } = useTickets()
+  const { transition, deleteTicket } = useTickets()
   const [search, setSearch] = useState('')
   const [filterEl, setFilterEl] = useState<HTMLElement | null>(null)
   const visible = useMemo(
@@ -191,6 +192,20 @@ export default function TicketManageDialog({
                       <Tooltip title="Go to Location">
                         <IconButton size="small" aria-label={`Go to location ${t.id}`} onClick={() => onGoToLocation(t)}>
                           <MyLocationRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    {canEdit && (
+                      <Tooltip title="Delete ticket">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          aria-label={`Delete ${t.id}`}
+                          onClick={() => {
+                            if (window.confirm(`Delete ticket ${t.id}? This cannot be undone.`)) deleteTicket(t.id)
+                          }}
+                        >
+                          <DeleteOutlineRoundedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     )}

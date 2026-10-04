@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, useEffect, type ReactNode } from 'react'
 import { supabase } from '../supabaseClient'
+import { ALL_DEVICES } from '../data/cameras'
 import {
   STATE_RESULT,
   createTicket,
@@ -32,6 +33,115 @@ interface TicketsValue {
 
 const TicketsContext = createContext<TicketsValue | null>(null)
 
+type DatabaseRow = Record<string, unknown>
+
+function asDatabaseRow(value: unknown): DatabaseRow {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Received an invalid ticket row from Supabase')
+  }
+  return value as DatabaseRow
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.length > 0 ? value : fallback
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  const parsed = Number(value)
+  return value == null || value === '' || !Number.isFinite(parsed) ? fallback : parsed
+}
+
+function cameraForRow(value: unknown) {
+  const cameraName = typeof value === 'string' ? value.trim() : ''
+  const camera = ALL_DEVICES.find((device) => device.id === cameraName || device.name === cameraName)
+  if (camera) return camera
+
+  const fallbackCamera = ALL_DEVICES.find((device) => device.id === 'ellis-360')
+  if (!fallbackCamera) throw new Error('Fallback camera profile ellis-360 is not configured')
+  return fallbackCamera
+}
+
+function ticketFromDatabase(value: unknown): Ticket {
+  const row = asDatabaseRow(value)
+  const ptz = typeof row.ptz_coordinates === 'object' && row.ptz_coordinates !== null
+    ? row.ptz_coordinates as DatabaseRow
+    : {}
+  const camera = cameraForRow(row.camera_name)
+  const createdAt = stringValue(row.created_at, new Date().toISOString())
+  const yaw = numberValue(ptz.yaw, 0)
+  const pitch = numberValue(ptz.pitch, 0)
+  const zoom = numberValue(ptz.zoom, 1)
+  const distanceM = numberValue(ptz.distanceM, 35)
+  const storedLat = numberValue(ptz.lat, 0)
+  const storedLng = numberValue(ptz.lng, 0)
+  const earthCoords = locateOnEarth(camera.siteId, yaw, distanceM)
+
+  const rawPriority = typeof row.priority === 'string' ? row.priority.trim().toLowerCase() : ''
+  const priority: Ticket['priority'] = rawPriority === 'critical' || rawPriority === 'high' || rawPriority === 'low'
+    ? rawPriority
+    : 'medium'
+  const rawStatus = typeof row.status === 'string' ? row.status.trim().toLowerCase() : ''
+  const status: Ticket['status'] = rawStatus === 'to do' || rawStatus === 'open'
+    ? 'open'
+    : rawStatus === 'in progress' || rawStatus === 'in_progress'
+      ? 'in_progress'
+      : rawStatus === 'done' || rawStatus === 'accepted' || rawStatus === 'failed'
+        ? rawStatus
+        : 'open'
+
+  const comments: Ticket['comments'] = Array.isArray(row.replies)
+    ? row.replies.map((value) => {
+        const comment = asDatabaseRow(value)
+        return {
+          at: stringValue(comment.at, createdAt),
+          by: stringValue(comment.by, 'System'),
+          text: stringValue(comment.text, ''),
+        }
+      })
+    : []
+  const timeline: Ticket['timeline'] = Array.isArray(row.history_log)
+    ? row.history_log.map((value) => {
+        const event = asDatabaseRow(value)
+        const validStates: LifecycleState[] = ['open', 'in_progress', 'done', 'accepted', 'failed', 'reopened']
+        const state = validStates.find((candidate) => candidate === event.state)
+        return {
+          at: stringValue(event.at, createdAt),
+          by: stringValue(event.by, 'System'),
+          text: stringValue(event.text, ''),
+          ...(state ? { state } : {}),
+        }
+      })
+    : []
+
+  return {
+    id: stringValue(row.ticket_id, stringValue(row.id, '')),
+    title: stringValue(row.title, 'Untitled ticket'),
+    description: stringValue(row.description, ''),
+    status,
+    priority: rawPriority === 'meduim' || rawPriority === 'medium' ? 'medium' : priority,
+    type: 'intrusion',
+    cameraId: camera.id,
+    siteId: camera.siteId,
+    zone: 'Perimeter',
+    assignee: stringValue(row.assignee, ''),
+    creator: stringValue(row.reporter, 'System'),
+    platform: 'default',
+    followers: [],
+    comments,
+    createdAt,
+    updatedAt: stringValue(row.updated_at, createdAt),
+    snapshots: {},
+    snapshotConfig: { captureCreation: true, captureCompletion: true, showInImprovementHistory: true },
+    timeline,
+    yaw,
+    pitch,
+    zoom,
+    distanceM,
+    lat: earthCoords.lat || storedLat,
+    lng: earthCoords.lng || storedLng,
+  }
+}
+
 export function TicketsProvider({ children }: { children: ReactNode }) {
   const [tickets, setTickets] = useState<Ticket[]>([])
 
@@ -43,45 +153,10 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         .select('*')
         .order('created_at', { ascending: false });
       
-      if (!error && data) {
-        const mappedTickets: Ticket[] = data.map((row: any) => {
-          const ptz = row.ptz_coordinates || {};
-          const targetCameraId = row.camera_name || 'ellis-360';
-          const distanceM = Number(ptz.distanceM) || 35;
-          const yaw = Number(ptz.yaw) || 0;
-
-          // Compute exact geospatial pinning metrics for map engine overlays
-          const earthCoords = locateOnEarth('site-01', yaw, distanceM);
-
-          return {
-            id: row.ticket_id || row.id,
-            title: row.title,
-            description: row.description || '',
-            status: row.status === 'to do' ? 'open' : (row.status || 'open'),
-            priority: (row.priority === 'meduim' || row.priority === 'medium') ? 'medium' : row.priority,
-            type: 'intrusion', 
-            cameraId: targetCameraId,
-            siteId: 'site-01',
-            zone: 'Perimeter',
-            assignee: row.assignee || '',
-            creator: row.reporter || 'System',
-            platform: 'default',
-            followers: [],
-            comments: Array.isArray(row.replies) ? row.replies : [],
-            createdAt: row.created_at,
-            updatedAt: row.created_at,
-            snapshots: {},
-            snapshotConfig: { captureCreation: true, captureCompletion: true, showInImprovementHistory: true },
-            timeline: Array.isArray(row.history_log) ? row.history_log : [],
-            yaw: yaw,
-            pitch: Number(ptz.pitch) || 0,
-            zoom: Number(ptz.zoom) || 1,
-            distanceM: distanceM,
-            lat: earthCoords.lat || Number(ptz.lat) || 0,
-            lng: earthCoords.lng || Number(ptz.lng) || 0
-          };
-        });
-        setTickets(mappedTickets);
+      if (error) {
+        console.error('Supabase ticket fetch error:', error.message)
+      } else if (data) {
+        setTickets(data.map(ticketFromDatabase))
       }
     }
     loadInitialTickets();
@@ -142,72 +217,19 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'tickets' },
         (payload) => {
-          const { eventType, new: newRow } = payload as any;
-          const ptz = newRow?.ptz_coordinates || {};
+          const { eventType, new: newRow } = payload as { eventType: string; new: unknown }
 
           if (eventType === 'INSERT') {
-            setTickets((prev) => {
-              const trackingId = newRow.ticket_id || newRow.id;
-              if (prev.some((t) => t.id === trackingId)) return prev;
-              
-              const yawVal = Number(ptz.yaw) || 0;
-              const distVal = Number(ptz.distanceM) || 35;
-              const liveCoords = locateOnEarth('site-01', yawVal, distVal);
-
-              const freshTicket: Ticket = {
-                id: trackingId,
-                title: newRow.title,
-                description: newRow.description || '',
-                status: newRow.status === 'to do' ? 'open' : (newRow.status || 'open'),
-                priority: (newRow.priority === 'meduim' || newRow.priority === 'medium') ? 'medium' : (newRow.priority || 'medium'),
-                type: 'intrusion',
-                cameraId: newRow.camera_name || 'ellis-360',
-                siteId: 'site-01',
-                zone: 'Perimeter',
-                assignee: newRow.assignee || '',
-                creator: newRow.reporter || 'System',
-                platform: 'default',
-                followers: [],
-                comments: Array.isArray(newRow.replies) ? newRow.replies : [],
-                createdAt: newRow.created_at,
-                updatedAt: newRow.created_at,
-                snapshots: {},
-                snapshotConfig: { captureCreation: true, captureCompletion: true, showInImprovementHistory: true },
-                timeline: Array.isArray(newRow.history_log) ? newRow.history_log : [],
-                yaw: yawVal,
-                pitch: Number(ptz.pitch) || 0,
-                zoom: Number(ptz.zoom) || 1,
-                distanceM: distVal,
-                lat: liveCoords.lat || Number(ptz.lat) || 0,
-                lng: liveCoords.lng || Number(ptz.lng) || 0
-              };
-              return [freshTicket, ...prev];
-            });
-          } 
-          
+            const freshTicket = ticketFromDatabase(newRow)
+            setTickets((prev) => prev.some((ticket) => ticket.id === freshTicket.id)
+              ? prev
+              : [freshTicket, ...prev])
+          }
           else if (eventType === 'UPDATE') {
-            setTickets((prev) =>
-              prev.map((t) => {
-                const trackingId = newRow.ticket_id || newRow.id;
-                return t.id === trackingId
-                  ? {
-                      ...t,
-                      title: newRow.title,
-                      description: newRow.description || '',
-                      priority: (newRow.priority === 'meduim' || newRow.priority === 'medium') ? 'medium' : (newRow.priority || 'medium'),
-                      status: newRow.status === 'to do' ? 'open' : (newRow.status || 'open'),
-                      assignee: newRow.assignee || '',
-                      timeline: Array.isArray(newRow.history_log) ? newRow.history_log : t.timeline,
-                      comments: Array.isArray(newRow.replies) ? newRow.replies : t.comments,
-                      yaw: Number(ptz.yaw) || t.yaw,
-                      pitch: Number(ptz.pitch) || t.pitch,
-                      zoom: Number(ptz.zoom) || t.zoom,
-                      lat: Number(ptz.lat) || t.lat,
-                      lng: Number(ptz.lng) || t.lng
-                    }
-                  : t;
-              })
-            );
+            const updatedTicket = ticketFromDatabase(newRow)
+            setTickets((prev) => prev.map((ticket) => ticket.id === updatedTicket.id
+              ? { ...ticket, ...updatedTicket, snapshots: ticket.snapshots, snapshotConfig: ticket.snapshotConfig }
+              : ticket))
           }
         }
       )

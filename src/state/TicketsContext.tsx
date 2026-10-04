@@ -53,7 +53,13 @@ function numberValue(value: unknown, fallback: number): number {
 
 function cameraForRow(value: unknown) {
   const cameraName = typeof value === 'string' ? value.trim() : ''
-  const camera = ALL_DEVICES.find((device) => device.id === cameraName || device.name === cameraName)
+  const normalizedCameraName = cameraName.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const camera = ALL_DEVICES.find((device) =>
+    device.id === cameraName
+    || device.name === cameraName
+    || device.id.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedCameraName
+    || device.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedCameraName,
+  )
   if (camera) return camera
 
   const fallbackCamera = ALL_DEVICES.find((device) => device.id === 'ellis-360')

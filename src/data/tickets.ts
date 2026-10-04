@@ -45,6 +45,22 @@ export interface TicketCompletion {
   notes: string
 }
 
+/** File stored in Supabase Storage and linked to a ticket through the ticket_attachments table. */
+export interface TicketAttachment {
+  id: string
+  /** `before` / `after` are the proof snapshots; `file` is any other upload (image, video, PDF, ...). */
+  kind: 'before' | 'after' | 'file'
+  fileName: string
+  fileType: string
+  storagePath: string
+  /** Short-lived signed URL used to display or download the file. */
+  url?: string
+  uploadedBy: string
+  uploadedAt: string
+  yaw?: number
+  pitch?: number
+}
+
 export interface Ticket {
   id: string
   title: string
@@ -67,6 +83,7 @@ export interface Ticket {
   completedAt?: string
   completion?: TicketCompletion
   snapshots: { before?: Snapshot; after?: Snapshot }
+  attachments: TicketAttachment[]
   snapshotConfig: SnapshotConfig
   timeline: TicketEvent[]
   /** Where the ticket sits in the camera's field of view (scene-relative pan/tilt, degrees). */
@@ -192,6 +209,7 @@ export function createTicket(input: NewTicketInput, id = `OE-${crypto.randomUUID
     createdAt: now,
     updatedAt: now,
     snapshots: { before: input.creationSnapshot },
+    attachments: [],
     snapshotConfig: input.snapshotConfig,
     timeline,
     yaw,

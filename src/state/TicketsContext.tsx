@@ -1,16 +1,24 @@
-import { createContext, useCallback, useContext, useMemo, useState, useEffect, useRef, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Alert, Snackbar } from '@mui/material'
 import { supabase } from '../supabaseClient'
-import { ALL_DEVICES } from '../data/cameras'
 import {
-  DEFAULT_SNAPSHOT_CONFIG,
   STATE_RESULT,
   createTicket,
-  locateOnEarth,
   type LifecycleState,
   type NewTicketInput,
   type Snapshot,
   type Ticket,
 } from '../data/tickets'
+import {
+  TICKET_REALTIME_TABLES,
+  changeTicketState,
+  deleteTicket as deleteTicketRow,
+  fetchTicket,
+  fetchTickets,
+  insertTicket,
+  updateTicketDetails,
+  uploadSnapshot,
+} from '../data/ticketRepository'
 
 export interface TransitionInput {
   by: string
@@ -35,482 +43,249 @@ interface TicketsValue {
 
 const TicketsContext = createContext<TicketsValue | null>(null)
 
-type DatabaseRow = Record<string, unknown>
+const REALTIME_RELOAD_DELAY_MS = 300
 
-function asDatabaseRow(value: unknown): DatabaseRow {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('Received an invalid ticket row from Supabase')
-  }
-  return value as DatabaseRow
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
-function stringValue(value: unknown, fallback: string): string {
-  return typeof value === 'string' && value.length > 0 ? value : fallback
+function appendEvent(ticket: Ticket, by: string, text: string): Ticket {
+  const at = new Date().toISOString()
+  return { ...ticket, timeline: [...ticket.timeline, { at, by, text }] }
 }
 
-function numberValue(value: unknown, fallback: number): number {
-  const parsed = Number(value)
-  return value == null || value === '' || !Number.isFinite(parsed) ? fallback : parsed
-}
-
-function cameraForRow(value: unknown) {
-  const cameraName = typeof value === 'string' ? value.trim() : ''
-  const normalizedCameraName = cameraName.toLowerCase().replace(/[^a-z0-9]/g, '')
-  const camera = ALL_DEVICES.find((device) =>
-    device.id === cameraName
-    || device.name === cameraName
-    || device.id.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedCameraName
-    || device.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedCameraName,
-  )
-  if (camera) return camera
-
-  const fallbackCamera = ALL_DEVICES.find((device) => device.id === 'ellis-360')
-  if (!fallbackCamera) throw new Error('Fallback camera profile ellis-360 is not configured')
-  return fallbackCamera
-}
-
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
-}
-
-function snapshotFromDatabase(value: unknown): Snapshot | undefined {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
-  const snapshot = value as DatabaseRow
-  if (typeof snapshot.src !== 'string' || typeof snapshot.at !== 'string' || typeof snapshot.by !== 'string') return undefined
-  return {
-    src: snapshot.src,
-    at: snapshot.at,
-    by: snapshot.by,
-    yaw: numberValue(snapshot.yaw, 0),
-    pitch: numberValue(snapshot.pitch, 0),
-  }
-}
-
-function databaseRowForTicket(ticket: Ticket, includeIdentity = false): DatabaseRow {
-  return {
-    ...(includeIdentity ? { id: ticket.id, ticket_id: ticket.id, created_at: ticket.createdAt } : {}),
-    title: ticket.title,
-    description: ticket.description,
-    priority: ticket.priority,
-    status: ticket.status === 'open' ? 'to do' : ticket.status,
-    reporter: ticket.creator,
-    assignee: ticket.assignee || 'Unassigned',
-    camera_name: ticket.cameraId,
-    ptz_coordinates: {
-      yaw: ticket.yaw,
-      pitch: ticket.pitch,
-      zoom: ticket.zoom,
-      distanceM: ticket.distanceM,
-      lat: ticket.lat,
-      lng: ticket.lng,
-      metadata: {
-        type: ticket.type,
-        zone: ticket.zone,
-        platform: ticket.platform,
-        platformName: ticket.platformName,
-        followers: ticket.followers,
-        snapshots: ticket.snapshots,
-        snapshotConfig: ticket.snapshotConfig,
-        completedAt: ticket.completedAt,
-        completion: ticket.completion,
-      },
-    },
-    history_log: ticket.timeline,
-    replies: ticket.comments,
-    updated_at: ticket.updatedAt,
-  }
-}
-
-function ticketFromDatabase(value: unknown): Ticket {
-  const row = asDatabaseRow(value)
-  const ptz = typeof row.ptz_coordinates === 'object' && row.ptz_coordinates !== null
-    ? row.ptz_coordinates as DatabaseRow
-    : {}
-  const metadata = typeof ptz.metadata === 'object' && ptz.metadata !== null
-    ? ptz.metadata as DatabaseRow
-    : {}
-  const camera = cameraForRow(row.camera_name)
-  const createdAt = stringValue(row.created_at, new Date().toISOString())
-  const yaw = numberValue(ptz.yaw, 0)
-  const pitch = numberValue(ptz.pitch, 0)
-  const zoom = numberValue(ptz.zoom, 1)
-  const distanceM = numberValue(ptz.distanceM, 35)
-  const storedLat = numberValue(ptz.lat, 0)
-  const storedLng = numberValue(ptz.lng, 0)
-  const earthCoords = locateOnEarth(camera.siteId, yaw, distanceM)
-
-  const rawPriority = typeof row.priority === 'string' ? row.priority.trim().toLowerCase() : ''
-  const priority: Ticket['priority'] = rawPriority === 'critical' || rawPriority === 'high' || rawPriority === 'low'
-    ? rawPriority
-    : 'medium'
-  const rawStatus = typeof row.status === 'string' ? row.status.trim().toLowerCase() : ''
-  const status: Ticket['status'] = rawStatus === 'to do' || rawStatus === 'open'
-    ? 'open'
-    : rawStatus === 'in progress' || rawStatus === 'in_progress'
-      ? 'in_progress'
-      : rawStatus === 'done' || rawStatus === 'accepted' || rawStatus === 'failed'
-        ? rawStatus
-        : 'open'
-
-  const comments: Ticket['comments'] = Array.isArray(row.replies)
-    ? row.replies.map((value) => {
-        const comment = asDatabaseRow(value)
-        return {
-          at: stringValue(comment.at, createdAt),
-          by: stringValue(comment.by, 'System'),
-          text: stringValue(comment.text, ''),
-        }
-      })
-    : []
-  const timeline: Ticket['timeline'] = Array.isArray(row.history_log)
-    ? row.history_log.map((value) => {
-        const event = asDatabaseRow(value)
-        const validStates: LifecycleState[] = ['open', 'in_progress', 'done', 'accepted', 'failed', 'reopened']
-        const state = validStates.find((candidate) => candidate === event.state)
-        return {
-          at: stringValue(event.at, createdAt),
-          by: stringValue(event.by, 'System'),
-          text: stringValue(event.text, ''),
-          ...(state ? { state } : {}),
-        }
-      })
-    : []
-
-  const id = stringValue(row.ticket_id, stringValue(row.id, ''))
-  if (!id) throw new Error('Supabase ticket row is missing both ticket_id and id')
-
-  const rawType = row.type ?? metadata.type
-  const validTypes: Ticket['type'][] = ['intrusion', 'loitering', 'tamper', 'camera_fault', 'vehicle', 'crowd', 'maintenance']
-  const rawPlatform = row.platform ?? metadata.platform
-  const platform: Ticket['platform'] = rawPlatform === 'client' || rawPlatform === 'custom' ? rawPlatform : 'default'
-  const snapshotConfig = typeof (row.snapshot_config ?? metadata.snapshotConfig) === 'object'
-    && (row.snapshot_config ?? metadata.snapshotConfig) !== null
-    ? (row.snapshot_config ?? metadata.snapshotConfig) as DatabaseRow
-    : {}
-  const completionValue = row.completion ?? metadata.completion
-  const completion = typeof completionValue === 'object' && completionValue !== null
-    ? completionValue as DatabaseRow
-    : null
-  const snapshotsValue = typeof metadata.snapshots === 'object' && metadata.snapshots !== null
-    ? metadata.snapshots as DatabaseRow
-    : {}
-
-  return {
-    id,
-    title: stringValue(row.title, 'Untitled ticket'),
-    description: stringValue(row.description, ''),
-    status,
-    priority: rawPriority === 'meduim' || rawPriority === 'medium' ? 'medium' : priority,
-    type: validTypes.find((candidate) => candidate === rawType) ?? 'intrusion',
-    cameraId: camera.id,
-    siteId: camera.siteId,
-    zone: stringValue(row.zone, stringValue(metadata.zone, 'Perimeter')),
-    assignee: stringValue(row.assignee, ''),
-    creator: stringValue(row.reporter, 'System'),
-    platform,
-    platformName: typeof row.platform_name === 'string'
-      ? row.platform_name
-      : typeof metadata.platformName === 'string' ? metadata.platformName : undefined,
-    followers: Array.isArray(row.followers) ? stringArray(row.followers) : stringArray(metadata.followers),
-    comments,
-    createdAt,
-    updatedAt: stringValue(row.updated_at, createdAt),
-    completedAt: typeof row.completed_at === 'string'
-      ? row.completed_at
-      : typeof metadata.completedAt === 'string' ? metadata.completedAt : undefined,
-    completion: completion
-      ? {
-          by: stringValue(completion.by, 'System'),
-          at: stringValue(completion.at, createdAt),
-          notes: stringValue(completion.notes, ''),
-        }
-      : undefined,
-    snapshots: {
-      before: snapshotFromDatabase(snapshotsValue.before),
-      after: snapshotFromDatabase(snapshotsValue.after),
-    },
-    snapshotConfig: {
-      captureCreation: snapshotConfig.captureCreation === false ? false : DEFAULT_SNAPSHOT_CONFIG.captureCreation,
-      captureCompletion: snapshotConfig.captureCompletion === false ? false : DEFAULT_SNAPSHOT_CONFIG.captureCompletion,
-      showInImprovementHistory: true,
-    },
-    timeline,
-    yaw,
-    pitch,
-    zoom,
-    distanceM,
-    lat: earthCoords.lat || storedLat,
-    lng: earthCoords.lng || storedLng,
-  }
-}
-
+/**
+ * Supabase is the single source of truth. Every action is written first and the UI only
+ * changes once the database has confirmed it; failures are shown to the user.
+ */
 export function TicketsProvider({ children }: { children: ReactNode }) {
   const [tickets, setTickets] = useState<Ticket[]>([])
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const ticketsRef = useRef<Ticket[]>([])
   const writeQueues = useRef(new Map<string, Promise<void>>())
+  const snapshotGuard = useRef(new Set<string>())
 
-  useEffect(() => {
-    ticketsRef.current = tickets
-  }, [tickets])
-
-  const persistTicket = useCallback(async (ticket: Ticket): Promise<Ticket> => {
-    const update = databaseRowForTicket(ticket)
-    const { data, error } = await supabase
-      .from('tickets')
-      .update(update)
-      .eq('id', ticket.id)
-      .select('*')
-    if (error) {
-      throw new Error(`Supabase ticket update error for ${ticket.id}: ${error.message}`)
-    }
-    if (data?.[0]) return ticketFromDatabase(data[0])
-
-    const fallbackUpdate = await supabase
-      .from('tickets')
-      .update(update)
-      .eq('ticket_id', ticket.id)
-      .select('*')
-    if (fallbackUpdate.error) {
-      throw new Error(`Supabase ticket update error for ${ticket.id}: ${fallbackUpdate.error.message}`)
-    }
-    if (!fallbackUpdate.data?.[0]) throw new Error(`Supabase ticket update matched no row for ${ticket.id}`)
-    return ticketFromDatabase(fallbackUpdate.data[0])
+  const report = useCallback((error: unknown) => {
+    console.error(error)
+    setErrorMessage(messageOf(error))
   }, [])
 
-  const patch = useCallback((id: string, fn: (ticket: Ticket) => Ticket) => {
-    const current = ticketsRef.current.find((ticket) => ticket.id === id)
-    if (!current) return
-    const updated = fn(current)
-    const next = ticketsRef.current.map((ticket) => ticket.id === id ? updated : ticket)
+  const warn = useCallback((message: string) => {
+    console.warn(message)
+    setErrorMessage(message)
+  }, [])
+
+  const replaceAll = useCallback((next: Ticket[]) => {
     ticketsRef.current = next
     setTickets(next)
-    const previousWrite = writeQueues.current.get(id) ?? Promise.resolve()
-    const write = previousWrite.catch(() => undefined).then(async () => {
-      try {
-        const saved = await persistTicket(updated)
-        if (ticketsRef.current.find((ticket) => ticket.id === id) !== updated) return
-        const persistedTickets = ticketsRef.current.map((ticket) => ticket.id === id ? saved : ticket)
-        ticketsRef.current = persistedTickets
-        setTickets(persistedTickets)
-      } catch (error) {
-        console.error(`Unable to save ticket ${id}:`, error)
-        if (ticketsRef.current.find((ticket) => ticket.id === id) !== updated) return
-        const restored = ticketsRef.current.map((ticket) => ticket.id === id ? current : ticket)
-        ticketsRef.current = restored
-        setTickets(restored)
-      }
-    })
-    writeQueues.current.set(id, write)
-    void write.finally(() => {
-      if (writeQueues.current.get(id) === write) writeQueues.current.delete(id)
-    })
-  }, [persistTicket])
-
-  const log = (t: Ticket, by: string, text: string, state?: LifecycleState): Ticket => {
-    const at = new Date().toISOString()
-    return { ...t, updatedAt: at, timeline: [...(t.timeline ?? []), { at, by, text, state }] }
-  }
-
-  // 2. CREATE TICKET ACTION
-  const addTicket = useCallback(async (input: NewTicketInput) => {
-    const createdAtMs = Date.now()
-    const uniqueId = `OE-${createdAtMs.toString().slice(-6)}-${crypto.randomUUID()}`
-    const ticket = createTicket(input, uniqueId)
-
-    const { data, error } = await supabase
-      .from('tickets')
-      .insert(databaseRowForTicket(ticket, true))
-      .select('*')
-      .single()
-    if (error) throw new Error(`Supabase ticket insert error for ${ticket.id}: ${error.message}`)
-
-    const savedTicket = ticketFromDatabase(data)
-    const next = [savedTicket, ...ticketsRef.current.filter((existing) => existing.id !== savedTicket.id)]
-    ticketsRef.current = next
-    setTickets(next)
-    return savedTicket
   }, [])
 
-  const deleteTicket = useCallback((id: string) => {
-    void (async () => {
-      try {
-        let result = await supabase.from('tickets').delete().eq('id', id).select('id')
-        if (!result.error && !result.data?.length) {
-          result = await supabase.from('tickets').delete().eq('ticket_id', id).select('id')
-        }
-        if (result.error) {
-          console.error(`Supabase ticket delete error for ${id}:`, result.error.message)
-          return
-        }
-        if (!result.data?.length) {
-          console.error(`Supabase ticket delete matched no row for ${id}`)
-          return
-        }
-        const next = ticketsRef.current.filter((ticket) => ticket.id !== id)
-        ticketsRef.current = next
-        setTickets(next)
-      } catch (error) {
-        console.error(`Unable to delete ticket ${id}:`, error)
-      }
-    })()
+  const commit = useCallback(
+    (saved: Ticket) => {
+      const others = ticketsRef.current.filter((ticket) => ticket.id !== saved.id)
+      replaceAll([saved, ...others].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)))
+    },
+    [replaceAll],
+  )
+
+  /** Runs writes for one ticket strictly one after another so read-modify-write updates never overlap. */
+  const enqueue = useCallback(<T,>(id: string, task: () => Promise<T>): Promise<T> => {
+    const previous = writeQueues.current.get(id) ?? Promise.resolve()
+    const run = previous.then(task)
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    writeQueues.current.set(id, tail)
+    void tail.then(() => {
+      if (writeQueues.current.get(id) === tail) writeQueues.current.delete(id)
+    })
+    return run
   }, [])
-  // 3. READ AND REALTIME SYNC
+
+  const reload = useCallback(async () => {
+    try {
+      replaceAll(await fetchTickets(warn))
+    } catch (error) {
+      report(error)
+    }
+  }, [replaceAll, report, warn])
+
   useEffect(() => {
-    let active = true
-    const loadInitialTickets = async () => {
-      const { data, error } = await supabase
-        .from('tickets')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Supabase ticket fetch error:', error.message)
-        return
-      }
-      if (!active) return
-
-      const fetchedTickets: Ticket[] = []
-      for (const row of data ?? []) {
-        try {
-          fetchedTickets.push(ticketFromDatabase(row))
-        } catch (mappingError) {
-          console.error('Unable to map Supabase ticket row:', mappingError)
-        }
-      }
-
-      setTickets((previous) => {
-        const merged = new Map(previous.map((ticket) => [ticket.id, ticket]))
-        for (const ticket of fetchedTickets) {
-          const current = merged.get(ticket.id)
-          if (!current || Date.parse(ticket.updatedAt) > Date.parse(current.updatedAt)) {
-            merged.set(ticket.id, ticket)
-          }
-        }
-        const next = [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        ticketsRef.current = next
-        return next
-      })
+    let reloadTimer: number | undefined
+    const scheduleReload = () => {
+      window.clearTimeout(reloadTimer)
+      reloadTimer = window.setTimeout(() => void reload(), REALTIME_RELOAD_DELAY_MS)
     }
 
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tickets' },
-        (payload) => {
-          const { eventType, new: newRow, old: oldRow } = payload as { eventType: string; new: unknown; old: unknown }
-          try {
-            if (eventType === 'INSERT') {
-              const freshTicket = ticketFromDatabase(newRow)
-              setTickets((previous) => {
-                const next = previous.some((ticket) => ticket.id === freshTicket.id)
-                  ? previous
-                  : [freshTicket, ...previous]
-                ticketsRef.current = next
-                return next
-              })
-            } else if (eventType === 'UPDATE') {
-              const updatedTicket = ticketFromDatabase(newRow)
-              const rawRow = asDatabaseRow(newRow)
-              const rawCoordinates = typeof rawRow.ptz_coordinates === 'object' && rawRow.ptz_coordinates !== null
-                ? rawRow.ptz_coordinates as DatabaseRow
-                : {}
-              const hasMetadata = typeof rawCoordinates.metadata === 'object' && rawCoordinates.metadata !== null
-              setTickets((previous) => {
-                const next = previous.map((ticket) => ticket.id === updatedTicket.id
-                  ? {
-                      ...ticket,
-                      ...updatedTicket,
-                      followers: hasMetadata ? updatedTicket.followers : ticket.followers,
-                      snapshots: hasMetadata ? updatedTicket.snapshots : ticket.snapshots,
-                      snapshotConfig: hasMetadata ? updatedTicket.snapshotConfig : ticket.snapshotConfig,
-                    }
-                  : ticket)
-                ticketsRef.current = next
-                return next
-              })
-            } else if (eventType === 'DELETE') {
-              const deletedRow = asDatabaseRow(oldRow)
-              const deletedId = stringValue(deletedRow.ticket_id, stringValue(deletedRow.id, ''))
-              setTickets((previous) => {
-                const next = previous.filter((ticket) => ticket.id !== deletedId)
-                ticketsRef.current = next
-                return next
-              })
-            }
-          } catch (mappingError) {
-            console.error(`Unable to process Supabase ${eventType} ticket event:`, mappingError)
-          }
-        }
-      )
-      .subscribe((status, error) => {
-        if (status === 'SUBSCRIBED') {
-          void loadInitialTickets()
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.error('Supabase ticket realtime subscription error:', error?.message ?? status)
-        }
-      })
+    let channel = supabase.channel('ticket-changes')
+    for (const table of TICKET_REALTIME_TABLES) {
+      channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, scheduleReload)
+    }
+    channel.subscribe((status, error) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.error('Supabase ticket realtime subscription error:', error?.message ?? status)
+      }
+    })
+
+    void reload()
 
     return () => {
-      active = false
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // UI STATE MUTATION PIPELINES WITH ACTIVE PARAMETER REFACTORING FOR COMPILER SANITY
-  const assign = useCallback((id: string, assignee: string, by: string) => patch(id, (ticket) => log({ ...ticket, assignee }, by, `Assigned to ${assignee}`)), [patch])
-  const toggleFollow = useCallback((id: string, person: string) => patch(id, (ticket) => {
-    const followers = ticket.followers.includes(person)
-      ? ticket.followers.filter((follower) => follower !== person)
-      : [...ticket.followers, person]
-    return log({ ...ticket, followers }, person, followers.includes(person) ? 'Started following ticket' : 'Stopped following ticket')
-  }), [patch])
-  
-  const addFollowers = useCallback((id: string, people: string[], by: string) => patch(id, (ticket) => {
-    return log({ ...ticket, followers: [...new Set([...ticket.followers, ...people])] }, by, 'Added followers')
-  }), [patch])
-
-  const shareWith = useCallback((id: string, person: string, by: string) => patch(id, (ticket) => {
-    return log({ ...ticket, followers: [...new Set([...ticket.followers, person])] }, by, 'Shared ticket')
-  }), [patch])
-
-  const removeFollower = useCallback((id: string, person: string, by: string) => patch(id, (ticket) => {
-    return log({ ...ticket, followers: ticket.followers.filter((follower) => follower !== person) }, by, 'Removed follower')
-  }), [patch])
-
-  const updateDetails = useCallback((id: string, next: { title: string; description: string; priority: Ticket['priority'] }, by: string) => patch(id, (ticket) => log({ ...ticket, ...next }, by, 'Updated details')), [patch])
-  const addComment = useCallback((id: string, text: string, by: string) => patch(id, (ticket) => {
-    const at = new Date().toISOString()
-    return log({ ...ticket, comments: [...ticket.comments, { at, by, text }] }, by, 'Added a comment')
-  }), [patch])
-  const transition = useCallback((id: string, state: LifecycleState, input: TransitionInput) => patch(id, (ticket) => {
-    const at = new Date().toISOString()
-    return {
-      ...ticket,
-      status: STATE_RESULT[state],
-      updatedAt: at,
-      ...(state === 'done'
-        ? {
-            completedAt: at,
-            completion: { by: input.by, at, notes: input.notes ?? '' },
-            snapshots: input.snapshot ? { ...ticket.snapshots, after: input.snapshot } : ticket.snapshots,
-          }
-        : {}),
-      timeline: [...ticket.timeline, { at, by: input.by, text: `Moved to ${state}`, state }],
+      window.clearTimeout(reloadTimer)
+      void supabase.removeChannel(channel)
     }
-  }), [patch])
+  }, [reload])
 
-  const attachSnapshot = useCallback((id: string, slot: 'before' | 'after', snapshot: Snapshot) => patch(id, (ticket) => {
-    const freshSnaps = { ...ticket.snapshots, [slot]: snapshot }
-    return log({ ...ticket, snapshots: freshSnaps }, snapshot.by, `Attached ${slot} snapshot`)
-  }), [patch]);
+  /** Applies `fn` to the latest confirmed ticket and saves the editable columns. */
+  const mutate = useCallback(
+    (id: string, fn: (ticket: Ticket) => Ticket) => {
+      void enqueue(id, async () => {
+        const current = ticketsRef.current.find((ticket) => ticket.id === id)
+        if (!current) throw new Error(`Ticket ${id} is not loaded`)
+        commit(await updateTicketDetails(fn(current), warn))
+      }).catch(report)
+    },
+    [enqueue, commit, report, warn],
+  )
+
+  const addTicket = useCallback(
+    async (input: NewTicketInput) => {
+      const id = `OE-${Date.now().toString().slice(-6)}-${crypto.randomUUID()}`
+      const ticket = createTicket(input, id)
+      try {
+        await insertTicket(ticket)
+        if (input.creationSnapshot) {
+          try {
+            await uploadSnapshot(id, 'before', input.creationSnapshot)
+          } catch (error) {
+            await deleteTicketRow(id).catch(() => undefined)
+            throw error
+          }
+        }
+        const saved = await fetchTicket(id, warn)
+        commit(saved)
+        return saved
+      } catch (error) {
+        report(error)
+        throw error
+      }
+    },
+    [commit, report, warn],
+  )
+
+  const deleteTicket = useCallback(
+    (id: string) => {
+      void enqueue(id, async () => {
+        const paths = ticketsRef.current.find((ticket) => ticket.id === id)?.attachments.map((a) => a.storagePath) ?? []
+        await deleteTicketRow(id, paths)
+        replaceAll(ticketsRef.current.filter((ticket) => ticket.id !== id))
+      }).catch(report)
+    },
+    [enqueue, replaceAll, report],
+  )
+
+  const assign = useCallback(
+    (id: string, assignee: string, by: string) => mutate(id, (ticket) => appendEvent({ ...ticket, assignee }, by, `Assigned to ${assignee}`)),
+    [mutate],
+  )
+
+  const toggleFollow = useCallback(
+    (id: string, person: string) =>
+      mutate(id, (ticket) => {
+        const followers = ticket.followers.includes(person)
+          ? ticket.followers.filter((follower) => follower !== person)
+          : [...ticket.followers, person]
+        return appendEvent({ ...ticket, followers }, person, followers.includes(person) ? 'Started following ticket' : 'Stopped following ticket')
+      }),
+    [mutate],
+  )
+
+  const addFollowers = useCallback(
+    (id: string, people: string[], by: string) =>
+      mutate(id, (ticket) => appendEvent({ ...ticket, followers: [...new Set([...ticket.followers, ...people])] }, by, 'Added followers')),
+    [mutate],
+  )
+
+  const shareWith = useCallback(
+    (id: string, person: string, by: string) =>
+      mutate(id, (ticket) => appendEvent({ ...ticket, followers: [...new Set([...ticket.followers, person])] }, by, 'Shared ticket')),
+    [mutate],
+  )
+
+  const removeFollower = useCallback(
+    (id: string, person: string, by: string) =>
+      mutate(id, (ticket) => appendEvent({ ...ticket, followers: ticket.followers.filter((follower) => follower !== person) }, by, 'Removed follower')),
+    [mutate],
+  )
+
+  const updateDetails = useCallback(
+    (id: string, next: { title: string; description: string; priority: Ticket['priority'] }, by: string) =>
+      mutate(id, (ticket) => appendEvent({ ...ticket, ...next }, by, 'Updated details')),
+    [mutate],
+  )
+
+  const addComment = useCallback(
+    (id: string, text: string, by: string) =>
+      mutate(id, (ticket) => {
+        const at = new Date().toISOString()
+        return appendEvent({ ...ticket, comments: [...ticket.comments, { at, by, text }] }, by, 'Added a comment')
+      }),
+    [mutate],
+  )
+
+  const transition = useCallback(
+    (id: string, state: LifecycleState, input: TransitionInput) => {
+      const afterKey = `${id}:after`
+      const completionSnapshot = state === 'done' ? input.snapshot : undefined
+      // Stops the "missing frame" backfill from racing the snapshot uploaded with this transition.
+      if (completionSnapshot) snapshotGuard.current.add(afterKey)
+
+      void enqueue(id, async () => {
+        const completion = state === 'done' ? { by: input.by, at: new Date().toISOString(), notes: input.notes ?? '' } : null
+        commit(await changeTicketState(id, STATE_RESULT[state], input.by, completion, warn))
+        if (completionSnapshot) {
+          await uploadSnapshot(id, 'after', completionSnapshot)
+          commit(await fetchTicket(id, warn))
+        }
+      })
+        .catch(report)
+        .finally(() => snapshotGuard.current.delete(afterKey))
+    },
+    [enqueue, commit, report, warn],
+  )
+
+  const attachSnapshot = useCallback(
+    (id: string, slot: 'before' | 'after', snapshot: Snapshot) => {
+      const key = `${id}:${slot}`
+      if (snapshotGuard.current.has(key)) return
+      snapshotGuard.current.add(key)
+      void enqueue(id, async () => {
+        await uploadSnapshot(id, slot, snapshot)
+        commit(await fetchTicket(id, warn))
+      }).then(
+        () => snapshotGuard.current.delete(key),
+        // The key stays registered after a failure so a failing upload is not retried in a loop.
+        report,
+      )
+    },
+    [enqueue, commit, report, warn],
+  )
 
   const value = useMemo(
     () => ({ tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot }),
     [tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot],
   )
 
-  return <TicketsContext.Provider value={value}>{children}</TicketsContext.Provider>
+  return (
+    <TicketsContext.Provider value={value}>
+      {children}
+      <Snackbar open={errorMessage !== null} autoHideDuration={8000} onClose={() => setErrorMessage(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity="error" variant="filled" onClose={() => setErrorMessage(null)} sx={{ maxWidth: 560 }}>
+          {errorMessage}
+        </Alert>
+      </Snackbar>
+    </TicketsContext.Provider>
+  )
 }
 
 export function useTickets() {

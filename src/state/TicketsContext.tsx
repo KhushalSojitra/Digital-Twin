@@ -56,7 +56,6 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
           const distanceM = Number(ptz.distanceM) || 35;
           const yaw = Number(ptz.yaw) || 0;
 
-          // Recalculate spatial latitude and longitude coordinates so markers paint onto Earth view
           const earthCoords = locateOnEarth('site-01', yaw, distanceM);
 
           return {
@@ -92,21 +91,9 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     }
     loadInitialTickets();
   }, []);
-
-  const patch = useCallback((id: string, fn: (t: Ticket) => Ticket) => {
-    setTickets((prev) => prev.map((t) => (t.id === id ? fn(t) : t)))
-  }, [])
-
-  const log = (t: Ticket, by: string, text: string, state?: LifecycleState): Ticket => {
-    const at = new Date().toISOString()
-    return { ...t, updatedAt: at, timeline: [...(t.timeline ?? []), { at, by, text, state }] }
-  }
-
   // 2. CREATES UNIQUE TIMESTAMP IDENTITIES TO PREVENT ROW OVERWRITES
   const addTicket = useCallback((input: NewTicketInput) => {
     const ticket = createTicket(input)
-    
-    // Assign a guaranteed unique ID string path for the presentation data entries
     const uniqueId = `OE-${Date.now().toString().slice(-4)}`
     ticket.id = uniqueId
 
@@ -235,7 +222,30 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
       supabase.removeChannel(channel);
     };
   }, []);
+  const patch = useCallback((id: string, fn: (t: any) => any) => {
+    setTickets((prev) => prev.map((t) => (t.id === id ? fn(t) : t)))
+  }, [])
 
   const assign = useCallback((id: string, assignee: string, by: string) => patch(id, (t) => log({ ...t, assignee }, by, `Assigned to ${assignee}`)), [patch]);
   const toggleFollow = useCallback((id: string, person: string) => patch(id, (t) => log({ ...t }, person, 'Toggled follower status')), [patch]);
   const addFollowers = useCallback((id: string, p: string[], b: string) => patch(id, (t) => log({ ...t }, b, 'Added followers')), [patch]);
+  const shareWith = useCallback((id: string, p: string, b: string) => patch(id, (t) => log({ ...t }, b, 'Shared ticket')), [patch]);
+  const removeFollower = useCallback((id: string, p: string, b: string) => patch(id, (t) => log({ ...t }, b, 'Removed follower')), [patch]);
+  const updateDetails = useCallback((id: string, n: any, b: string) => patch(id, (t) => log({ ...t, ...n }, b, 'Updated details')), [patch]);
+  const addComment = useCallback((id: string, text: string, by: string) => patch(id, (t) => ({ ...t, comments: [...(t.comments || []), { at: new Date().toISOString(), by, text }] })), [patch]);
+  const transition = useCallback((id: string, state: LifecycleState, input: TransitionInput) => patch(id, (t) => log({ ...t, status: STATE_RESULT[state] }, input.by, `Moved to ${state}`)), [patch]);
+  const attachSnapshot = useCallback((id: string, slot: 'before' | 'after', snapshot: Snapshot) => patch(id, (t) => ({ ...t })), [patch]);
+
+  const value = useMemo(
+    () => ({ tickets, addTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot }),
+    [tickets, addTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot],
+  )
+
+  return <TicketsContext.Provider value={value}>{children}</TicketsContext.Provider>
+}
+
+export function useTickets() {
+  const ctx = useContext(TicketsContext)
+  if (!ctx) throw new Error('useTickets must be used within TicketsProvider')
+  return ctx
+}

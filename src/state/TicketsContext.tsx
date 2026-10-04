@@ -64,7 +64,64 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     }
     loadInitialTickets();
   }, []);
+  // C. LISTEN TO REALTIME CHANGES FROM THE CLOUD DATABASE
+  useEffect(() => {
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tickets' },
+        (payload) => {
+          const { eventType, new: newRow } = payload;
 
+          if (eventType === 'INSERT') {
+            setTickets((prev) => {
+              if (prev.some((t) => t.id === newRow.id)) return prev;
+              const freshTicket: Ticket = {
+                id: newRow.id,
+                title: newRow.title,
+                description: newRow.description || '',
+                priority: newRow.priority || 'medium',
+                status: newRow.status || 'to do',
+                assignee: newRow.assignee,
+                reporter: newRow.reporter,
+                createdAt: newRow.created_at,
+                timeline: newRow.history_log || [],
+                comments: newRow.replies || [],
+                snapshots: { before: newRow.before_image_url ? { url: newRow.before_image_url, at: newRow.created_at } : undefined }
+              };
+              return [freshTicket, ...prev];
+            });
+          } 
+          
+          else if (eventType === 'UPDATE') {
+            setTickets((prev) =>
+              prev.map((t) =>
+                t.id === newRow.id
+                  ? {
+                      ...t,
+                      title: newRow.title,
+                      description: newRow.description || '',
+                      priority: newRow.priority || 'medium',
+                      status: newRow.status || 'to do',
+                      assignee: newRow.assignee,
+                      timeline: newRow.history_log || t.timeline,
+                      comments: newRow.replies || t.comments
+                    }
+                  : t
+              )
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  
   const patch = useCallback((id: string, fn: (t: Ticket) => Ticket) => {
     setTickets((prev) => prev.map((t) => (t.id === id ? fn(t) : t)))
   }, [])

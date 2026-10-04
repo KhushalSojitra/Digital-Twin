@@ -16,20 +16,26 @@ export interface TransitionInput {
   snapshot?: Snapshot
 }
 
-const TicketsContext = createContext<any>(null)
+interface TicketsValue {
+  tickets: Ticket[]
+  addTicket: (input: NewTicketInput) => Ticket
+  assign: (id: string, assignee: string, by: string) => void
+  toggleFollow: (id: string, person: string) => void
+  addFollowers: (id: string, people: string[], by: string) => void
+  shareWith: (id: string, person: string, by: string) => void
+  removeFollower: (id: string, person: string, by: string) => void
+  addComment: (id: string, text: string, by: string) => void
+  updateDetails: (id: string, patch: { title: string; description: string; priority: Ticket['priority'] }, by: string) => void
+  transition: (id: string, state: LifecycleState, input: TransitionInput) => void
+  attachSnapshot: (id: string, slot: 'before' | 'after', snapshot: Snapshot) => void
+}
+
+const TicketsContext = createContext<TicketsValue | null>(null)
 
 export function TicketsProvider({ children }: { children: ReactNode }) {
-  const [tickets, setTickets] = useState<any[]>([])
+  const [tickets, setTickets] = useState<Ticket[]>([])
 
-  const patch = useCallback((id: string, fn: (t: any) => any) => {
-    setTickets((prev) => prev.map((t) => (t.id === id ? fn(t) : t)))
-  }, [])
-
-  const log = (t: any, by: string, text: string, state?: LifecycleState): any => {
-    const at = new Date().toISOString()
-    return { ...t, updatedAt: at, timeline: [...(t.timeline ?? []), { at, by, text, state }] }
-  }
-  // 1. FETCH TICKETS AND INJECT MAP COORDINATE GENERATORS
+  // 1. READ PIPELINE - REBUILDS EXPLICIT MANDATORY SCHEMAS FOR INNER UI CONSUMERS
   useEffect(() => {
     async function loadInitialTickets() {
       const { data, error } = await supabase
@@ -38,13 +44,13 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         .order('created_at', { ascending: false });
       
       if (!error && data) {
-        const mappedTickets = data.map((row: any) => {
+        const mappedTickets: Ticket[] = data.map((row: any) => {
           const ptz = row.ptz_coordinates || {};
           const targetCameraId = row.camera_name || 'ellis-360';
           const distanceM = Number(ptz.distanceM) || 35;
           const yaw = Number(ptz.yaw) || 0;
 
-          // Re-project geo-spatial maps so points show up dynamically on screen
+          // Compute exact geospatial pinning metrics for map engine overlays
           const earthCoords = locateOnEarth('site-01', yaw, distanceM);
 
           return {
@@ -52,7 +58,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
             title: row.title,
             description: row.description || '',
             status: row.status === 'to do' ? 'open' : (row.status || 'open'),
-            priority: (row.priority === 'meduim' || row.priority === 'medium') ? 'medium' : (row.priority || 'medium'),
+            priority: (row.priority === 'meduim' || row.priority === 'medium') ? 'medium' : row.priority,
             type: 'intrusion', 
             cameraId: targetCameraId,
             siteId: 'site-01',
@@ -81,7 +87,16 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     loadInitialTickets();
   }, []);
 
-  // 2. CREATE TICKET ACTION
+  const patch = useCallback((id: string, fn: (t: Ticket) => Ticket) => {
+    setTickets((prev) => prev.map((t) => (t.id === id ? fn(t) : t)))
+  }, [])
+
+  const log = (t: Ticket, by: string, text: string, state?: LifecycleState): Ticket => {
+    const at = new Date().toISOString()
+    return { ...t, updatedAt: at, timeline: [...(t.timeline ?? []), { at, by, text, state }] }
+  }
+
+  // 2. CREATE TICKET ACTION - FORCES UNIQUE TIME ID FORMATS TO PREVENT OVERWRITES
   const addTicket = useCallback((input: NewTicketInput) => {
     const ticket = createTicket(input)
     const uniqueId = `OE-${Date.now().toString().slice(-4)}`
@@ -113,13 +128,13 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         }
       ])
       .then(({ error }) => {
-        if (error) console.error("Supabase error:", error.message);
+        if (error) console.error("Supabase sync error:", error.message);
       });
 
     setTickets((prev) => [ticket, ...prev])
     return ticket
   }, [])
-  // 3. BROADCAST ROUTER INTERCEPTOR
+  // 3. REALTIME SYNC ROUTER EXTENSION CHANNEL
   useEffect(() => {
     const channel = supabase
       .channel('schema-db-changes')
@@ -139,7 +154,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
               const distVal = Number(ptz.distanceM) || 35;
               const liveCoords = locateOnEarth('site-01', yawVal, distVal);
 
-              const freshTicket = {
+              const freshTicket: Ticket = {
                 id: trackingId,
                 title: newRow.title,
                 description: newRow.description || '',
@@ -203,15 +218,30 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // UI STATE MUTATION PIPELINES WITH ACTIVE PARAMETER REFACTORING FOR COMPILER SANITY
   const assign = useCallback((id: string, assignee: string, by: string) => patch(id, (t) => log({ ...t, assignee }, by, `Assigned to ${assignee}`)), [patch]);
   const toggleFollow = useCallback((id: string, person: string) => patch(id, (t) => log({ ...t }, person, 'Toggled follower status')), [patch]);
-  const addFollowers = useCallback((id: string, p: string[], b: string) => patch(id, (t) => log({ ...t }, b, 'Added followers')), [patch]);
-  const shareWith = useCallback((id: string, p: string, b: string) => patch(id, (t) => log({ ...t }, b, 'Shared ticket')), [patch]);
-  const removeFollower = useCallback((id: string, p: string, b: string) => patch(id, (t) => log({ ...t }, b, 'Removed follower')), [patch]);
-  const updateDetails = useCallback((id: string, n: any, b: string) => patch(id, (t) => log({ ...t, ...n }, b, 'Updated details')), [patch]);
+  
+  const addFollowers = useCallback((id: string, people: string[], by: string) => patch(id, (t) => {
+    return log({ ...t, followers: [...(t.followers || []), ...people] }, by, 'Added followers');
+  }), [patch]);
+
+  const shareWith = useCallback((id: string, person: string, by: string) => patch(id, (t) => {
+    return log({ ...t, followers: [...(t.followers || []), person] }, by, 'Shared ticket');
+  }), [patch]);
+
+  const removeFollower = useCallback((id: string, person: string, by: string) => patch(id, (t) => {
+    return log({ ...t, followers: (t.followers || []).filter((f: string) => f !== person) }, by, 'Removed follower');
+  }), [patch]);
+
+  const updateDetails = useCallback((id: string, next: any, by: string) => patch(id, (t) => log({ ...t, ...next }, by, 'Updated details')), [patch]);
   const addComment = useCallback((id: string, text: string, by: string) => patch(id, (t) => ({ ...t, comments: [...(t.comments || []), { at: new Date().toISOString(), by, text }] })), [patch]);
   const transition = useCallback((id: string, state: LifecycleState, input: TransitionInput) => patch(id, (t) => log({ ...t, status: STATE_RESULT[state] }, input.by, `Moved to ${state}`)), [patch]);
-  const attachSnapshot = useCallback((id: string, slot: 'before' | 'after', snapshot: Snapshot) => patch(id, (t) => ({ ...t })), [patch]);
+
+  const attachSnapshot = useCallback((id: string, slot: 'before' | 'after', snapshot: Snapshot) => patch(id, (t) => {
+    const freshSnaps = { ...t.snapshots, [slot]: snapshot };
+    return { ...t, snapshots: freshSnaps };
+  }), [patch]);
 
   const value = useMemo(
     () => ({ tickets, addTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot }),

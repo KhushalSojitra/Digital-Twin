@@ -117,7 +117,6 @@ function databaseRowForTicket(ticket: Ticket, includeIdentity = false): Database
     },
     history_log: ticket.timeline,
     replies: ticket.comments,
-    updated_at: ticket.updatedAt,
   }
 }
 
@@ -214,7 +213,7 @@ function ticketFromDatabase(value: unknown): Ticket {
     followers: Array.isArray(row.followers) ? stringArray(row.followers) : stringArray(metadata.followers),
     comments,
     createdAt,
-    updatedAt: stringValue(row.updated_at, createdAt),
+    updatedAt: createdAt,
     completedAt: typeof row.completed_at === 'string'
       ? row.completed_at
       : typeof metadata.completedAt === 'string' ? metadata.completedAt : undefined,

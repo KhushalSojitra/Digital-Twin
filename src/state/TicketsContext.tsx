@@ -1,7 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, useEffect, type ReactNode } from 'react'
 import { supabase } from '../supabaseClient'
 import {
-  LIFECYCLE_LABEL,
   STATE_RESULT,
   createTicket,
   locateOnEarth,
@@ -17,26 +16,20 @@ export interface TransitionInput {
   snapshot?: Snapshot
 }
 
-interface TicketsValue {
-  tickets: Ticket[]
-  addTicket: (input: NewTicketInput) => Ticket
-  assign: (id: string, assignee: string, by: string) => void
-  toggleFollow: (id: string, person: string) => void
-  addFollowers: (id: string, people: string[], by: string) => void
-  shareWith: (id: string, person: string, by: string) => void
-  removeFollower: (id: string, person: string, by: string) => void
-  addComment: (id: string, text: string, by: string) => void
-  updateDetails: (id: string, patch: { title: string; description: string; priority: Ticket['priority'] }, by: string) => void
-  transition: (id: string, state: LifecycleState, input: TransitionInput) => void
-  attachSnapshot: (id: string, slot: 'before' | 'after', snapshot: Snapshot) => void
-}
-
-const TicketsContext = createContext<TicketsValue | null>(null)
+const TicketsContext = createContext<any>(null)
 
 export function TicketsProvider({ children }: { children: ReactNode }) {
-  const [tickets, setTickets] = useState<Ticket[]>([])
+  const [tickets, setTickets] = useState<any[]>([])
 
-  // 1. INITIAL REFRESH LOADER - LOADS CLOUD ENTRIES AND CALCULATES COORDINATES
+  const patch = useCallback((id: string, fn: (t: any) => any) => {
+    setTickets((prev) => prev.map((t) => (t.id === id ? fn(t) : t)))
+  }, [])
+
+  const log = (t: any, by: string, text: string, state?: LifecycleState): any => {
+    const at = new Date().toISOString()
+    return { ...t, updatedAt: at, timeline: [...(t.timeline ?? []), { at, by, text, state }] }
+  }
+  // 1. FETCH TICKETS AND INJECT MAP COORDINATE GENERATORS
   useEffect(() => {
     async function loadInitialTickets() {
       const { data, error } = await supabase
@@ -45,17 +38,13 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         .order('created_at', { ascending: false });
       
       if (!error && data) {
-        const mappedTickets: Ticket[] = data.map((row: any) => {
+        const mappedTickets = data.map((row: any) => {
           const ptz = row.ptz_coordinates || {};
-          
-          let formattedPriority: any = 'medium';
-          if (row.priority === 'meduim' || row.priority === 'medium') formattedPriority = 'medium';
-          else if (row.priority === 'high' || row.priority === 'critical' || row.priority === 'low') formattedPriority = row.priority;
-
           const targetCameraId = row.camera_name || 'ellis-360';
           const distanceM = Number(ptz.distanceM) || 35;
           const yaw = Number(ptz.yaw) || 0;
 
+          // Re-project geo-spatial maps so points show up dynamically on screen
           const earthCoords = locateOnEarth('site-01', yaw, distanceM);
 
           return {
@@ -63,7 +52,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
             title: row.title,
             description: row.description || '',
             status: row.status === 'to do' ? 'open' : (row.status || 'open'),
-            priority: formattedPriority,
+            priority: (row.priority === 'meduim' || row.priority === 'medium') ? 'medium' : (row.priority || 'medium'),
             type: 'intrusion', 
             cameraId: targetCameraId,
             siteId: 'site-01',
@@ -91,7 +80,8 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     }
     loadInitialTickets();
   }, []);
-  // 2. CREATES UNIQUE TIMESTAMP IDENTITIES TO PREVENT ROW OVERWRITES
+
+  // 2. CREATE TICKET ACTION
   const addTicket = useCallback((input: NewTicketInput) => {
     const ticket = createTicket(input)
     const uniqueId = `OE-${Date.now().toString().slice(-4)}`
@@ -123,14 +113,13 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         }
       ])
       .then(({ error }) => {
-        if (error) console.error("Supabase sync error:", error.message);
+        if (error) console.error("Supabase error:", error.message);
       });
 
     setTickets((prev) => [ticket, ...prev])
     return ticket
   }, [])
-
-  // 3. LISTEN TO LIVE REAL-TIME DATABASE BROADCAST CHANNELS
+  // 3. BROADCAST ROUTER INTERCEPTOR
   useEffect(() => {
     const channel = supabase
       .channel('schema-db-changes')
@@ -146,20 +135,16 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
               const trackingId = newRow.ticket_id || newRow.id;
               if (prev.some((t) => t.id === trackingId)) return prev;
               
-              let formattedPriority: any = 'medium';
-              if (newRow.priority === 'meduim' || newRow.priority === 'medium') formattedPriority = 'medium';
-              else if (newRow.priority === 'high' || newRow.priority === 'critical' || newRow.priority === 'low') formattedPriority = newRow.priority;
-
               const yawVal = Number(ptz.yaw) || 0;
               const distVal = Number(ptz.distanceM) || 35;
               const liveCoords = locateOnEarth('site-01', yawVal, distVal);
 
-              const freshTicket: Ticket = {
+              const freshTicket = {
                 id: trackingId,
                 title: newRow.title,
                 description: newRow.description || '',
                 status: newRow.status === 'to do' ? 'open' : (newRow.status || 'open'),
-                priority: formattedPriority,
+                priority: (newRow.priority === 'meduim' || newRow.priority === 'medium') ? 'medium' : (newRow.priority || 'medium'),
                 type: 'intrusion',
                 cameraId: newRow.camera_name || 'ellis-360',
                 siteId: 'site-01',
@@ -189,17 +174,12 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
             setTickets((prev) =>
               prev.map((t) => {
                 const trackingId = newRow.ticket_id || newRow.id;
-                
-                let formattedPriority: any = 'medium';
-                if (newRow.priority === 'meduim' || newRow.priority === 'medium') formattedPriority = 'medium';
-                else if (newRow.priority === 'high' || newRow.priority === 'critical' || newRow.priority === 'low') formattedPriority = newRow.priority;
-
                 return t.id === trackingId
                   ? {
                       ...t,
                       title: newRow.title,
                       description: newRow.description || '',
-                      priority: formattedPriority,
+                      priority: (newRow.priority === 'meduim' || newRow.priority === 'medium') ? 'medium' : (newRow.priority || 'medium'),
                       status: newRow.status === 'to do' ? 'open' : (newRow.status || 'open'),
                       assignee: newRow.assignee || '',
                       timeline: Array.isArray(newRow.history_log) ? newRow.history_log : t.timeline,
@@ -222,9 +202,6 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
       supabase.removeChannel(channel);
     };
   }, []);
-  const patch = useCallback((id: string, fn: (t: any) => any) => {
-    setTickets((prev) => prev.map((t) => (t.id === id ? fn(t) : t)))
-  }, [])
 
   const assign = useCallback((id: string, assignee: string, by: string) => patch(id, (t) => log({ ...t, assignee }, by, `Assigned to ${assignee}`)), [patch]);
   const toggleFollow = useCallback((id: string, person: string) => patch(id, (t) => log({ ...t }, person, 'Toggled follower status')), [patch]);

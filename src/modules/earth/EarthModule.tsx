@@ -4,7 +4,7 @@ import { Badge, Box, IconButton, Stack, Tooltip, useTheme } from '@mui/material'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import { hudSurface } from '../../theme/hud'
 import { getSite, selectionForCombo, type CameraSite } from '../../data/cameras'
-import { isCompleted, type Ticket } from '../../data/tickets'
+import { isHistoricalTicket, type Ticket } from '../../data/tickets'
 import { useCameraSelection } from '../../state/CameraSelectionContext'
 import { useTickets } from '../../state/TicketsContext'
 import { useAuth } from '../../auth/AuthContext'
@@ -15,8 +15,6 @@ import TicketManageDialog from '../tickets/TicketManageDialog'
 import TicketEditorDialog from '../tickets/TicketEditorDialog'
 import { applyTicketQuery } from '../tickets/ticketFilters'
 import { useTicketQuery } from '../../state/TicketQueryContext'
-import { isWithinStoreWindow } from '../../data/integrations'
-import { useIntegrations } from '../../state/IntegrationsContext'
 
 export default function EarthModule() {
   const theme = useTheme()
@@ -37,7 +35,6 @@ export default function EarthModule() {
     ticketSize,
     setTicketSize,
   } = useTicketQuery()
-  const { integrations } = useIntegrations()
   const [params, setParams] = useSearchParams()
   const shared = tickets.find((t) => t.id === params.get('ticket'))
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(shared?.id ?? null)
@@ -51,16 +48,13 @@ export default function EarthModule() {
   )
   const [focus, setFocus] = useState<TicketFocus | null>(null)
 
-  const storedTickets = useMemo(() => tickets.filter((t) => isWithinStoreWindow(t, integrations)), [tickets, integrations])
   const visibleTickets = useMemo(
-    () => applyTicketQuery(storedTickets, { tab: 'all', search: '', filters, me, assignedToMe: false }),
-    [storedTickets, filters, me],
+    () => applyTicketQuery(tickets, { tab: 'all', search: '', filters, me, assignedToMe: false }),
+    [tickets, filters, me],
   )
-  const completedCount = useMemo(() => visibleTickets.filter(isCompleted).length, [visibleTickets])
+  const completedCount = useMemo(() => visibleTickets.filter(isHistoricalTicket).length, [visibleTickets])
   const mapTickets = earthTicketView
-    ? visibleTickets.filter(
-        (t) => !isCompleted(t) || t.id === selectedTicketId || (showImprovements && t.snapshotConfig.showInImprovementHistory),
-      )
+    ? visibleTickets.filter((ticket) => !isHistoricalTicket(ticket) || ticket.id === selectedTicketId || showImprovements)
     : []
 
   const selectedTicket = tickets.find((t) => t.id === selectedTicketId) ?? null
@@ -172,7 +166,7 @@ export default function EarthModule() {
 
         <TicketManageDialog
           open={manageOpen}
-          tickets={storedTickets}
+          tickets={tickets}
           filters={filters}
           onFiltersChange={setFilters}
           me={me}

@@ -135,6 +135,12 @@ export const NEXT_STATES: Record<TicketStatus, LifecycleState[]> = {
 }
 
 export const COMPLETED_STATUSES: TicketStatus[] = ['done', 'accepted']
+export const TICKET_HISTORY_WINDOW_DAYS = 30
+
+export function isHistoricalTicket(ticket: Pick<Ticket, 'createdAt'>, now = Date.now()) {
+  const createdAt = new Date(ticket.createdAt).getTime()
+  return Number.isFinite(createdAt) && now - createdAt > TICKET_HISTORY_WINDOW_DAYS * 86_400_000
+}
 
 export function isCompleted(t: Ticket) {
   return COMPLETED_STATUSES.includes(t.status)

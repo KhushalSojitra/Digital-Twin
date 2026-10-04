@@ -6,7 +6,7 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import ConfirmationNumberOutlinedIcon from '@mui/icons-material/ConfirmationNumberOutlined'
 import type { CameraDevice, CameraSite, DeviceKind, SelectionKind } from '../../data/cameras'
-import { isCompleted, type NewTicketInput, type Ticket } from '../../data/tickets'
+import { isHistoricalTicket, type NewTicketInput, type Ticket } from '../../data/tickets'
 import PanoramaViewer, { type ViewerStatus } from './PanoramaViewer'
 import LiveOverlay from './LiveOverlay'
 import PtzControls from './PtzControls'
@@ -20,9 +20,7 @@ import { CaptureContext, type CaptureFn } from '../tickets/captureContext'
 import type { ViewerApi } from './viewerProjection'
 import { useAuth } from '../../auth/AuthContext'
 import { useTicketQuery } from '../../state/TicketQueryContext'
-import { isWithinLiveWindow, isWithinStoreWindow } from '../../data/integrations'
 import { applyTicketQuery } from '../tickets/ticketFilters'
-import { useIntegrations } from '../../state/IntegrationsContext'
 import TicketMenu from '../tickets/TicketMenu'
 import TicketManageDialog from '../tickets/TicketManageDialog'
 import TicketEditorDialog, { type CreateDraft } from '../tickets/TicketEditorDialog'
@@ -56,7 +54,6 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   const { tickets, addTicket } = useTickets()
   const { currentUser } = useAuth()
   const { filters, setFilters, isLiveTicketView, toggleLiveTicketView, ticketSize, setTicketSize } = useTicketQuery()
-  const { integrations } = useIntegrations()
   const liveTicketView = isLiveTicketView(site.id)
   const me = currentUser?.displayName ?? 'Ava Sharma'
   const canEdit = currentUser?.role !== 'Viewer'
@@ -90,37 +87,34 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   const cam360 = useCameraChannel(home360, { latencyMs: 180 })
   const ptz = useCameraChannel(site.home, { latencyMs: 420 })
 
-  const siteTickets = useMemo(
-    () => tickets.filter((t) => t.siteId === site.id && isWithinStoreWindow(t, integrations) && isWithinLiveWindow(t, integrations)),
-    [tickets, site.id, integrations],
-  )
   const openedCameraIds = useMemo(() => {
     if (selectionKind === 'ptz') return [site.ptz.id]
     if (selectionKind === '360') return [site.cam360.id]
     return [site.cam360.id, site.ptz.id]
   }, [selectionKind, site])
+  const activeCameraId = primary === '360' ? site.cam360.id : site.ptz.id
   const scopedTickets = useMemo(
-    () => tickets.filter((t) => openedCameraIds.includes(t.cameraId) && isWithinStoreWindow(t, integrations) && isWithinLiveWindow(t, integrations)),
-    [tickets, openedCameraIds, integrations],
+    () => tickets.filter((ticket) => openedCameraIds.includes(ticket.cameraId)),
+    [tickets, openedCameraIds],
   )
   const manageTickets = useMemo(
-    () => applyTicketQuery(scopedTickets, { tab: 'all', search: '', filters, me, assignedToMe: false }),
-    [scopedTickets, filters, me],
+    () => applyTicketQuery(
+      scopedTickets.filter((ticket) => selectionKind === 'combo' ? ticket.cameraId === activeCameraId : true),
+      { tab: 'all', search: '', filters, me, assignedToMe: false },
+    ),
+    [scopedTickets, filters, me, selectionKind, activeCameraId],
   )
-  const filteredSiteTickets = useMemo(
-    () => applyTicketQuery(siteTickets, { tab: 'all', search: '', filters, me, assignedToMe: false }),
-    [siteTickets, filters, me],
-  )
-  const completedCount = useMemo(() => manageTickets.filter(isCompleted).length, [manageTickets])
+  const completedCount = useMemo(() => manageTickets.filter(isHistoricalTicket).length, [manageTickets])
   const overlayTickets = useMemo(
-    () =>
-      liveTicketView
-        ? filteredSiteTickets.filter(
-            (t) =>
-              !isCompleted(t) || t.id === selectedTicketId || t.id === targetTicketId || (showImprovements && t.snapshotConfig.showInImprovementHistory),
-          )
-        : [],
-    [filteredSiteTickets, showImprovements, selectedTicketId, targetTicketId, liveTicketView],
+    () => liveTicketView
+      ? scopedTickets.filter((ticket) =>
+          !isHistoricalTicket(ticket)
+          || ticket.id === selectedTicketId
+          || ticket.id === targetTicketId
+          || showImprovements,
+        )
+      : [],
+    [scopedTickets, showImprovements, selectedTicketId, targetTicketId, liveTicketView],
   )
 
   const mainDevice = primary === '360' ? site.cam360 : site.ptz
@@ -209,13 +203,13 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   const handledFocus = useRef<number | null>(null)
   useEffect(() => {
     if (!focus || !ready || handledFocus.current === focus.nonce) return
-    const ticket = siteTickets.find((t) => t.id === focus.ticketId)
+    const ticket = tickets.find((candidate) => candidate.id === focus.ticketId && candidate.siteId === site.id)
     if (!ticket) return
     handledFocus.current = focus.nonce
     if (focus.mode === 'goto') goToTicket(ticket)
     setSelectedTicketId(ticket.id)
     setEditor({ mode: 'view', ticket })
-  }, [focus, ready, siteTickets, goToTicket])
+  }, [focus, ready, tickets, site.id, goToTicket])
 
   const createTicket = (input: NewTicketInput) => {
     const created = addTicket(input)
@@ -224,9 +218,9 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
     setContext(null)
   }
 
-  const markerLayer = (compact: boolean) => (
+  const markerLayer = (compact: boolean, device: CameraDevice) => (
     <TicketMarkerLayer
-      tickets={overlayTickets}
+      tickets={overlayTickets.filter((ticket) => ticket.cameraId === device.id)}
       selectedId={selectedTicketId}
       targetId={targetTicketId}
       draft={editor?.mode === 'create' && editor.draft && !compact ? { yaw: editor.draft.yaw, pitch: editor.draft.pitch } : null}
@@ -261,7 +255,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
         topInset={compact ? 0 : TOP_INSET}
         phase={cam360.phase}
       />
-      {markerLayer(compact)}
+      {markerLayer(compact, site.cam360)}
     </PanoramaViewer>
   )
 
@@ -291,7 +285,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
         topInset={compact ? 0 : TOP_INSET}
         phase={ptz.phase}
       />
-      {markerLayer(compact)}
+      {markerLayer(compact, site.ptz)}
     </PanoramaViewer>
   )
 
@@ -373,7 +367,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
               onFiltersChange={setFilters}
               hideFilters={['cameraId']}
               onManage={() => setManageOpen(true)}
-              scopeLabel={cameraName}
+              scopeLabel={selectionKind === 'combo' ? (primary === '360' ? site.cam360.name : site.ptz.name) : cameraName}
               ticketViewEnabled={liveTicketView}
               onToggleTicketView={() => {
                 if (liveTicketView) setShowImprovements(false)

@@ -67,8 +67,6 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
             snapshots: {},
             snapshotConfig: { captureCreation: true, captureCompletion: true, showInImprovementHistory: true },
             timeline: Array.isArray(row.history_log) ? row.history_log : [],
-            
-            // Rebuild telemetry parameters perfectly from JSON database columns
             yaw: ptz.yaw || 0,
             pitch: ptz.pitch || 0,
             zoom: ptz.zoom || 1,
@@ -109,8 +107,6 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
           reporter: ticket.creator,
           assignee: ticket.assignee || 'Unassigned',
           camera_name: ticket.cameraId,
-          
-          // Pack your telemetry parameters tightly into Supabase's flexible JSONB object
           ptz_coordinates: {
             yaw: ticket.yaw,
             pitch: ticket.pitch,
@@ -266,3 +262,6 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   )
 
   const updateDetails = useCallback(
+    (id: string, next: { title: string; description: string; priority: Ticket['priority'] }, by: string) =>
+      patch(id, (t) => {
+        if (t.title === next.title && t.description === next.description && t.priority === next.priority) return t

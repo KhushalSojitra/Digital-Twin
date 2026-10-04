@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, useEffect, type ReactNode } from 'react'
-import { supabase } from '../supabaseClient' // Imports your live cloud client
+import { supabase } from '../supabaseClient'
 import {
   LIFECYCLE_LABEL,
   STATE_RESULT,
@@ -7,7 +7,6 @@ import {
   type LifecycleState,
   type NewTicketInput,
   type Snapshot,
-  type Ticket,
 } from '../data/tickets'
 
 export interface TransitionInput {
@@ -17,23 +16,23 @@ export interface TransitionInput {
 }
 
 interface TicketsValue {
-  tickets: Ticket[]
-  addTicket: (input: NewTicketInput) => Ticket
+  tickets: any[]
+  addTicket: (input: NewTicketInput) => any
   assign: (id: string, assignee: string, by: string) => void
   toggleFollow: (id: string, person: string) => void
   addFollowers: (id: string, people: string[], by: string) => void
   shareWith: (id: string, person: string, by: string) => void
   removeFollower: (id: string, person: string, by: string) => void
   addComment: (id: string, text: string, by: string) => void
-  updateDetails: (id: string, patch: { title: string; description: string; priority: Ticket['priority'] }, by: string) => void
+  updateDetails: (id: string, patch: { title: string; description: string; priority: any }, by: string) => void
   transition: (id: string, state: LifecycleState, input: TransitionInput) => void
   attachSnapshot: (id: string, slot: 'before' | 'after', snapshot: Snapshot) => void
 }
 
-const TicketsContext = createContext<TicketsValue | null>(null)
+const TicketsContext = createContext<any | null>(null)
 
 export function TicketsProvider({ children }: { children: ReactNode }) {
-  const [tickets, setTickets] = useState<Ticket[]>([])
+  const [tickets, setTickets] = useState<any[]>([])
 
   // A. FETCH TICKETS FROM SUPABASE ON STARTUP
   useEffect(() => {
@@ -44,89 +43,31 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         .order('created_at', { ascending: false });
       
       if (!error && data) {
-        // Map database fields safely back to UI schema
-        const mappedTickets: Ticket[] = data.map((row: any) => ({
+        const mappedTickets = data.map((row: any) => ({
           id: row.id,
           title: row.title,
           description: row.description || '',
           priority: row.priority || 'medium',
           status: row.status || 'to do',
-          assignee: row.assignee,
-          reporter: row.reporter,
+          assignee: row.assignee || undefined,
+          reporter: row.reporter || '',
           createdAt: row.created_at,
-          // Fallback objects for UI compatibility
-          timeline: row.history_log || [],
-          comments: row.replies || [],
-          snapshots: { before: row.before_image_url ? { url: row.before_image_url, at: row.created_at } : undefined }
+          updatedAt: row.created_at,
+          timeline: Array.isArray(row.history_log) ? row.history_log : [],
+          comments: Array.isArray(row.replies) ? row.replies : [],
+          snapshots: {}
         }));
         setTickets(mappedTickets);
       }
     }
     loadInitialTickets();
   }, []);
-  // C. LISTEN TO REALTIME CHANGES FROM THE CLOUD DATABASE
-  useEffect(() => {
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tickets' },
-        (payload) => {
-          const { eventType, new: newRow } = payload;
 
-          if (eventType === 'INSERT') {
-            setTickets((prev) => {
-              if (prev.some((t) => t.id === newRow.id)) return prev;
-              const freshTicket: Ticket = {
-                id: newRow.id,
-                title: newRow.title,
-                description: newRow.description || '',
-                priority: newRow.priority || 'medium',
-                status: newRow.status || 'to do',
-                assignee: newRow.assignee,
-                reporter: newRow.reporter,
-                createdAt: newRow.created_at,
-                timeline: newRow.history_log || [],
-                comments: newRow.replies || [],
-                snapshots: { before: newRow.before_image_url ? { url: newRow.before_image_url, at: newRow.created_at } : undefined }
-              };
-              return [freshTicket, ...prev];
-            });
-          } 
-          
-          else if (eventType === 'UPDATE') {
-            setTickets((prev) =>
-              prev.map((t) =>
-                t.id === newRow.id
-                  ? {
-                      ...t,
-                      title: newRow.title,
-                      description: newRow.description || '',
-                      priority: newRow.priority || 'medium',
-                      status: newRow.status || 'to do',
-                      assignee: newRow.assignee,
-                      timeline: newRow.history_log || t.timeline,
-                      comments: newRow.replies || t.comments
-                    }
-                  : t
-              )
-            );
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  
-  const patch = useCallback((id: string, fn: (t: Ticket) => Ticket) => {
+  const patch = useCallback((id: string, fn: (t: any) => any) => {
     setTickets((prev) => prev.map((t) => (t.id === id ? fn(t) : t)))
   }, [])
 
-  const log = (t: Ticket, by: string, text: string, state?: LifecycleState): Ticket => {
+  const log = (t: any, by: string, text: string, state?: LifecycleState): any => {
     const at = new Date().toISOString()
     return { ...t, updatedAt: at, timeline: [...(t.timeline ?? []), { at, by, text, state }] }
   }
@@ -135,7 +76,6 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   const addTicket = useCallback((input: NewTicketInput) => {
     const ticket = createTicket(input)
     
-    // Fire-and-forget sync to the Supabase backend database
     supabase
       .from('tickets')
       .insert([
@@ -156,10 +96,67 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         if (error) console.error("Supabase sync error:", error.message);
       });
 
-    // Instantly update the local UI view state
     setTickets((prev) => [ticket, ...prev])
     return ticket
   }, [])
+
+  // C. LISTEN TO REALTIME CHANGES FROM THE CLOUD DATABASE
+  useEffect(() => {
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tickets' },
+        (payload) => {
+          const { eventType, new: newRow } = payload as any;
+
+          if (eventType === 'INSERT') {
+            setTickets((prev) => {
+              if (prev.some((t) => t.id === newRow.id)) return prev;
+              const freshTicket = {
+                id: newRow.id,
+                title: newRow.title,
+                description: newRow.description || '',
+                priority: newRow.priority || 'medium',
+                status: newRow.status || 'to do',
+                assignee: newRow.assignee || undefined,
+                reporter: newRow.reporter || '',
+                createdAt: newRow.created_at,
+                updatedAt: newRow.created_at,
+                timeline: Array.isArray(newRow.history_log) ? newRow.history_log : [],
+                comments: Array.isArray(newRow.replies) ? newRow.replies : [],
+                snapshots: {}
+              };
+              return [freshTicket, ...prev];
+            });
+          } 
+          
+          else if (eventType === 'UPDATE') {
+            setTickets((prev) =>
+              prev.map((t) =>
+                t.id === newRow.id
+                  ? {
+                      ...t,
+                      title: newRow.title,
+                      description: newRow.description || '',
+                      priority: newRow.priority || 'medium',
+                      status: newRow.status || 'to do',
+                      assignee: newRow.assignee || undefined,
+                      timeline: Array.isArray(newRow.history_log) ? newRow.history_log : t.timeline,
+                      comments: Array.isArray(newRow.replies) ? newRow.replies : t.comments
+                    }
+                  : t
+              )
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const assign = useCallback(
     (id: string, assignee: string, by: string) =>
@@ -216,7 +213,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   )
 
   const updateDetails = useCallback(
-    (id: string, next: { title: string; description: string; priority: Ticket['priority'] }, by: string) =>
+    (id: string, next: { title: string; description: string; priority: any }, by: string) =>
       patch(id, (t) => {
         if (t.title === next.title && t.description === next.description && t.priority === next.priority) return t
         return log({ ...t, title: next.title, description: next.description, priority: next.priority }, by, 'Updated ticket details')
@@ -239,7 +236,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         const at = new Date().toISOString()
         const status = STATE_RESULT[state]
         const completing = state === 'done'
-        const next: Ticket = {
+        const next = {
           ...t,
           status,
           updatedAt: at,
@@ -268,11 +265,3 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     () => ({ tickets, addTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot }),
     [tickets, addTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot],
   )
-  return <TicketsContext.Provider value={value}>{children}</TicketsContext.Provider>
-}
-
-export function useTickets() {
-  const ctx = useContext(TicketsContext)
-  if (!ctx) throw new Error('useTickets must be used within TicketsProvider')
-  return ctx
-}

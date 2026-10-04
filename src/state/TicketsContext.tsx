@@ -35,7 +35,7 @@ const TicketsContext = createContext<TicketsValue | null>(null)
 export function TicketsProvider({ children }: { children: ReactNode }) {
   const [tickets, setTickets] = useState<Ticket[]>([])
 
-  // 1. FETCH TICKETS AND INJECT ABSOLUTE DATA BLUEPRINT STRUCTURE
+  // 1. FETCH TICKETS AND INJECT ROBUST TYPO TRANSLATION PARSERS
   useEffect(() => {
     async function loadInitialTickets() {
       const { data, error } = await supabase
@@ -47,14 +47,19 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         const mappedTickets: Ticket[] = data.map((row: any) => {
           const ptz = row.ptz_coordinates || {};
           
+          // Typo correction: Automatically catch 'meduim' from database columns and fix it for the strict UI types
+          let formattedPriority: any = 'medium';
+          if (row.priority === 'meduim' || row.priority === 'medium') formattedPriority = 'medium';
+          else if (row.priority === 'high' || row.priority === 'critical' || row.priority === 'low') formattedPriority = row.priority;
+
           return {
             id: row.ticket_id || row.id,
             title: row.title,
             description: row.description || '',
             status: row.status === 'to do' ? 'open' : (row.status || 'open'),
-            priority: row.priority || 'medium',
+            priority: formattedPriority,
             type: 'intrusion', 
-            cameraId: row.camera_name || 'cam-01',
+            cameraId: row.camera_name || 'ellis-360',
             siteId: 'site-01',
             zone: 'Perimeter',
             assignee: row.assignee || '',
@@ -93,8 +98,6 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   // 2. GENERATE UNMATCHED TIME-STAMPED IDENTITIES TO PREVENT OVERWRITES
   const addTicket = useCallback((input: NewTicketInput) => {
     const ticket = createTicket(input)
-    
-    // OVERRIDE: Assign a timestamped unique ID path so page refreshes never cause deduplication issues
     const uniqueId = `OE-${Date.now()}`
     ticket.id = uniqueId
 
@@ -146,14 +149,18 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
               const trackingId = newRow.ticket_id || newRow.id;
               if (prev.some((t) => t.id === trackingId)) return prev;
               
+              let formattedPriority: any = 'medium';
+              if (newRow.priority === 'meduim' || newRow.priority === 'medium') formattedPriority = 'medium';
+              else if (newRow.priority === 'high' || newRow.priority === 'critical' || newRow.priority === 'low') formattedPriority = newRow.priority;
+
               const freshTicket: Ticket = {
                 id: trackingId,
                 title: newRow.title,
                 description: newRow.description || '',
                 status: newRow.status === 'to do' ? 'open' : (newRow.status || 'open'),
-                priority: newRow.priority || 'medium',
+                priority: formattedPriority,
                 type: 'intrusion',
-                cameraId: newRow.camera_name || 'cam-01',
+                cameraId: newRow.camera_name || 'ellis-360',
                 siteId: 'site-01',
                 zone: 'Perimeter',
                 assignee: newRow.assignee || '',
@@ -181,12 +188,17 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
             setTickets((prev) =>
               prev.map((t) => {
                 const trackingId = newRow.ticket_id || newRow.id;
+                
+                let formattedPriority: any = 'medium';
+                if (newRow.priority === 'meduim' || newRow.priority === 'medium') formattedPriority = 'medium';
+                else if (newRow.priority === 'high' || newRow.priority === 'critical' || newRow.priority === 'low') formattedPriority = newRow.priority;
+
                 return t.id === trackingId
                   ? {
                       ...t,
                       title: newRow.title,
                       description: newRow.description || '',
-                      priority: newRow.priority || 'medium',
+                      priority: formattedPriority,
                       status: newRow.status === 'to do' ? 'open' : (newRow.status || 'open'),
                       assignee: newRow.assignee || '',
                       timeline: Array.isArray(newRow.history_log) ? newRow.history_log : t.timeline,

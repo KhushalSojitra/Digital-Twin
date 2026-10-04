@@ -35,6 +35,7 @@ const TicketsContext = createContext<TicketsValue | null>(null)
 export function TicketsProvider({ children }: { children: ReactNode }) {
   const [tickets, setTickets] = useState<Ticket[]>([])
 
+  // 1. FETCH TICKETS AND INJECT ABSOLUTE DATA BLUEPRINT STRUCTURE
   useEffect(() => {
     async function loadInitialTickets() {
       const { data, error } = await supabase
@@ -45,6 +46,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
       if (!error && data) {
         const mappedTickets: Ticket[] = data.map((row: any) => {
           const ptz = row.ptz_coordinates || {};
+          
           return {
             id: row.ticket_id || row.id,
             title: row.title,
@@ -88,14 +90,20 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     return { ...t, updatedAt: at, timeline: [...(t.timeline ?? []), { at, by, text, state }] }
   }
 
+  // 2. GENERATE UNMATCHED TIME-STAMPED IDENTITIES TO PREVENT OVERWRITES
   const addTicket = useCallback((input: NewTicketInput) => {
     const ticket = createTicket(input)
+    
+    // OVERRIDE: Assign a timestamped unique ID path so page refreshes never cause deduplication issues
+    const uniqueId = `OE-${Date.now()}`
+    ticket.id = uniqueId
+
     supabase
       .from('tickets')
       .insert([
         {
-          id: ticket.id,
-          ticket_id: ticket.id, 
+          id: uniqueId,
+          ticket_id: uniqueId, 
           title: ticket.title,
           description: ticket.description,
           priority: ticket.priority,
@@ -118,9 +126,11 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
       .then(({ error }) => {
         if (error) console.error("Supabase sync error:", error.message);
       });
+
     setTickets((prev) => [ticket, ...prev])
     return ticket
   }, [])
+  // 3. BROADCAST ROUTER CHANNEL
   useEffect(() => {
     const channel = supabase
       .channel('schema-db-changes')

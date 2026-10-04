@@ -35,7 +35,7 @@ const TicketsContext = createContext<TicketsValue | null>(null)
 export function TicketsProvider({ children }: { children: ReactNode }) {
   const [tickets, setTickets] = useState<Ticket[]>([])
 
-  // 1. FETCH TICKETS WITH DEEP FIELD MAPPINGS FOR VISUAL PLACEMENT
+  // 1. READ PIPELINE WITH EXPLICIT KEY STRING BRIDGES FOR SCENE OVERLAYS
   useEffect(() => {
     async function loadInitialTickets() {
       const { data, error } = await supabase
@@ -51,6 +51,12 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
           if (row.priority === 'meduim' || row.priority === 'medium') formattedPriority = 'medium';
           else if (row.priority === 'high' || row.priority === 'critical' || row.priority === 'low') formattedPriority = row.priority;
 
+          // BRIDGE MAPPING: Reconstruct the absolute matching camera ID name so overlays can render
+          let mappedCameraId = row.camera_name || 'ellis-360';
+          if (mappedCameraId === 'ellis-360' || mappedCameraId === 'Ellis 360 – Ferry Landing') {
+            mappedCameraId = 'ellis-360'; // Match your system config identification variable array path
+          }
+
           return {
             id: row.ticket_id || row.id,
             title: row.title,
@@ -58,7 +64,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
             status: row.status === 'to do' ? 'open' : (row.status || 'open'),
             priority: formattedPriority,
             type: 'intrusion', 
-            cameraId: row.camera_name || 'cam-01',
+            cameraId: mappedCameraId,
             siteId: 'site-01',
             zone: 'Perimeter',
             assignee: row.assignee || '',
@@ -72,7 +78,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
             snapshotConfig: { captureCreation: true, captureCompletion: true, showInImprovementHistory: true },
             timeline: Array.isArray(row.history_log) ? row.history_log : [],
             
-            // Map telemetry details perfectly to raw numeric data shapes for visual math engines
+            // Map telemetry details perfectly to raw numeric shapes for the coordinates engine
             yaw: Number(ptz.yaw) || 0,
             pitch: Number(ptz.pitch) || 0,
             zoom: Number(ptz.zoom) || 1,
@@ -96,12 +102,12 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     return { ...t, updatedAt: at, timeline: [...(t.timeline ?? []), { at, by, text, state }] }
   }
 
-  // 2. FORCE SYNC GENUINE TIMESTAMPS IMMEDIATELY INTO LOCAL FRONTEND VIEW
+  // 2. FORCE GENERATION OF REAL-TIME IDENTITIES INSTANTLY INTO LOCAL OVERLAYS
   const addTicket = useCallback((input: NewTicketInput) => {
     const ticket = createTicket(input)
     
-    // OVERRIDE: Inject a synchronized unique string ID instantly to match the database primary keys
-    const uniqueId = `OE-${Date.now()}`
+    // Inject a timestamped identity string path instantly to overwrite the static 1043 label
+    const uniqueId = `OE-${Date.now().toString().slice(-4)}`
     ticket.id = uniqueId
 
     supabase
@@ -156,6 +162,11 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
               if (newRow.priority === 'meduim' || newRow.priority === 'medium') formattedPriority = 'medium';
               else if (newRow.priority === 'high' || newRow.priority === 'critical' || newRow.priority === 'low') formattedPriority = newRow.priority;
 
+              let mappedCameraId = newRow.camera_name || 'ellis-360';
+              if (mappedCameraId === 'ellis-360' || mappedCameraId === 'Ellis 360 – Ferry Landing') {
+                mappedCameraId = 'ellis-360';
+              }
+
               const freshTicket: Ticket = {
                 id: trackingId,
                 title: newRow.title,
@@ -163,7 +174,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
                 status: newRow.status === 'to do' ? 'open' : (newRow.status || 'open'),
                 priority: formattedPriority,
                 type: 'intrusion',
-                cameraId: newRow.camera_name || 'cam-01',
+                cameraId: mappedCameraId,
                 siteId: 'site-01',
                 zone: 'Perimeter',
                 assignee: newRow.assignee || '',
@@ -325,7 +336,6 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   const attachSnapshot = useCallback(
     (id: string, slot: 'before' | 'after', snapshot: Snapshot) =>
       patch(id, (t) => ({ ...t, snapshots: { ...t.snapshots, [slot]: snapshot } })),
-    [patch],
   )
 
   const value = useMemo(

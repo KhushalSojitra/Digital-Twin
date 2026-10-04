@@ -1,7 +1,7 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState, useEffect, type ReactNode } from 'react'
+import { supabase } from '../supabaseClient' // Imports your live cloud client
 import {
   LIFECYCLE_LABEL,
-  SEED_TICKETS,
   STATE_RESULT,
   createTicket,
   type LifecycleState,
@@ -22,7 +22,6 @@ interface TicketsValue {
   assign: (id: string, assignee: string, by: string) => void
   toggleFollow: (id: string, person: string) => void
   addFollowers: (id: string, people: string[], by: string) => void
-  /** Shares a ticket with someone and keeps them in the loop as a follower. */
   shareWith: (id: string, person: string, by: string) => void
   removeFollower: (id: string, person: string, by: string) => void
   addComment: (id: string, text: string, by: string) => void
@@ -34,7 +33,37 @@ interface TicketsValue {
 const TicketsContext = createContext<TicketsValue | null>(null)
 
 export function TicketsProvider({ children }: { children: ReactNode }) {
-  const [tickets, setTickets] = useState<Ticket[]>(SEED_TICKETS)
+  const [tickets, setTickets] = useState<Ticket[]>([])
+
+  // A. FETCH TICKETS FROM SUPABASE ON STARTUP
+  useEffect(() => {
+    async function loadInitialTickets() {
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (!error && data) {
+        // Map database fields safely back to UI schema
+        const mappedTickets: Ticket[] = data.map((row: any) => ({
+          id: row.id,
+          title: row.title,
+          description: row.description || '',
+          priority: row.priority || 'medium',
+          status: row.status || 'to do',
+          assignee: row.assignee,
+          reporter: row.reporter,
+          createdAt: row.created_at,
+          // Fallback objects for UI compatibility
+          timeline: row.history_log || [],
+          comments: row.replies || [],
+          snapshots: { before: row.before_image_url ? { url: row.before_image_url, at: row.created_at } : undefined }
+        }));
+        setTickets(mappedTickets);
+      }
+    }
+    loadInitialTickets();
+  }, []);
 
   const patch = useCallback((id: string, fn: (t: Ticket) => Ticket) => {
     setTickets((prev) => prev.map((t) => (t.id === id ? fn(t) : t)))
@@ -45,8 +74,32 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     return { ...t, updatedAt: at, timeline: [...(t.timeline ?? []), { at, by, text, state }] }
   }
 
+  // B. PUSH INCIDENT DATA FROM DIGITAL TWIN TO SUPABASE
   const addTicket = useCallback((input: NewTicketInput) => {
     const ticket = createTicket(input)
+    
+    // Fire-and-forget sync to the Supabase backend database
+    supabase
+      .from('tickets')
+      .insert([
+        {
+          id: ticket.id,
+          ticket_id: `TCK-${Date.now().toString().slice(-4)}`,
+          title: ticket.title,
+          description: ticket.description,
+          priority: ticket.priority,
+          status: 'to do',
+          reporter: 'Digital Twin Interface',
+          assignee: 'Unassigned',
+          camera_name: 'Main View PTZ',
+          history_log: [{ at: new Date().toISOString(), by: 'System', text: 'Incident initialized from twin interface' }]
+        }
+      ])
+      .then(({ error }) => {
+        if (error) console.error("Supabase sync error:", error.message);
+      });
+
+    // Instantly update the local UI view state
     setTickets((prev) => [ticket, ...prev])
     return ticket
   }, [])
@@ -56,7 +109,6 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
       patch(id, (t) => {
         if (t.assignee === assignee) return t
         const text = t.assignee ? `Reassigned from ${t.assignee} to ${assignee}` : `Assigned to ${assignee}`
-        // The new owner is kept in the loop automatically.
         const current = t.followers ?? []
         const followers = current.includes(assignee) ? current : [...current, assignee]
         return log({ ...t, assignee, followers }, by, text)

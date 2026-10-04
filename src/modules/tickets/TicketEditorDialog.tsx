@@ -35,7 +35,6 @@ import {
   STATUS_NEEDS_DARK_TEXT,
   cameraName,
   isCompleted,
-  peekNextTicketId,
   snapshotFromProof,
   snapshotIsProof,
   type NewTicketInput,
@@ -173,7 +172,6 @@ function CreateForm({
   const [assignee, setAssignee] = useState(ASSIGNEES.includes(creator) ? creator : ASSIGNEES[0])
   const [platformId, setPlatformId] = useState(defaultIntegration.id)
   const [touched, setTouched] = useState(false)
-  const id = peekNextTicketId()
   const selected = integrations.find((i) => i.id === platformId) ?? defaultIntegration
   const snapshotPolicy = selected.snapshotPolicy
   const [proof, setProof] = useState(snapshotPolicy !== 'disabled')
@@ -225,7 +223,7 @@ function CreateForm({
               <TextField size="small" label="Coordinates" value={`P ${draft.yaw.toFixed(1)}° · T ${draft.pitch.toFixed(1)}° · Z ${draft.zoom.toFixed(1)}×`} slotProps={{ htmlInput: { readOnly: true } }} />
               <TextField size="small" label="Camera Name" value={draft.camera.name} slotProps={{ htmlInput: { readOnly: true } }} />
             </Box>
-            <TextField size="small" label="Ticket ID" value={id} slotProps={{ htmlInput: { readOnly: true } }} />
+            <TextField size="small" label="Ticket ID" value="Assigned on submit" slotProps={{ htmlInput: { readOnly: true } }} />
             <TextField size="small" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} error={touched && !title.trim()} helperText={touched && !title.trim() ? 'Title is required' : ' '} required />
             <TextField size="small" label="Description" value={description} onChange={(e) => setDescription(e.target.value)} multiline minRows={2} />
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>

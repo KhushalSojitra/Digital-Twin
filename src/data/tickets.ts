@@ -157,9 +157,7 @@ export function locateOnEarth(siteId: string, yaw: number, distanceM: number) {
   return { lat: origin.lat + dLat, lng: origin.lng + dLng }
 }
 
-let nextTicketNumber = 1043
-
-export function createTicket(input: NewTicketInput): Ticket {
+export function createTicket(input: NewTicketInput, id = `OE-${crypto.randomUUID()}`): Ticket {
   const device = ALL_DEVICES.find((d) => d.id === input.cameraId)!
   const now = new Date().toISOString()
   const distanceM = input.distanceM ?? 35
@@ -169,7 +167,7 @@ export function createTicket(input: NewTicketInput): Ticket {
   if (input.assignee) timeline.push({ at: now, by: input.creator, text: `Assigned to ${input.assignee}` })
 
   return {
-    id: `OE-${nextTicketNumber++}`,
+    id,
     title: input.title,
     description: input.description,
     status: 'open',
@@ -239,10 +237,6 @@ export function snapshotFromProof(on: boolean): SnapshotConfig {
 
 export function snapshotIsProof(c: SnapshotConfig) {
   return c.captureCreation || c.captureCompletion
-}
-
-export function peekNextTicketId() {
-  return `OE-${nextTicketNumber}`
 }
 
 /** Custom platforms carry their own name; the built-in ones use the standard label. */

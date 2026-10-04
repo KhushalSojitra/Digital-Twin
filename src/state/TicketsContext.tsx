@@ -377,9 +377,9 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
 
   // 2. CREATE TICKET ACTION - FORCES UNIQUE TIME ID FORMATS TO PREVENT OVERWRITES
   const addTicket = useCallback((input: NewTicketInput) => {
-    const ticket = createTicket(input)
-    const uniqueId = `OE-${crypto.randomUUID()}`
-    ticket.id = uniqueId
+    const createdAtMs = Date.now()
+    const uniqueId = `OE-${createdAtMs.toString().slice(-6)}-${crypto.randomUUID()}`
+    const ticket = createTicket(input, uniqueId)
 
     ticketsRef.current = [ticket, ...ticketsRef.current]
     setTickets(ticketsRef.current)

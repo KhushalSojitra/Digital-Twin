@@ -33,7 +33,8 @@ import {
   STATUS_COLOR,
   STATUS_LABEL,
   STATUS_NEEDS_DARK_TEXT,
-  cameraName,
+  TICKETING_SYSTEM,
+  ticketContextLabel,
   isCompleted,
   snapshotFromProof,
   snapshotIsProof,
@@ -163,19 +164,17 @@ function CreateForm({
   onClose: () => void
   onCreate: (input: NewTicketInput) => Promise<Ticket>
 }) {
-  const { defaultIntegration, integrations } = useIntegrations()
+  const { defaultIntegration } = useIntegrations()
   const capture = useCapture()
   const [tab, setTab] = useState<'general' | 'activity'>('general')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<TicketPriority>('medium')
   const [assignee, setAssignee] = useState(ASSIGNEES.includes(creator) ? creator : ASSIGNEES[0])
-  const [platformId, setPlatformId] = useState(defaultIntegration.id)
   const [touched, setTouched] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createError, setCreateError] = useState('')
-  const selected = integrations.find((i) => i.id === platformId) ?? defaultIntegration
-  const snapshotPolicy = selected.snapshotPolicy
+  const snapshotPolicy = defaultIntegration.snapshotPolicy
   const [proof, setProof] = useState(snapshotPolicy !== 'disabled')
 
   const submit = async (e: FormEvent) => {
@@ -196,8 +195,8 @@ function CreateForm({
         zone: draft.camera.name.split(' — ')[1] ?? 'Perimeter',
         assignee,
         creator,
-        platform: selected.platform,
-        platformName: selected.platformName,
+        platform: 'default',
+        platformName: TICKETING_SYSTEM,
         snapshotConfig: snapshots,
         creationSnapshot: src ? { src, at: new Date().toISOString(), by: creator, yaw: draft.yaw, pitch: draft.pitch } : undefined,
         cameraId: draft.camera.id,
@@ -267,26 +266,13 @@ function CreateForm({
                   ))}
                 </Select>
               </FormControl>
-              <FormControl size="small" sx={{ gridColumn: { sm: '1 / -1' } }}>
-                <InputLabel>Ticketing Platform</InputLabel>
-                <Select
-                  label="Ticketing Platform"
-                  value={platformId}
-                  onChange={(e) => {
-                    const nextId = e.target.value
-                    setPlatformId(nextId)
-                    const next = integrations.find((i) => i.id === nextId) ?? defaultIntegration
-                    setProof(next.snapshotPolicy !== 'disabled')
-                  }}
-                  MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}
-                >
-                  {integrations.map((i) => (
-                    <MenuItem key={i.id} value={i.id}>
-                      {i.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <TextField
+                size="small"
+                label="Ticketing System"
+                value={TICKETING_SYSTEM}
+                sx={{ gridColumn: { sm: '1 / -1' } }}
+                slotProps={{ htmlInput: { readOnly: true } }}
+              />
             </Box>
             {snapshotPolicy === 'creator_chooses' && (
               <FormControlLabel
@@ -319,7 +305,7 @@ function CreateForm({
                 Assignment history
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Will be assigned to {assignee} on {selected.name}.
+                Will be assigned to {assignee} on {draft.camera.name}.
               </Typography>
             </Box>
           </Stack>
@@ -425,8 +411,15 @@ function Existing({
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
               <Field label="Creator" value={ticket.creator} />
               <Field label="Assignee" value={ticket.assignee} />
-              <Field label="Camera Name" value={cameraName(ticket.cameraId)} />
-              <Field label="Coordinates" value={`P ${ticket.yaw.toFixed(1)}° · T ${ticket.pitch.toFixed(1)}° · Z ${ticket.zoom.toFixed(1)}×`} />
+              {ticket.cameraId && <Field label="Camera Name" value={ticketContextLabel(ticket)} />}
+              <Field
+            label="Coordinates"
+            value={
+              ticket.cameraId
+                ? `P ${ticket.yaw.toFixed(1)}° · T ${ticket.pitch.toFixed(1)}° · Z ${ticket.zoom.toFixed(1)}×`
+                : `${ticket.lat.toFixed(5)}, ${ticket.lng.toFixed(5)}`
+            }
+          />
               <Field label="Created" value={formatDateTime(ticket.createdAt)} />
               <Field label="Completed" value={ticket.completedAt ? formatDateTime(ticket.completedAt) : '—'} />
             </Box>

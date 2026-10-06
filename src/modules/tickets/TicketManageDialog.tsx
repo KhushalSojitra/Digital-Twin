@@ -20,6 +20,7 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import MyLocationRoundedIcon from '@mui/icons-material/MyLocationRounded'
 import EditRoundedIcon from '@mui/icons-material/EditRounded'
+import VideocamRoundedIcon from '@mui/icons-material/VideocamRounded'
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
 import FilterListRoundedIcon from '@mui/icons-material/FilterListRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
@@ -34,7 +35,8 @@ import {
   STATUS_COLOR,
   STATUS_LABEL,
   STATUS_NEEDS_DARK_TEXT,
-  cameraName,
+  TICKET_SOURCE_LABEL,
+  ticketContextLabel,
   type LifecycleState,
   type Ticket,
 } from '../../data/tickets'
@@ -55,6 +57,8 @@ interface Props {
   onEdit: (ticket: Ticket) => void
   onHistory: (ticket: Ticket) => void
   onGoToLocation?: (ticket: Ticket) => void
+  /** Opens the camera a ticket was raised on; only offered for camera-associated tickets. */
+  onGoToCamera?: (ticket: Ticket) => void
 }
 
 export default function TicketManageDialog({
@@ -70,6 +74,7 @@ export default function TicketManageDialog({
   onEdit,
   onHistory,
   onGoToLocation,
+  onGoToCamera,
 }: Props) {
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
@@ -164,7 +169,7 @@ export default function TicketManageDialog({
                           }}
                         />
                         <Typography variant="caption" color="text.secondary" noWrap>
-                          {PRIORITY_LABEL[t.priority]} · {cameraName(t.cameraId)}
+                          {PRIORITY_LABEL[t.priority]} · {TICKET_SOURCE_LABEL[t.source]} · {ticketContextLabel(t)}
                         </Typography>
                       </Stack>
                       <Typography variant="subtitle2" noWrap>
@@ -206,6 +211,13 @@ export default function TicketManageDialog({
                           }}
                         >
                           <DeleteOutlineRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    {onGoToCamera && t.cameraId && (
+                      <Tooltip title="Go to Camera">
+                        <IconButton size="small" aria-label={`Go to camera ${t.id}`} onClick={() => onGoToCamera(t)}>
+                          <VideocamRoundedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     )}

@@ -25,6 +25,11 @@ interface Props {
   selectedTicketId: string | null
   onSelectTicket: (ticket: Ticket) => void
   flyToTicket?: { lat: number; lng: number; nonce: number } | null
+  /** While true the next map click is reported through onPickLocation instead of panning. */
+  pickMode?: boolean
+  onPickLocation?: (lat: number, lng: number) => void
+  /** Location of a ticket being drafted; rendered as a temporary marker. */
+  draft?: { lat: number; lng: number } | null
 }
 
 type TicketOverlay =
@@ -63,7 +68,17 @@ interface MarkerEntry {
   el: HTMLDivElement
 }
 
-export default function EarthMap({ focusSiteId, onSelectSite, tickets, selectedTicketId, onSelectTicket, flyToTicket = null }: Props) {
+export default function EarthMap({
+  focusSiteId,
+  onSelectSite,
+  tickets,
+  selectedTicketId,
+  onSelectTicket,
+  flyToTicket = null,
+  pickMode = false,
+  onPickLocation,
+  draft = null,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const [markers, setMarkers] = useState<MarkerEntry[]>([])
@@ -77,6 +92,12 @@ export default function EarthMap({ focusSiteId, onSelectSite, tickets, selectedT
   useEffect(() => {
     onSelectRef.current = onSelectSite
   }, [onSelectSite])
+  const pickModeRef = useRef(pickMode)
+  const onPickRef = useRef(onPickLocation)
+  useEffect(() => {
+    pickModeRef.current = pickMode
+    onPickRef.current = onPickLocation
+  }, [pickMode, onPickLocation])
 
   useEffect(() => {
     const container = containerRef.current
@@ -119,6 +140,9 @@ export default function EarthMap({ focusSiteId, onSelectSite, tickets, selectedT
     }
     syncZoom()
     map.on('zoom', syncZoom)
+    map.on('click', (e) => {
+      if (pickModeRef.current) onPickRef.current?.(e.lngLat.lat, e.lngLat.lng)
+    })
 
     let tileOk = false
     let tileErr = false
@@ -231,6 +255,26 @@ export default function EarthMap({ focusSiteId, onSelectSite, tickets, selectedT
     const center = siteCenter(site)
     map.flyTo({ center: [center.lng, center.lat], zoom: 17.2, pitch: 62, bearing: -30, duration: 2200, essential: true })
   }, [focusSiteId])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    map.getCanvas().style.cursor = pickMode ? 'crosshair' : ''
+  }, [pickMode, mapReady])
+
+  const draftLat = draft?.lat
+  const draftLng = draft?.lng
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady || draftLat === undefined || draftLng === undefined) return
+    const el = document.createElement('div')
+    el.style.cssText =
+      'width:18px;height:18px;border-radius:50%;background:#0A84FF;border:3px solid #fff;box-shadow:0 0 0 6px rgba(10,132,255,0.35);'
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([draftLng, draftLat]).addTo(map)
+    return () => {
+      marker.remove()
+    }
+  }, [draftLat, draftLng, mapReady])
 
   const zoomTo = (lng: number, lat: number) => {
     mapRef.current?.flyTo({ center: [lng, lat], zoom: 17.6, pitch: 55, duration: 1500, essential: true })

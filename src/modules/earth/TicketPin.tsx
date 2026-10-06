@@ -1,5 +1,5 @@
 import { Box, Tooltip, Typography } from '@mui/material'
-import { PRIORITY_LABEL, STATUS_COLOR, STATUS_LABEL, cameraName, type Ticket } from '../../data/tickets'
+import { PRIORITY_LABEL, STATUS_COLOR, STATUS_LABEL, ticketContextLabel, type Ticket } from '../../data/tickets'
 import TicketGlyph from '../../components/TicketGlyph'
 import { TICKET_SIZE_PX } from '../tickets/ticketFilters'
 import { useTicketQuery } from '../../state/TicketQueryContext'
@@ -24,7 +24,7 @@ function PreviewCopy({ ticket, color }: { ticket: Ticket; color: string }) {
         {PRIORITY_LABEL[ticket.priority]} priority
       </Typography>
       <Typography sx={{ fontSize: 11, opacity: 0.85, mt: 0.25 }}>{ticket.title}</Typography>
-      <Typography sx={{ fontSize: 10.5, opacity: 0.7 }}>{cameraName(ticket.cameraId)}</Typography>
+      <Typography sx={{ fontSize: 10.5, opacity: 0.7 }}>{ticketContextLabel(ticket)}</Typography>
     </>
   )
 }

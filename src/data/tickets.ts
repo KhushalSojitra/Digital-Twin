@@ -1,4 +1,27 @@
-import { ALL_DEVICES, SITES, getSite } from './cameras'
+import { ALL_DEVICES, SITES, getSite, siteCenter, type CameraDevice } from './cameras'
+
+/** Where a ticket was raised. One unified ticket model; the source is the creation context. */
+export type TicketSource = 'EARTH' | 'CAMERA_360' | 'CAMERA_PTZ' | 'CAMERA_CCTV'
+
+export const TICKET_SOURCES: TicketSource[] = ['EARTH', 'CAMERA_360', 'CAMERA_PTZ', 'CAMERA_CCTV']
+
+/** The only ticketing system for now; shown read-only in the Create Ticket dialogs. */
+export const TICKETING_SYSTEM = 'Digital Twin Ticketing'
+
+export const TICKET_SOURCE_LABEL: Record<TicketSource, string> = {
+  EARTH: 'Earth',
+  CAMERA_360: '360 Camera',
+  CAMERA_PTZ: 'PTZ Camera',
+  CAMERA_CCTV: 'CCTV Camera',
+}
+
+export function isTicketSource(value: unknown): value is TicketSource {
+  return TICKET_SOURCES.some((source) => source === value)
+}
+
+export function sourceForDevice(device: Pick<CameraDevice, 'kind'>): TicketSource {
+  return device.kind === 'ptz' ? 'CAMERA_PTZ' : 'CAMERA_360'
+}
 
 export type TicketStatus = 'open' | 'in_progress' | 'done' | 'accepted' | 'failed'
 export type TicketPriority = 'critical' | 'high' | 'medium' | 'low'
@@ -52,7 +75,11 @@ export interface Ticket {
   status: TicketStatus
   priority: TicketPriority
   type: TicketType
-  cameraId: string
+  source: TicketSource
+  /** Null for Earth tickets, which are not tied to a camera. */
+  cameraId: string | null
+  cameraName: string | null
+  /** Nearest camera site; empty when an Earth ticket sits away from every site. */
   siteId: string
   zone: string
   assignee: string
@@ -89,6 +116,23 @@ export type NewTicketInput = Pick<
   followers?: string[]
   snapshotConfig: SnapshotConfig
   creationSnapshot?: Snapshot
+}
+
+/** A ticket raised by picking a coordinate directly on the Earth map. */
+export type NewEarthTicketInput = Pick<
+  Ticket,
+  'title' | 'description' | 'priority' | 'type' | 'zone' | 'assignee' | 'platform' | 'platformName' | 'lat' | 'lng'
+> & {
+  source: 'EARTH'
+  creator: string
+  followers?: string[]
+  snapshotConfig: SnapshotConfig
+}
+
+export type TicketCreateInput = NewTicketInput | NewEarthTicketInput
+
+export function isEarthInput(input: TicketCreateInput): input is NewEarthTicketInput {
+  return 'source' in input && input.source === 'EARTH'
 }
 
 export const STATUS_LABEL: Record<TicketStatus, string> = {
@@ -157,6 +201,70 @@ export function locateOnEarth(siteId: string, yaw: number, distanceM: number) {
   return { lat: origin.lat + dLat, lng: origin.lng + dLng }
 }
 
+/** Sites within this ground distance of an Earth ticket claim it for clustering. */
+const SITE_CLAIM_RADIUS_M = 3000
+
+export function nearestSiteId(lat: number, lng: number): string {
+  let best = ''
+  let bestDistance = SITE_CLAIM_RADIUS_M
+  for (const site of SITES) {
+    const center = siteCenter(site)
+    const dLat = (lat - center.lat) * 111_320
+    const dLng = (lng - center.lng) * 111_320 * Math.cos((center.lat * Math.PI) / 180)
+    const distance = Math.hypot(dLat, dLng)
+    if (distance < bestDistance) {
+      best = site.id
+      bestDistance = distance
+    }
+  }
+  return best
+}
+
+export function createEarthTicket(input: NewEarthTicketInput, id = `OE-${crypto.randomUUID()}`): Ticket {
+  const lat = Number(input.lat)
+  const lng = Number(input.lng)
+  if (![lat, lng].every(Number.isFinite) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    throw new Error('Earth ticket coordinates must be a valid latitude and longitude')
+  }
+  const now = new Date().toISOString()
+  const followers = [...new Set([input.creator, ...(input.followers ?? [])])]
+  const timeline: TicketEvent[] = [
+    { at: now, by: input.creator, text: `Ticket raised on Earth at ${lat.toFixed(5)}, ${lng.toFixed(5)}`, state: 'open' },
+  ]
+  if (input.assignee) timeline.push({ at: now, by: input.creator, text: `Assigned to ${input.assignee}` })
+
+  return {
+    id,
+    title: input.title,
+    description: input.description,
+    status: 'open',
+    priority: input.priority,
+    type: input.type,
+    source: 'EARTH',
+    cameraId: null,
+    cameraName: null,
+    siteId: nearestSiteId(lat, lng),
+    zone: input.zone,
+    assignee: input.assignee,
+    creator: input.creator,
+    platform: input.platform,
+    platformName: input.platformName,
+    followers,
+    comments: [],
+    createdAt: now,
+    updatedAt: now,
+    snapshots: {},
+    snapshotConfig: input.snapshotConfig,
+    timeline,
+    yaw: 0,
+    pitch: 0,
+    zoom: 1,
+    distanceM: 0,
+    lat,
+    lng,
+  }
+}
+
 export function createTicket(input: NewTicketInput, id = `OE-${crypto.randomUUID()}`): Ticket {
   const device = ALL_DEVICES.find((d) => d.id === input.cameraId)
   if (!device) throw new Error(`Unknown camera device: ${input.cameraId}`)
@@ -180,7 +288,9 @@ export function createTicket(input: NewTicketInput, id = `OE-${crypto.randomUUID
     status: 'open',
     priority: input.priority,
     type: input.type,
+    source: sourceForDevice(device),
     cameraId: device.id,
+    cameraName: device.name,
     siteId: device.siteId,
     zone: input.zone,
     assignee: input.assignee,
@@ -262,6 +372,12 @@ export function cameraName(cameraId: string) {
   return ALL_DEVICES.find((d) => d.id === cameraId)?.name ?? cameraId
 }
 
+/** Camera name for camera tickets, "Earth" for tickets raised on the map. */
+export function ticketContextLabel(t: Pick<Ticket, 'source' | 'cameraId' | 'cameraName'>) {
+  if (t.source === 'EARTH' || !t.cameraId) return TICKET_SOURCE_LABEL.EARTH
+  return t.cameraName ?? cameraName(t.cameraId)
+}
+
 export function siteName(siteId: string) {
   return SITES.find((s) => s.id === siteId)?.name ?? siteId
 }
@@ -307,6 +423,7 @@ export function summariseBySite(tickets: Ticket[]): SummaryRow[] {
   }).filter((row) => row.stats.total > 0)
 }
 
+const EARTH_KEY = '__earth__'
 const DAY_MS = 24 * 60 * 60 * 1000
 const WEEK_MS = 7 * DAY_MS
 
@@ -364,12 +481,12 @@ export function buildInsights(tickets: Ticket[], now = Date.now(), days = 8): Im
       }
     }),
     topCameras: rank(
-      (t) => t.cameraId,
-      (id) => cameraName(id),
+      (t) => t.cameraId ?? EARTH_KEY,
+      (id) => (id === EARTH_KEY ? TICKET_SOURCE_LABEL.EARTH : cameraName(id)),
     ),
     topSites: rank(
-      (t) => t.siteId,
-      (id) => siteName(id),
+      (t) => t.siteId || EARTH_KEY,
+      (id) => (id === EARTH_KEY ? TICKET_SOURCE_LABEL.EARTH : siteName(id)),
     ),
   }
 }

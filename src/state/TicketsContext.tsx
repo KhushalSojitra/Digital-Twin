@@ -4,12 +4,17 @@ import { ALL_DEVICES } from '../data/cameras'
 import {
   DEFAULT_SNAPSHOT_CONFIG,
   STATE_RESULT,
+  createEarthTicket,
   createTicket,
+  isEarthInput,
+  isTicketSource,
   locateOnEarth,
+  nearestSiteId,
+  sourceForDevice,
   type LifecycleState,
-  type NewTicketInput,
   type Snapshot,
   type Ticket,
+  type TicketCreateInput,
 } from '../data/tickets'
 
 export interface TransitionInput {
@@ -20,7 +25,7 @@ export interface TransitionInput {
 
 interface TicketsValue {
   tickets: Ticket[]
-  addTicket: (input: NewTicketInput) => Promise<Ticket>
+  addTicket: (input: TicketCreateInput) => Promise<Ticket>
   deleteTicket: (id: string) => void
   assign: (id: string, assignee: string, by: string) => void
   toggleFollow: (id: string, person: string) => void
@@ -53,15 +58,20 @@ function numberValue(value: unknown, fallback: number): number {
   return value == null || value === '' || !Number.isFinite(parsed) ? fallback : parsed
 }
 
-function cameraForRow(value: unknown) {
+function matchingCamera(value: unknown) {
   const cameraName = typeof value === 'string' ? value.trim() : ''
   const normalizedCameraName = cameraName.toLowerCase().replace(/[^a-z0-9]/g, '')
-  const camera = ALL_DEVICES.find((device) =>
+  return ALL_DEVICES.find((device) =>
     device.id === cameraName
     || device.name === cameraName
     || device.id.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedCameraName
     || device.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedCameraName,
   )
+}
+
+/** Rows saved before ticket sources existed point at a camera, or at an unknown name that falls back. */
+function legacyCameraForRow(value: unknown) {
+  const camera = matchingCamera(value)
   if (camera) return camera
 
   const fallbackCamera = ALL_DEVICES.find((device) => device.id === 'ellis-360')
@@ -101,7 +111,7 @@ function databaseRowForTicket(ticket: Ticket, includeIdentity = false): Database
     status: databaseStatus(ticket.status),
     reporter: ticket.creator,
     assignee: ticket.assignee || 'Unassigned',
-    camera_name: ticket.cameraId,
+    camera_name: ticket.cameraId ?? 'Earth',
     ptz_coordinates: {
       yaw: ticket.yaw,
       pitch: ticket.pitch,
@@ -110,6 +120,10 @@ function databaseRowForTicket(ticket: Ticket, includeIdentity = false): Database
       lat: ticket.lat,
       lng: ticket.lng,
       metadata: {
+        source: ticket.source,
+        cameraId: ticket.cameraId,
+        cameraName: ticket.cameraName,
+        siteId: ticket.siteId,
         type: ticket.type,
         zone: ticket.zone,
         platform: ticket.platform,
@@ -134,15 +148,24 @@ function ticketFromDatabase(value: unknown): Ticket {
   const metadata = typeof ptz.metadata === 'object' && ptz.metadata !== null
     ? ptz.metadata as DatabaseRow
     : {}
-  const camera = cameraForRow(row.camera_name)
+  const storedSource = isTicketSource(metadata.source) ? metadata.source : null
+  const isEarth = storedSource === 'EARTH'
+  const matchedCamera = matchingCamera(metadata.cameraId ?? row.camera_name)
+  const camera = isEarth ? null : (matchedCamera ?? (storedSource ? null : legacyCameraForRow(row.camera_name)))
+  const source = storedSource ?? sourceForDevice(camera ?? { kind: '360' })
+  const cameraId = isEarth ? null : (camera?.id ?? (stringValue(metadata.cameraId, '') || null))
+  const cameraName = isEarth ? null : (camera?.name ?? (stringValue(metadata.cameraName, '') || null))
   const createdAt = stringValue(row.created_at, new Date().toISOString())
   const yaw = numberValue(ptz.yaw, 0)
   const pitch = numberValue(ptz.pitch, 0)
   const zoom = numberValue(ptz.zoom, 1)
-  const distanceM = numberValue(ptz.distanceM, 35)
+  const distanceM = numberValue(ptz.distanceM, isEarth ? 0 : 35)
   const storedLat = numberValue(ptz.lat, 0)
   const storedLng = numberValue(ptz.lng, 0)
-  const earthCoords = locateOnEarth(camera.siteId, yaw, distanceM)
+  const earthCoords = camera ? locateOnEarth(camera.siteId, yaw, distanceM) : { lat: 0, lng: 0 }
+  const lat = isEarth ? storedLat : (earthCoords.lat || storedLat)
+  const lng = isEarth ? storedLng : (earthCoords.lng || storedLng)
+  const siteId = camera?.siteId ?? (typeof metadata.siteId === 'string' ? metadata.siteId : nearestSiteId(lat, lng))
 
   const rawPriority = typeof row.priority === 'string' ? row.priority.trim().toLowerCase() : ''
   const priority: Ticket['priority'] = rawPriority === 'critical' || rawPriority === 'high' || rawPriority === 'low'
@@ -207,8 +230,10 @@ function ticketFromDatabase(value: unknown): Ticket {
     status,
     priority: rawPriority === 'meduim' || rawPriority === 'medium' ? 'medium' : priority,
     type: validTypes.find((candidate) => candidate === rawType) ?? 'intrusion',
-    cameraId: camera.id,
-    siteId: camera.siteId,
+    source,
+    cameraId,
+    cameraName,
+    siteId,
     zone: stringValue(row.zone, stringValue(metadata.zone, 'Perimeter')),
     assignee: stringValue(row.assignee, ''),
     creator: stringValue(row.reporter, 'System'),
@@ -244,8 +269,8 @@ function ticketFromDatabase(value: unknown): Ticket {
     pitch,
     zoom,
     distanceM,
-    lat: earthCoords.lat || storedLat,
-    lng: earthCoords.lng || storedLng,
+    lat,
+    lng,
   }
 }
 
@@ -317,10 +342,10 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   }
 
   // 2. CREATE TICKET ACTION
-  const addTicket = useCallback(async (input: NewTicketInput) => {
+  const addTicket = useCallback(async (input: TicketCreateInput) => {
     const createdAtMs = Date.now()
     const uniqueId = `OE-${createdAtMs.toString().slice(-6)}-${crypto.randomUUID()}`
-    const ticket = createTicket(input, uniqueId)
+    const ticket = isEarthInput(input) ? createEarthTicket(input, uniqueId) : createTicket(input, uniqueId)
 
     const { data, error } = await supabase
       .from('tickets')

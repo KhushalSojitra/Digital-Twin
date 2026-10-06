@@ -32,7 +32,7 @@ import {
   STATUS_LABEL,
   STATUS_NEEDS_DARK_TEXT,
   TYPE_LABEL,
-  cameraName,
+  ticketContextLabel,
   isCompleted,
   platformLabel,
   siteName,
@@ -98,7 +98,7 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
   const nextStates = NEXT_STATES[ticket.status]
 
   const grabSnapshot = () => {
-    const src = capture?.(ticket.cameraId, { yaw: ticket.yaw, pitch: ticket.pitch }, 'after')
+    const src = ticket.cameraId ? capture?.(ticket.cameraId, { yaw: ticket.yaw, pitch: ticket.pitch }, 'after') : undefined
     if (!src) return undefined
     return { src, at: new Date().toISOString(), by: me, yaw: ticket.yaw, pitch: ticket.pitch }
   }
@@ -267,7 +267,10 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
               <Field label="Site" value={siteName(ticket.siteId)} />
               <Field label="Zone" value={ticket.zone} />
               <Box sx={{ gridColumn: '1 / -1' }}>
-                <Field label="Camera" value={cameraName(ticket.cameraId)} />
+                <Field
+            label={ticket.cameraId ? 'Camera' : 'Location'}
+            value={ticket.cameraId ? ticketContextLabel(ticket) : `Earth · ${ticket.lat.toFixed(5)}, ${ticket.lng.toFixed(5)}`}
+          />
               </Box>
               <Field label="PTZ pan" value={`${ticket.yaw.toFixed(1)}°`} />
               <Field label="PTZ tilt" value={`${ticket.pitch.toFixed(1)}°`} />

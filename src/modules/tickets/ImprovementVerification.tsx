@@ -31,7 +31,8 @@ export default function ImprovementVerification({ ticket }: { ticket: Ticket }) 
     let cancelled = false
     const dir = { yaw: ticket.yaw, pitch: ticket.pitch }
     const backfill = async (slot: 'before' | 'after', at: string, by: string) => {
-      const src = capture?.(ticket.cameraId, dir, slot) ?? (await renderSnapshot(site.panorama, dir, 30, slot))
+      const captured = ticket.cameraId ? capture?.(ticket.cameraId, dir, slot) : undefined
+      const src = captured ?? (await renderSnapshot(site.panorama, dir, 30, slot))
       if (cancelled || !src) return
       attachSnapshot(ticket.id, slot, { src, at, by, yaw: dir.yaw, pitch: dir.pitch })
     }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Badge, Box, IconButton, Stack, Tooltip, useTheme } from '@mui/material'
+import { Badge, Box, IconButton, Paper, Stack, Tooltip, Typography, useTheme } from '@mui/material'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
+import AddLocationAltRoundedIcon from '@mui/icons-material/AddLocationAltRounded'
 import { hudSurface } from '../../theme/hud'
 import { getSite, selectionForCombo, type CameraSite } from '../../data/cameras'
 import { isHistoricalTicket, type Ticket } from '../../data/tickets'
@@ -9,6 +10,7 @@ import { useCameraSelection } from '../../state/CameraSelectionContext'
 import { useTickets } from '../../state/TicketsContext'
 import { useAuth } from '../../auth/AuthContext'
 import EarthMap from './EarthMap'
+import EarthTicketCreateDialog, { type EarthLocation } from './EarthTicketCreateDialog'
 import LiveView, { type TicketFocus } from './LiveView'
 import TicketMenu from '../tickets/TicketMenu'
 import TicketManageDialog from '../tickets/TicketManageDialog'
@@ -47,15 +49,28 @@ export default function EarthModule() {
     shared ? { lat: shared.lat, lng: shared.lng, nonce: Date.now() } : null,
   )
   const [focus, setFocus] = useState<TicketFocus | null>(null)
+  const [pickMode, setPickMode] = useState(false)
+  const [createAt, setCreateAt] = useState<EarthLocation | null>(null)
 
+  const earthTickets = useMemo(() => tickets.filter((t) => t.source === 'EARTH'), [tickets])
   const visibleTickets = useMemo(
-    () => applyTicketQuery(tickets, { tab: 'all', search: '', filters, me, assignedToMe: false }),
-    [tickets, filters, me],
+    () => applyTicketQuery(earthTickets, { tab: 'all', search: '', filters, me, assignedToMe: false }),
+    [earthTickets, filters, me],
   )
   const completedCount = useMemo(() => visibleTickets.filter(isHistoricalTicket).length, [visibleTickets])
+  const improvementsOn = showImprovements && completedCount > 0
   const mapTickets = earthTicketView
-    ? visibleTickets.filter((ticket) => !isHistoricalTicket(ticket) || ticket.id === selectedTicketId || showImprovements)
+    ? visibleTickets.filter((ticket) => !isHistoricalTicket(ticket) || ticket.id === selectedTicketId || improvementsOn)
     : []
+
+  useEffect(() => {
+    if (!pickMode) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPickMode(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pickMode])
 
   const selectedTicket = tickets.find((t) => t.id === selectedTicketId) ?? null
 
@@ -77,7 +92,7 @@ export default function EarthModule() {
   }, [select])
 
   const openTicketCamera = (ticket: Ticket, mode: TicketFocus['mode']) => {
-    const cameraSite = getSite(ticket.siteId)
+    const cameraSite = ticket.siteId ? getSite(ticket.siteId) : undefined
     if (!cameraSite) return
     setEditorOpen(false)
     setManageOpen(false)
@@ -115,27 +130,86 @@ export default function EarthModule() {
           selectedTicketId={selectedTicketId}
           onSelectTicket={handleSelectTicket}
           flyToTicket={flyTo}
+          pickMode={pickMode}
+          onPickLocation={(lat, lng) => {
+            setPickMode(false)
+            setCreateAt({ lat, lng })
+          }}
+          draft={createAt}
         />
+
+        {pickMode && (
+          <Paper
+            elevation={0}
+            role="status"
+            sx={{
+              position: 'absolute',
+              top: 14,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 3,
+              px: 1.75,
+              py: 0.75,
+              borderRadius: '999px',
+              bgcolor: 'rgba(0,0,0,0.72)',
+              color: '#fff',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(10,132,255,0.6)',
+            }}
+          >
+            <Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>Click the map to place the ticket · Esc to cancel</Typography>
+          </Paper>
+        )}
 
         <Stack
           direction="row"
           spacing={0.75}
           sx={{ position: 'absolute', top: 10, right: 10, alignItems: 'center', zIndex: 3, maxWidth: 'calc(100% - 20px)' }}
         >
-          <Tooltip title={earthTicketView ? 'Improvements' : 'Enable ticket view to show history'}>
+          {canEdit && (
+            <Tooltip title={pickMode ? 'Cancel placing ticket' : 'Create Ticket'}>
+              <IconButton
+                size="small"
+                aria-label="Create Ticket"
+                aria-pressed={pickMode}
+                onClick={() => {
+                  setEarthTicketView(true)
+                  setPickMode((v) => !v)
+                }}
+                sx={{
+                  ...glass,
+                  width: 40,
+                  height: 40,
+                  borderRadius: '12px',
+                  ...(pickMode && { bgcolor: '#0A84FF', color: '#fff', borderColor: '#0A84FF', '&:hover': { bgcolor: '#0870d8' } }),
+                }}
+              >
+                <AddLocationAltRoundedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip
+            title={
+              !earthTicketView
+                ? 'Enable ticket view to show history'
+                : completedCount === 0
+                  ? 'No historical events on Earth'
+                  : 'Improvements'
+            }
+          >
             <Box component="span" sx={{ display: 'inline-flex' }}>
               <IconButton
                 size="small"
                 aria-label="Improvements"
-                aria-pressed={showImprovements}
-                disabled={!earthTicketView}
+                aria-pressed={improvementsOn}
+                disabled={!earthTicketView || completedCount === 0}
                 onClick={() => setShowImprovements((v) => !v)}
                 sx={{
                   ...glass,
                   width: 40,
                   height: 40,
                   borderRadius: '12px',
-                  ...(showImprovements &&
+                  ...(improvementsOn &&
                     earthTicketView && { bgcolor: '#30D158', color: '#fff', borderColor: '#30D158', '&:hover': { bgcolor: '#28b84c' } }),
                 }}
               >
@@ -193,7 +267,21 @@ export default function EarthModule() {
           onGoToLocation={(t) => {
             setManageOpen(false)
             setFlyTo({ lat: t.lat, lng: t.lng, nonce: Date.now() })
-            openTicketCamera(t, 'goto')
+          }}
+          onGoToCamera={(t) => openTicketCamera(t, 'goto')}
+        />
+
+        <EarthTicketCreateDialog
+          location={createAt}
+          creator={me}
+          onClose={() => setCreateAt(null)}
+          onCreated={(ticket) => {
+            setCreateAt(null)
+            setFlyTo({ lat: ticket.lat, lng: ticket.lng, nonce: Date.now() })
+            setSelectedTicketId(ticket.id)
+            setEditorMode('view')
+            setEditorTab('details')
+            setEditorOpen(true)
           }}
         />
 

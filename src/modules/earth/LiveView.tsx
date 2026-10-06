@@ -94,7 +94,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   }, [selectionKind, site])
   const activeCameraId = primary === '360' ? site.cam360.id : site.ptz.id
   const scopedTickets = useMemo(
-    () => tickets.filter((ticket) => openedCameraIds.includes(ticket.cameraId)),
+    () => tickets.filter((ticket) => ticket.cameraId !== null && openedCameraIds.includes(ticket.cameraId)),
     [tickets, openedCameraIds],
   )
   const manageTickets = useMemo(
@@ -340,13 +340,13 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
           </Stack>
 
           <Stack direction="row" spacing={0.75} sx={{ position: 'absolute', top: 10, right: 10, alignItems: 'center', zIndex: 3 }}>
-            <Tooltip title={liveTicketView ? 'Improvements' : 'Enable ticket view to show history'}>
+            <Tooltip title={!liveTicketView ? 'Enable ticket view to show history' : completedCount === 0 ? 'No historical events for this camera' : 'Improvements'}>
               <Box component="span" sx={{ display: 'inline-flex' }}>
                 <IconButton
                   size="small"
                   aria-label="Improvements"
                   aria-pressed={showImprovements}
-                  disabled={!liveTicketView}
+                  disabled={!liveTicketView || completedCount === 0}
                   onClick={() => setShowImprovements((v) => !v)}
                   sx={(t) => ({
                     ...glass(t),

@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { EMPTY_FILTERS, type TicketFilterState, type TicketPinSize, type TicketTab } from '../modules/tickets/ticketFilters'
 
 /**
@@ -27,14 +27,42 @@ interface TicketQueryValue {
 
 const TicketQueryContext = createContext<TicketQueryValue | null>(null)
 
+const EARTH_VIEW_KEY = 'oe.earth.ticketView'
+const EARTH_PREVIEW_KEY = 'oe.earth.ticketPreview'
+
+function readFlag(key: string, fallback: boolean): boolean {
+  try {
+    const stored = window.localStorage.getItem(key)
+    return stored === null ? fallback : stored === 'true'
+  } catch {
+    return fallback
+  }
+}
+
+function writeFlag(key: string, on: boolean) {
+  try {
+    window.localStorage.setItem(key, String(on))
+  } catch {
+    // Storage can be unavailable (private mode); the toggle still works for this session.
+  }
+}
+
 export function TicketQueryProvider({ children }: { children: ReactNode }) {
   const [tab, setTab] = useState<TicketTab>('all')
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<TicketFilterState>(EMPTY_FILTERS)
   const [assignedToMe, setAssignedToMe] = useState(false)
-  const [earthTicketView, setEarthTicketView] = useState(true)
+  const [earthTicketView, setEarthTicketViewState] = useState(() => readFlag(EARTH_VIEW_KEY, true))
+  const setEarthTicketView = useCallback((on: boolean) => {
+    setEarthTicketViewState(on)
+    writeFlag(EARTH_VIEW_KEY, on)
+  }, [])
   const [liveTicketView, setLiveTicketView] = useState<Record<string, boolean>>({})
-  const [earthTicketPreview, setEarthTicketPreview] = useState(true)
+  const [earthTicketPreview, setEarthTicketPreviewState] = useState(() => readFlag(EARTH_PREVIEW_KEY, true))
+  const setEarthTicketPreview = useCallback((on: boolean) => {
+    setEarthTicketPreviewState(on)
+    writeFlag(EARTH_PREVIEW_KEY, on)
+  }, [])
   const [ticketSize, setTicketSize] = useState<TicketPinSize>('medium')
 
   const isLiveTicketView = (siteId: string) => liveTicketView[siteId] !== false

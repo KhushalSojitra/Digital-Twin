@@ -20,6 +20,7 @@ export function isTicketSource(value: unknown): value is TicketSource {
 }
 
 export function sourceForDevice(device: Pick<CameraDevice, 'kind'>): TicketSource {
+  if (device.kind === 'cctv') return 'CAMERA_CCTV'
   return device.kind === 'ptz' ? 'CAMERA_PTZ' : 'CAMERA_360'
 }
 
@@ -361,7 +362,16 @@ export function platformLabel(t: Pick<Ticket, 'platform' | 'platformName'>) {
   return t.platformName ?? (t.platform === 'custom' ? 'Custom platform' : PLATFORM_LABEL[t.platform])
 }
 
-export const ZONES = ['Perimeter', 'Pedestal', 'Promenade', 'Ferry landing', 'Seawall', 'Esplanade', 'Terminal approach', 'Museum entrance']
+export const ZONES = [
+  'Perimeter',
+  'Construction zone',
+  'Material storage',
+  'Site entrance',
+  'Production floor',
+  'Warehouse',
+  'Loading area',
+  'Entrance',
+]
 
 const PEOPLE = ['Ava Sharma', 'Michael Reed', 'Sarah Wilson']
 export const ASSIGNEES = PEOPLE
@@ -414,7 +424,7 @@ export function summariseBySite(tickets: Ticket[]): SummaryRow[] {
       id: site.id,
       label: site.name,
       stats: summarise(forSite),
-      cameras: [site.cam360, site.ptz].map((device) => ({
+      cameras: [site.cam360, site.ptz, ...site.cctv].map((device) => ({
         id: device.id,
         label: device.name,
         stats: summarise(forSite.filter((t) => t.cameraId === device.id)),

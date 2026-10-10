@@ -290,6 +290,7 @@ function NewTicketForm({ draft, creator, onSubmit, onCancel }: Props & { draft: 
 }
 
 function defaultZone(camera: CameraDevice) {
+  if (camera.zone) return ZONES.find((z) => z.toLowerCase() === camera.zone?.toLowerCase()) ?? ZONES[0]
   const tail = camera.name.split(' — ')[1] ?? ''
   return ZONES.find((z) => z.toLowerCase() === tail.toLowerCase()) ?? ZONES[0]
 }

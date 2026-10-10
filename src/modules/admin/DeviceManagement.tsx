@@ -20,7 +20,7 @@ export default function DeviceManagement() {
             {site.description}
           </Typography>
           <Stack spacing={0.5} sx={{ mt: 1 }}>
-            {[site.cam360, site.ptz].map((device) => (
+            {[site.cam360, site.ptz, ...site.cctv].map((device) => (
               <Typography key={device.id} variant="body2">
                 {device.name} · {kindLabel(device.kind)} · {device.ip}
               </Typography>

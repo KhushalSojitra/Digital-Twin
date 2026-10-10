@@ -74,8 +74,8 @@ function legacyCameraForRow(value: unknown) {
   const camera = matchingCamera(value)
   if (camera) return camera
 
-  const fallbackCamera = ALL_DEVICES.find((device) => device.id === 'ellis-360')
-  if (!fallbackCamera) throw new Error('Fallback camera profile ellis-360 is not configured')
+  const fallbackCamera = ALL_DEVICES.find((device) => device.id === 'construction-360')
+  if (!fallbackCamera) throw new Error('Fallback camera profile construction-360 is not configured')
   return fallbackCamera
 }
 

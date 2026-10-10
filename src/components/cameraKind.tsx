@@ -1,10 +1,12 @@
 import { Box } from '@mui/material'
 import ThreeSixtyRoundedIcon from '@mui/icons-material/ThreeSixtyRounded'
 import ControlCameraRoundedIcon from '@mui/icons-material/ControlCameraRounded'
-import type { SelectionKind } from '../data/cameras'
+import VideocamRoundedIcon from '@mui/icons-material/VideocamRounded'
+import type { DeviceKind, SelectionKind } from '../data/cameras'
 
-export function kindIcon(kind: SelectionKind, size = 18) {
+export function kindIcon(kind: SelectionKind | DeviceKind, size = 18) {
   const sx = { fontSize: size }
+  if (kind === 'cctv') return <VideocamRoundedIcon sx={sx} />
   if (kind === '360') return <ThreeSixtyRoundedIcon sx={sx} />
   if (kind === 'ptz') return <ControlCameraRoundedIcon sx={sx} />
   return (
@@ -15,7 +17,8 @@ export function kindIcon(kind: SelectionKind, size = 18) {
   )
 }
 
-export function kindLabel(kind: SelectionKind) {
+export function kindLabel(kind: SelectionKind | DeviceKind) {
+  if (kind === 'cctv') return 'CCTV camera'
   if (kind === '360') return '360° camera'
   if (kind === 'ptz') return 'PTZ camera'
   return '360° + PTZ combo'

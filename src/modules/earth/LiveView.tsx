@@ -5,7 +5,9 @@ import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import ConfirmationNumberOutlinedIcon from '@mui/icons-material/ConfirmationNumberOutlined'
-import type { CameraDevice, CameraSite, DeviceKind, SelectionKind } from '../../data/cameras'
+import { getDevice, type CameraDevice, type CameraSite, type LiveDeviceKind, type SelectionKind } from '../../data/cameras'
+import CctvLayer from './CctvLayer'
+import CctvPopup from './CctvPopup'
 import { isHistoricalTicket, type NewTicketInput, type Ticket } from '../../data/tickets'
 import PanoramaViewer, { type ViewerStatus } from './PanoramaViewer'
 import LiveOverlay from './LiveOverlay'
@@ -58,7 +60,8 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   const me = currentUser?.displayName ?? 'Ava Sharma'
   const canEdit = currentUser?.role !== 'Viewer'
 
-  const [primary, setPrimary] = useState<DeviceKind>(selectionKind === 'ptz' ? 'ptz' : '360')
+  const [primary, setPrimary] = useState<LiveDeviceKind>(selectionKind === 'ptz' ? 'ptz' : '360')
+  const [cctvOpen, setCctvOpen] = useState<{ device: CameraDevice; x: number; y: number } | null>(null)
   const [status360, setStatus360] = useState<ViewerStatus>('loading')
   const [statusPtz, setStatusPtz] = useState<ViewerStatus>('loading')
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
@@ -89,21 +92,32 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
 
   const openedCameraIds = useMemo(() => {
     if (selectionKind === 'ptz') return [site.ptz.id]
-    if (selectionKind === '360') return [site.cam360.id]
-    return [site.cam360.id, site.ptz.id]
+    const cctvIds = site.cctv.map((device) => device.id)
+    if (selectionKind === '360') return [site.cam360.id, ...cctvIds]
+    return [site.cam360.id, site.ptz.id, ...cctvIds]
   }, [selectionKind, site])
-  const activeCameraId = primary === '360' ? site.cam360.id : site.ptz.id
+  const activeCameraIds = useMemo(
+    () => (primary === '360' ? [site.cam360.id, ...site.cctv.map((device) => device.id)] : [site.ptz.id]),
+    [primary, site],
+  )
   const scopedTickets = useMemo(
     () => tickets.filter((ticket) => ticket.cameraId !== null && openedCameraIds.includes(ticket.cameraId)),
     [tickets, openedCameraIds],
   )
   const manageTickets = useMemo(
     () => applyTicketQuery(
-      scopedTickets.filter((ticket) => selectionKind === 'combo' ? ticket.cameraId === activeCameraId : true),
+      scopedTickets.filter((ticket) => selectionKind === 'combo' ? activeCameraIds.includes(ticket.cameraId ?? '') : true),
       { tab: 'all', search: '', filters, me, assignedToMe: false },
     ),
-    [scopedTickets, filters, me, selectionKind, activeCameraId],
+    [scopedTickets, filters, me, selectionKind, activeCameraIds],
   )
+  const cctvOpenCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const ticket of scopedTickets) {
+      if (ticket.cameraId && !isHistoricalTicket(ticket)) counts[ticket.cameraId] = (counts[ticket.cameraId] ?? 0) + 1
+    }
+    return counts
+  }, [scopedTickets])
   const completedCount = useMemo(() => manageTickets.filter(isHistoricalTicket).length, [manageTickets])
   const overlayTickets = useMemo(
     () => liveTicketView
@@ -135,7 +149,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   const handlePointClick = useCallback(
     (device: CameraDevice, dir: Direction) => {
       if (device.kind === '360') aimPtz(dir)
-      else aim360(dir)
+      else if (device.kind === 'ptz') aim360(dir)
     },
     [aimPtz, aim360],
   )
@@ -176,8 +190,11 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   const targetTimer = useRef<number | null>(null)
   const goToTicket = useCallback(
     (ticket: Ticket) => {
-      const device = ticket.cameraId === site.ptz.id ? site.ptz : site.cam360
-      setPrimary(device.kind)
+      const device = getDevice(ticket.cameraId) ?? site.cam360
+      setPrimary(device.kind === 'ptz' ? 'ptz' : '360')
+      if (device.kind === 'cctv' && device.siteId === site.id) {
+        setCctvOpen({ device, x: window.innerWidth / 2, y: Math.round(window.innerHeight * 0.3) })
+      }
       setSelectedTicketId(ticket.id)
       setTargetTicketId(ticket.id)
       aim360(ticket)
@@ -257,6 +274,13 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
         phase={cam360.phase}
       />
       {markerLayer(compact)}
+      <CctvLayer
+        cameras={site.cctv}
+        openCounts={liveTicketView ? cctvOpenCounts : {}}
+        activeId={cctvOpen?.device.id ?? null}
+        compact={compact}
+        onSelect={(device, screen) => setCctvOpen({ device, x: screen.clientX, y: screen.clientY })}
+      />
     </PanoramaViewer>
   )
 
@@ -444,6 +468,21 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
             Create Ticket
           </MenuItem>
         </Menu>
+
+        {cctvOpen && (
+          <CctvPopup
+            key={cctvOpen.device.id}
+            device={cctvOpen.device}
+            site={site}
+            anchor={{ x: cctvOpen.x, y: cctvOpen.y }}
+            tickets={scopedTickets.filter((ticket) => ticket.cameraId === cctvOpen.device.id)}
+            canEdit={canEdit}
+            liveTicketView={liveTicketView}
+            onClose={() => setCctvOpen(null)}
+            onCreate={(draft) => setEditor({ mode: 'create', draft })}
+            onOpenTicket={(ticket) => selectTicket(ticket)}
+          />
+        )}
 
         <TicketManageDialog
           open={manageOpen}

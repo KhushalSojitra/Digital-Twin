@@ -27,6 +27,8 @@ export interface CameraDevice {
   view?: { yaw: number; pitch: number; fov: number }
   /** Fixed CCTV only: the area of the premise it covers. */
   zone?: string
+  /** Fixed CCTV only: what the 360° head cannot inspect properly that this camera covers. */
+  blindSpot?: string
 }
 
 export interface CameraSite {
@@ -59,12 +61,13 @@ export const HOME_LOCATION = {
   label: 'OominiEye Industrial Estate — Port Newark',
 }
 
-type DeviceSpec = Omit<CameraDevice, 'siteId' | 'kind' | 'id' | 'streamLabel' | 'view' | 'zone'>
+type DeviceSpec = Omit<CameraDevice, 'siteId' | 'kind' | 'id' | 'streamLabel' | 'view' | 'zone' | 'blindSpot'>
 
 interface CctvSpec {
   slot: string
   name: string
   zone: string
+  blindSpot: string
   view: { yaw: number; pitch: number; fov: number }
   status?: DeviceStatus
 }
@@ -94,6 +97,7 @@ const site = (
     kind: 'cctv',
     name: spec.name,
     zone: spec.zone,
+    blindSpot: spec.blindSpot,
     view: spec.view,
     model: 'OE-Fixed 4K Bullet',
     lat: cam360.lat,
@@ -134,9 +138,9 @@ export const SITES: CameraSite[] = [
       ip: '10.40.1.12',
     },
     [
-      { slot: 'zone', name: 'Construction Zone CCTV', zone: 'Construction zone', view: { yaw: 64, pitch: -12, fov: 34 } },
-      { slot: 'storage', name: 'Material Storage CCTV', zone: 'Material storage', view: { yaw: 237, pitch: -28, fov: 36 } },
-      { slot: 'entrance', name: 'Site Entrance CCTV', zone: 'Site entrance', view: { yaw: 272, pitch: -46, fov: 34 } },
+    { slot: 'zone', name: 'Construction Zone CCTV', zone: 'Construction zone', blindSpot: 'Rear face of the tower block, hidden behind the structure from the crane head', view: { yaw: 14, pitch: -14, fov: 32 } },
+    { slot: 'storage', name: 'Material Storage CCTV', zone: 'Material storage', blindSpot: 'Gap between the container stack and the perimeter fence', view: { yaw: 199, pitch: -22, fov: 30 } },
+    { slot: 'entrance', name: 'Site Entrance CCTV', zone: 'Site entrance', blindSpot: 'Gate and approach road, foreshortened directly beneath the crane head', view: { yaw: 283, pitch: -50, fov: 30 } },
     ],
     { yaw: 100, pitch: -18, fov: 22 },
   ),
@@ -167,10 +171,10 @@ export const SITES: CameraSite[] = [
       ip: '10.40.2.12',
     },
     [
-      { slot: 'production', name: 'Production Floor CCTV', zone: 'Production floor', view: { yaw: 183, pitch: -16, fov: 36 } },
-      { slot: 'warehouse', name: 'Warehouse CCTV', zone: 'Warehouse', view: { yaw: 230, pitch: -4, fov: 34 } },
-      { slot: 'entrance', name: 'Entrance CCTV', zone: 'Entrance', view: { yaw: 289, pitch: -10, fov: 32 } },
-      { slot: 'loading', name: 'Loading Area CCTV', zone: 'Loading area', view: { yaw: 336, pitch: -8, fov: 34 } },
+    { slot: 'production', name: 'Production Floor CCTV', zone: 'Production floor', blindSpot: 'Behind the CNC machining cell, screened by the machines', view: { yaw: 135, pitch: -14, fov: 34 } },
+    { slot: 'warehouse', name: 'Warehouse CCTV', zone: 'Warehouse', blindSpot: 'Aisle ends behind the racking and the forklift lane', view: { yaw: 240, pitch: -8, fov: 28 } },
+    { slot: 'entrance', name: 'Entrance CCTV', zone: 'Entrance', blindSpot: 'Door under the mezzanine, hidden by the office structure', view: { yaw: 295, pitch: -14, fov: 28 } },
+    { slot: 'loading', name: 'Loading Area CCTV', zone: 'Loading area', blindSpot: 'Dock doors and trailer bays, blocked by door frames and stacked pallets', view: { yaw: 342, pitch: -10, fov: 28 } },
     ],
     { yaw: 175, pitch: -22, fov: 22 },
   ),
@@ -201,10 +205,10 @@ export const SITES: CameraSite[] = [
       ip: '10.40.3.12',
     },
     [
-      { slot: 'production', name: 'Production CCTV', zone: 'Production floor', view: { yaw: 54, pitch: -20, fov: 36 } },
-      { slot: 'warehouse', name: 'Warehouse CCTV', zone: 'Warehouse', view: { yaw: 232, pitch: 2, fov: 34 } },
-      { slot: 'loading', name: 'Loading Area CCTV', zone: 'Loading area', view: { yaw: 312, pitch: -6, fov: 34 } },
-      { slot: 'entrance', name: 'Entrance CCTV', zone: 'Entrance', view: { yaw: 350, pitch: -22, fov: 30 } },
+    { slot: 'production', name: 'Production CCTV', zone: 'Production floor', blindSpot: 'Welding bay behind the press and the steel columns', view: { yaw: 40, pitch: -14, fov: 30 } },
+    { slot: 'warehouse', name: 'Warehouse CCTV', zone: 'Warehouse', blindSpot: 'Far side of the racking, behind the pallet stacks', view: { yaw: 262, pitch: -12, fov: 30 } },
+    { slot: 'loading', name: 'Loading Area CCTV', zone: 'Loading area', blindSpot: 'Trailer bay partly screened by the forklift lane and the door frame', view: { yaw: 318, pitch: -9, fov: 28 } },
+    { slot: 'entrance', name: 'Entrance CCTV', zone: 'Entrance', blindSpot: 'Turnstile entrance behind the door frame and gates', view: { yaw: 350, pitch: -24, fov: 26 } },
     ],
     { yaw: 124, pitch: -30, fov: 22 },
   ),

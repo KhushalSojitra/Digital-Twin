@@ -30,6 +30,8 @@ interface Props {
   cssFilter?: string
   /** Receives a handle for grabbing still frames from this camera. */
   apiRef?: MutableRefObject<ViewerApi | null>
+  /** Shows a crosshair cursor, signalling that the next click picks a location. */
+  pickCursor?: boolean
   children?: ReactNode
 }
 
@@ -95,6 +97,7 @@ export default function PanoramaViewer({
   pairedColor = '#0A84FF',
   cssFilter,
   apiRef,
+  pickCursor,
   children,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -250,11 +253,26 @@ export default function PanoramaViewer({
     snapCanvas.width = 480
     snapCanvas.height = 300
 
-    const captureAt: ViewerApi['captureAt'] = (dir, fov = 30, treatment = 'none') => {
+    const markVec = new THREE.Vector3()
+    const markInFrame = (mark: Direction, centre: THREE.Vector3) => {
+      directionToVector(mark, markVec)
+      if (markVec.dot(centre) < 0.2) return false
+      markVec.project(snapCamera)
+      return Math.abs(markVec.x) <= 0.82 && Math.abs(markVec.y) <= 0.82
+    }
+
+    const captureAt: ViewerApi['captureAt'] = (dir, fov = 30, treatment = 'none', marks = []) => {
       if (!material.map) return null
-      snapCamera.fov = fov
-      snapCamera.updateProjectionMatrix()
-      snapCamera.lookAt(directionToVector(dir))
+      const centre = directionToVector(dir).clone()
+      snapCamera.lookAt(centre)
+      let frameFov = fov
+      for (let attempt = 0; attempt < 8; attempt++) {
+        snapCamera.fov = frameFov
+        snapCamera.updateProjectionMatrix()
+        snapCamera.updateMatrixWorld(true)
+        if (marks.every((mark) => markInFrame(mark, centre))) break
+        frameFov = Math.min(110, frameFov * 1.18)
+      }
       renderer.setRenderTarget(snapTarget)
       renderer.render(scene, snapCamera)
       renderer.readRenderTargetPixels(snapTarget, 0, 0, 480, 300, snapBuffer)
@@ -269,7 +287,43 @@ export default function PanoramaViewer({
         image.data.set(snapBuffer.subarray(src, src + 480 * 4), y * 480 * 4)
       }
       ctx.putImageData(image, 0, 0)
-      return toTreatedDataUrl(snapCanvas, treatment)
+
+      const pins: { x: number; y: number }[] = []
+      for (const mark of marks) {
+        directionToVector(mark, markVec)
+        if (markVec.dot(centre) <= 0) continue
+        markVec.project(snapCamera)
+        pins.push({ x: ((markVec.x + 1) / 2) * 480, y: ((1 - markVec.y) / 2) * 300 })
+      }
+      return toTreatedDataUrl(snapCanvas, treatment, (out) => {
+        for (const pin of pins) {
+          out.save()
+          out.translate(pin.x, pin.y)
+          out.lineCap = 'round'
+          const stroke = (style: string, width: number) => {
+            out.strokeStyle = style
+            out.lineWidth = width
+            out.beginPath()
+            out.arc(0, 0, 13, 0, Math.PI * 2)
+            for (const [sx, sy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              out.moveTo(sx * 17, sy * 17)
+              out.lineTo(sx * 25, sy * 25)
+            }
+            out.stroke()
+          }
+          stroke('#ffffff', 7)
+          stroke('#0A84FF', 3.5)
+          out.fillStyle = '#ffffff'
+          out.beginPath()
+          out.arc(0, 0, 5.5, 0, Math.PI * 2)
+          out.fill()
+          out.fillStyle = '#0A84FF'
+          out.beginPath()
+          out.arc(0, 0, 3.5, 0, Math.PI * 2)
+          out.fill()
+          out.restore()
+        }
+      })
     }
     if (apiRef) apiRef.current = { captureAt }
 
@@ -511,7 +565,11 @@ export default function PanoramaViewer({
           position: 'absolute',
           inset: 0,
           filter: cssFilter,
-          '& canvas': { width: '100% !important', height: '100% !important' },
+          '& canvas': {
+            width: '100% !important',
+            height: '100% !important',
+            ...(pickCursor ? { cursor: 'crosshair !important' } : {}),
+          },
         }}
       />
       <Box

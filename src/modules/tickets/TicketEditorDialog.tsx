@@ -39,6 +39,7 @@ import {
   snapshotFromProof,
   snapshotIsProof,
   type NewTicketInput,
+  type PinView,
   type Ticket,
   type TicketPriority,
 } from '../../data/tickets'
@@ -57,6 +58,8 @@ export interface CreateDraft {
   yaw: number
   pitch: number
   zoom: number
+  /** What the camera was showing when the location was pinned. */
+  view?: PinView
 }
 
 interface Props {
@@ -183,7 +186,11 @@ function CreateForm({
     if (!title.trim()) return
     const captureProof = snapshotPolicy === 'always' ? true : snapshotPolicy === 'disabled' ? false : proof
     const snapshots = snapshotFromProof(captureProof)
-    const src = snapshots.captureCreation ? capture?.(draft.camera.id, { yaw: draft.yaw, pitch: draft.pitch }, 'before') : null
+    const { view } = draft
+    const frame = view ? { yaw: view.yaw, pitch: view.pitch } : { yaw: draft.yaw, pitch: draft.pitch }
+    const src = snapshots.captureCreation
+      ? capture?.(draft.camera.id, frame, 'before', { fov: view?.fov, marks: [{ yaw: draft.yaw, pitch: draft.pitch }] })
+      : null
     setIsSubmitting(true)
     setCreateError('')
     try {
@@ -198,11 +205,14 @@ function CreateForm({
         platform: 'default',
         platformName: TICKETING_SYSTEM,
         snapshotConfig: snapshots,
-        creationSnapshot: src ? { src, at: new Date().toISOString(), by: creator, yaw: draft.yaw, pitch: draft.pitch } : undefined,
+        creationSnapshot: src
+          ? { src, at: new Date().toISOString(), by: creator, yaw: frame.yaw, pitch: frame.pitch, cameraId: draft.camera.id, view }
+          : undefined,
         cameraId: draft.camera.id,
         yaw: draft.yaw,
         pitch: draft.pitch,
         zoom: draft.zoom,
+        pinView: view,
       })
     } catch (error) {
       setCreateError(error instanceof Error ? error.message : 'Ticket could not be saved to the cloud.')

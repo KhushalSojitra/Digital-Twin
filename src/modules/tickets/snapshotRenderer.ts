@@ -63,7 +63,11 @@ function ensureStage() {
 }
 
 /** Applies the treatment and re-encodes, so snapshots stay small enough to keep in memory. */
-export function toTreatedDataUrl(source: CanvasImageSource, treatment: SnapshotTreatment = 'none') {
+export function toTreatedDataUrl(
+  source: CanvasImageSource,
+  treatment: SnapshotTreatment = 'none',
+  decorate?: (ctx: CanvasRenderingContext2D, size: { width: number; height: number }) => void,
+) {
   const out = document.createElement('canvas')
   out.width = WIDTH
   out.height = HEIGHT
@@ -71,6 +75,8 @@ export function toTreatedDataUrl(source: CanvasImageSource, treatment: SnapshotT
   if (!ctx) return ''
   if (treatment !== 'none') ctx.filter = TREATMENT_FILTER[treatment]
   ctx.drawImage(source, 0, 0, WIDTH, HEIGHT)
+  ctx.filter = 'none'
+  decorate?.(ctx, { width: WIDTH, height: HEIGHT })
   return out.toDataURL('image/jpeg', 0.72)
 }
 

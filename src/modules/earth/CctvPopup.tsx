@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type MutableRefObject, type ReactNode } from 'react'
 import { Box, Button, Chip, Dialog, IconButton, List, ListItemButton, ListItemText, Popover, Stack, Tooltip, Typography } from '@mui/material'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import FullscreenRoundedIcon from '@mui/icons-material/FullscreenRounded'
@@ -7,7 +7,8 @@ import ConfirmationNumberOutlinedIcon from '@mui/icons-material/ConfirmationNumb
 import type { CameraDevice, CameraSite } from '../../data/cameras'
 import { isHistoricalTicket, STATUS_COLOR, STATUS_LABEL, type Ticket } from '../../data/tickets'
 import PanoramaViewer from './PanoramaViewer'
-import TicketMarkerLayer from './TicketMarkerLayer'
+import TicketMarkerLayer, { type DraftMarker } from './TicketMarkerLayer'
+import type { ViewerApi } from './viewerProjection'
 import { CCTV_STATUS_COLOR } from './CctvLayer'
 import { zoomFactor, type Direction } from './panoramaMath'
 import { wrapDeg } from '../../utils/format'
@@ -20,6 +21,9 @@ interface Props {
   tickets: Ticket[]
   canEdit: boolean
   liveTicketView: boolean
+  /** Marker for a ticket being created on this camera, kept visible while the form is open. */
+  draft: DraftMarker | null
+  apiRef: MutableRefObject<ViewerApi | null>
   onClose: () => void
   onCreate: (draft: CreateDraft) => void
   onOpenTicket: (ticket: Ticket) => void
@@ -27,20 +31,28 @@ interface Props {
 
 const noop = () => {}
 
-/** Fixed-lens CCTV feed: the camera cannot pan or zoom, but clicks and right-clicks still pick a point. */
+/** Fixed-lens CCTV feed: the camera cannot pan or zoom, but a click in pin mode or a right-click picks a point. */
 function FixedFeed({
   device,
   site,
   tickets,
   compact,
+  pinning,
+  draft,
+  apiRef,
   onPick,
+  onCancelPin,
   onSelectTicket,
 }: {
   device: CameraDevice
   site: CameraSite
   tickets: Ticket[]
   compact: boolean
+  pinning: boolean
+  draft: DraftMarker | null
+  apiRef: MutableRefObject<ViewerApi | null>
   onPick?: (dir: Direction) => void
+  onCancelPin: () => void
   onSelectTicket: (ticket: Ticket) => void
 }) {
   const view = device.view ?? { yaw: 0, pitch: 0, fov: 40 }
@@ -56,11 +68,40 @@ function FixedFeed({
         fovRange={[view.fov, view.fov]}
         pitchRange={[view.pitch, view.pitch]}
         onViewChange={noop}
+        onPointClick={pinning && onPick ? (dir) => onPick(dir) : undefined}
         onPointContextMenu={onPick ? (dir) => onPick(dir) : undefined}
+        apiRef={apiRef}
+        pickCursor={pinning}
         cssFilter={device.status === 'offline' ? 'grayscale(1) brightness(0.4)' : 'contrast(1.04) saturate(0.92)'}
       >
-        <TicketMarkerLayer tickets={tickets} selectedId={null} compact={compact} onSelect={onSelectTicket} />
+        <TicketMarkerLayer tickets={tickets} selectedId={null} draft={draft} compact={compact} onSelect={onSelectTicket} />
       </PanoramaViewer>
+      {pinning && (
+        <Stack
+          direction="row"
+          spacing={1}
+          role="status"
+          sx={{
+            position: 'absolute',
+            left: 8,
+            right: 8,
+            bottom: 8,
+            alignItems: 'center',
+            px: 1.25,
+            py: 0.75,
+            borderRadius: '10px',
+            bgcolor: 'rgba(10,132,255,0.92)',
+            color: '#fff',
+          }}
+        >
+          <Typography sx={{ flex: 1, fontSize: compact ? 11.5 : 13, fontWeight: 700, lineHeight: 1.3 }}>
+            Pin Ticket Location: click on the camera view to mark the incident location.
+          </Typography>
+          <Button size="small" onClick={onCancelPin} sx={{ color: '#fff', fontWeight: 700, minWidth: 0, flexShrink: 0 }}>
+            Cancel
+          </Button>
+        </Stack>
+      )}
       <Stack
         direction="row"
         spacing={0.75}
@@ -75,8 +116,9 @@ function FixedFeed({
   )
 }
 
-export default function CctvPopup({ device, site, anchor, tickets, canEdit, liveTicketView, onClose, onCreate, onOpenTicket }: Props) {
+export default function CctvPopup({ device, site, anchor, tickets, canEdit, liveTicketView, draft, apiRef, onClose, onCreate, onOpenTicket }: Props) {
   const [fullscreen, setFullscreen] = useState(false)
+  const [pinning, setPinning] = useState(false)
   const openTickets = tickets.filter((t) => !isHistoricalTicket(t))
   const markerTickets = liveTicketView ? openTickets : []
   const view = device.view ?? { yaw: 0, pitch: 0, fov: 40 }
@@ -86,8 +128,15 @@ export default function CctvPopup({ device, site, anchor, tickets, canEdit, live
     yaw: wrapDeg(dir.yaw),
     pitch: dir.pitch,
     zoom: zoomFactor(view.fov),
+    view: { yaw: view.yaw, pitch: view.pitch, fov: view.fov },
   })
-  const pick = canEdit ? (dir: Direction) => onCreate(draftAt(dir)) : undefined
+  const pick = canEdit
+    ? (dir: Direction) => {
+        setPinning(false)
+        onCreate(draftAt(dir))
+      }
+    : undefined
+  const feedProps = { device, site, tickets: markerTickets, pinning, draft, apiRef, onPick: pick, onCancelPin: () => setPinning(false), onSelectTicket: onOpenTicket }
 
   const header = (trailing: ReactNode) => (
     <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 1.75, py: 1.25 }}>
@@ -119,7 +168,8 @@ export default function CctvPopup({ device, site, anchor, tickets, canEdit, live
       size="small"
       variant="contained"
       startIcon={<ConfirmationNumberOutlinedIcon fontSize="small" />}
-      onClick={() => onCreate(draftAt(view))}
+      onClick={() => setPinning(true)}
+      disabled={pinning}
       sx={{ borderRadius: '999px', fontWeight: 700 }}
     >
       Create Ticket
@@ -148,11 +198,11 @@ export default function CctvPopup({ device, site, anchor, tickets, canEdit, live
             )}
           </Box>
           <Box sx={{ flex: 1, minHeight: 0 }}>
-            <FixedFeed device={device} site={site} tickets={markerTickets} compact={false} onPick={pick} onSelectTicket={onOpenTicket} />
+            <FixedFeed {...feedProps} compact={false} />
           </Box>
           {canEdit && (
             <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', textAlign: 'center', py: 0.75 }}>
-              Right-click or double-click a point in the feed to create a ticket there.
+              Use Create Ticket, then click the feed to pin the incident location.
             </Typography>
           )}
         </Stack>
@@ -186,7 +236,7 @@ export default function CctvPopup({ device, site, anchor, tickets, canEdit, live
         </Stack>,
       )}
       <Box sx={{ aspectRatio: '16 / 9', width: '100%' }}>
-        <FixedFeed device={device} site={site} tickets={markerTickets} compact onPick={pick} onSelectTicket={onOpenTicket} />
+        <FixedFeed {...feedProps} compact />
       </Box>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', px: 1.75, pt: 1.25 }}>
         <Typography sx={{ fontSize: 11.5, color: 'text.secondary' }} noWrap>

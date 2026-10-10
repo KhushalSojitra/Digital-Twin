@@ -47,6 +47,13 @@ export interface TicketComment {
   text: string
 }
 
+/** The camera view (centre and vertical field of view) an incident was pinned in. */
+export interface PinView {
+  yaw: number
+  pitch: number
+  fov: number
+}
+
 export interface Snapshot {
   /** Data URL of the frame grabbed from the camera. */
   src: string
@@ -55,6 +62,16 @@ export interface Snapshot {
   /** Camera orientation the frame was grabbed at. */
   yaw: number
   pitch: number
+  /** Camera the frame came from. Frames saved before cameras were tagged have none. */
+  cameraId?: string
+  /** View the frame shows. */
+  view?: PinView
+}
+
+/** True when a stored frame can be shown for the ticket: untagged legacy frames, or frames from the ticket's own camera. */
+export function snapshotMatchesTicket(ticket: Pick<Ticket, 'cameraId'>, shot: Snapshot | undefined): shot is Snapshot {
+  if (!shot) return false
+  return !shot.cameraId || shot.cameraId === ticket.cameraId
 }
 
 export interface SnapshotConfig {
@@ -102,6 +119,8 @@ export interface Ticket {
   pitch: number
   /** PTZ optical zoom the ticket was framed at, relative to a 60° reference lens. */
   zoom: number
+  /** Camera view the incident was pinned in, so the exact viewpoint can be reproduced. */
+  pinView?: PinView
   /** Ground distance from the site's 360° head, used to place the ticket on the Earth view. */
   distanceM: number
   lat: number
@@ -112,6 +131,7 @@ export type NewTicketInput = Pick<
   Ticket,
   'title' | 'description' | 'priority' | 'type' | 'cameraId' | 'zone' | 'assignee' | 'yaw' | 'pitch' | 'zoom' | 'platform' | 'platformName'
 > & {
+  pinView?: PinView
   creator: string
   distanceM?: number
   followers?: string[]
@@ -308,6 +328,7 @@ export function createTicket(input: NewTicketInput, id = `OE-${crypto.randomUUID
     yaw,
     pitch,
     zoom,
+    pinView: input.pinView,
     distanceM,
     ...locateOnEarth(device.siteId, yaw, distanceM),
   }

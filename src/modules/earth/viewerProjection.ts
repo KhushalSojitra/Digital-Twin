@@ -13,8 +13,11 @@ export type Projector = (dir: Direction) => ProjectedPoint
 export type FrameListener = (project: Projector, size: { width: number; height: number }) => void
 
 export interface ViewerApi {
-  /** Renders the live scene at `dir` and returns a JPEG data URL of that frame. */
-  captureAt: (dir: Direction, fov?: number, treatment?: SnapshotTreatment) => string | null
+  /**
+   * Renders the live scene at `dir` and returns a JPEG data URL of that frame. Any `marks` are drawn
+   * as pins on the frame, and the field of view widens as needed so every mark stays inside it.
+   */
+  captureAt: (dir: Direction, fov?: number, treatment?: SnapshotTreatment, marks?: Direction[]) => string | null
 }
 
 export interface ProjectionHub {

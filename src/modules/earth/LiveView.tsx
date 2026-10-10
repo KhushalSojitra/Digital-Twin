@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Box, Button, Chip, IconButton, Menu, MenuItem, Paper, Stack, Tooltip, useMediaQuery, useTheme, type Theme } from '@mui/material'
+import { Badge, Box, Button, Chip, IconButton, Menu, MenuItem, Paper, Stack, Tooltip, Typography, useMediaQuery, useTheme, type Theme } from '@mui/material'
 import ArrowBackIosNewRoundedIcon from '@mui/icons-material/ArrowBackIosNewRounded'
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
@@ -74,17 +74,29 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
     draft?: CreateDraft | null
     tab?: 'details' | 'activity'
   } | null>(null)
-  const [context, setContext] = useState<{ device: CameraDevice; draft: CreateDraft; x: number; y: number } | null>(null)
+  const [context, setContext] = useState<{ device: CameraDevice; x: number; y: number } | null>(null)
+  const [pinning, setPinning] = useState<CameraDevice | null>(null)
   const api360 = useRef<ViewerApi | null>(null)
   const apiPtz = useRef<ViewerApi | null>(null)
+  const apiCctv = useRef<ViewerApi | null>(null)
 
   const capture = useCallback<CaptureFn>(
-    (cameraId, dir, treatment) => {
-      const ref = cameraId === site.ptz.id ? apiPtz : api360
-      return ref.current?.captureAt(dir, 26, treatment) ?? api360.current?.captureAt(dir, 26, treatment) ?? null
+    (cameraId, dir, treatment, options) => {
+      const ref =
+        cameraId === site.ptz.id ? apiPtz : cameraId === site.cam360.id ? api360 : cameraId === cctvOpen?.device.id ? apiCctv : null
+      return ref?.current?.captureAt(dir, options?.fov ?? 26, treatment, options?.marks) ?? null
     },
-    [site.ptz.id],
+    [site.ptz.id, site.cam360.id, cctvOpen?.device.id],
   )
+
+  useEffect(() => {
+    if (!pinning) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPinning(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [pinning])
 
   const home360: View = { yaw: site.home.yaw, pitch: 0, fov: 90 }
   const cam360 = useCameraChannel(home360, { latencyMs: 180 })
@@ -146,26 +158,54 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
     [cam360],
   )
 
+  const pickPin = useCallback(
+    (device: CameraDevice, dir: Direction) => {
+      const shown = device.kind === 'ptz' ? ptz.actual : cam360.actual
+      setPinning(null)
+      setContext(null)
+      setEditor({
+        mode: 'create',
+        draft: {
+          camera: device,
+          yaw: wrapDeg(dir.yaw),
+          pitch: dir.pitch,
+          zoom: zoomFactor(ptz.actual.fov),
+          view: { yaw: shown.yaw, pitch: shown.pitch, fov: shown.fov },
+        },
+      })
+    },
+    [ptz.actual, cam360.actual],
+  )
+
   const handlePointClick = useCallback(
     (device: CameraDevice, dir: Direction) => {
+      if (pinning) {
+        if (pinning.id === device.id) pickPin(device, dir)
+        return
+      }
       if (device.kind === '360') aimPtz(dir)
       else if (device.kind === 'ptz') aim360(dir)
     },
-    [aimPtz, aim360],
+    [pinning, pickPin, aimPtz, aim360],
   )
 
   const handlePointContextMenu = useCallback(
     (device: CameraDevice, dir: Direction, screen: { clientX: number; clientY: number }) => {
       if (!canEdit) return
-      setContext({
-        device,
-        draft: { camera: device, yaw: wrapDeg(dir.yaw), pitch: dir.pitch, zoom: zoomFactor(ptz.actual.fov) },
-        x: screen.clientX,
-        y: screen.clientY,
-      })
+      if (pinning) {
+        if (pinning.id === device.id) pickPin(device, dir)
+        return
+      }
+      setContext({ device, x: screen.clientX, y: screen.clientY })
     },
-    [canEdit, ptz.actual.fov],
+    [canEdit, pinning, pickPin],
   )
+
+  const startPinning = (device: CameraDevice) => {
+    setContext(null)
+    setPrimary(device.kind === 'ptz' ? 'ptz' : '360')
+    setPinning(device)
+  }
 
   const main = primary === '360' ? cam360 : ptz
   const mainPitch = primary === '360' ? PITCH_360 : PITCH_PTZ
@@ -262,6 +302,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
       onPointContextMenu={(dir, screen) => handlePointContextMenu(site.cam360, dir, screen)}
       onStatus={setStatus360}
       apiRef={api360}
+      pickCursor={pinning?.id === site.cam360.id}
       pairedView={ptz.target}
       pairedColor="#5AC8FA"
     >
@@ -299,6 +340,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
       onPointContextMenu={(dir, screen) => handlePointContextMenu(site.ptz, dir, screen)}
       onStatus={setStatusPtz}
       apiRef={apiPtz}
+      pickCursor={pinning?.id === site.ptz.id}
       cssFilter="contrast(1.06) saturate(1.08)"
     >
       <LiveOverlay
@@ -409,6 +451,38 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
             </Tooltip>
           </Stack>
 
+          {pinning && (
+            <Stack
+              direction="row"
+              spacing={1}
+              role="status"
+              sx={{
+                position: 'absolute',
+                top: 58,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 'max-content',
+                maxWidth: 'calc(100% - 24px)',
+                alignItems: 'center',
+                zIndex: 4,
+                pl: 1.75,
+                pr: 0.75,
+                py: 0.5,
+                borderRadius: '999px',
+                bgcolor: 'rgba(10,132,255,0.94)',
+                color: '#fff',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+              }}
+            >
+              <Typography sx={{ fontSize: { xs: 12.5, sm: 14 }, fontWeight: 700 }}>
+                Pin Ticket Location: click on the camera view to mark the incident location.
+              </Typography>
+              <Button size="small" onClick={() => setPinning(null)} sx={{ color: '#fff', fontWeight: 700, flexShrink: 0 }}>
+                Cancel
+              </Button>
+            </Stack>
+          )}
+
           <Box sx={{ position: 'absolute', left: 12, bottom: 12, transform: isSmall ? 'scale(0.82)' : 'none', transformOrigin: 'bottom left' }}>
             <PtzControls targetLabel={mainDevice.kind === '360' ? '360° camera' : 'PTZ camera'} onPan={pan} onZoom={zoom} onHome={goHome} />
           </Box>
@@ -459,9 +533,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
         >
           <MenuItem
             onClick={() => {
-              if (!context) return
-              setEditor({ mode: 'create', draft: context.draft })
-              setContext(null)
+              if (context) startPinning(context.device)
             }}
           >
             <ConfirmationNumberOutlinedIcon fontSize="small" sx={{ mr: 1 }} />
@@ -478,6 +550,12 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
             tickets={scopedTickets.filter((ticket) => ticket.cameraId === cctvOpen.device.id)}
             canEdit={canEdit}
             liveTicketView={liveTicketView}
+            draft={
+              editor?.mode === 'create' && editor.draft?.camera.id === cctvOpen.device.id
+                ? { yaw: editor.draft.yaw, pitch: editor.draft.pitch }
+                : null
+            }
+            apiRef={apiCctv}
             onClose={() => setCctvOpen(null)}
             onCreate={(draft) => setEditor({ mode: 'create', draft })}
             onOpenTicket={(ticket) => selectTicket(ticket)}

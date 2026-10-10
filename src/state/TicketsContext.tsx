@@ -12,6 +12,7 @@ import {
   nearestSiteId,
   sourceForDevice,
   type LifecycleState,
+  type PinView,
   type Snapshot,
   type Ticket,
   type TicketCreateInput,
@@ -83,6 +84,15 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
 }
 
+function pinViewFromDatabase(value: unknown): PinView | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const view = value as DatabaseRow
+  const yaw = Number(view.yaw)
+  const pitch = Number(view.pitch)
+  const fov = Number(view.fov)
+  return [yaw, pitch, fov].every(Number.isFinite) ? { yaw, pitch, fov } : undefined
+}
+
 function snapshotFromDatabase(value: unknown): Snapshot | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
   const snapshot = value as DatabaseRow
@@ -93,6 +103,8 @@ function snapshotFromDatabase(value: unknown): Snapshot | undefined {
     by: snapshot.by,
     yaw: numberValue(snapshot.yaw, 0),
     pitch: numberValue(snapshot.pitch, 0),
+    ...(typeof snapshot.cameraId === 'string' ? { cameraId: snapshot.cameraId } : {}),
+    ...(pinViewFromDatabase(snapshot.view) ? { view: pinViewFromDatabase(snapshot.view) } : {}),
   }
 }
 
@@ -128,6 +140,7 @@ function databaseRowForTicket(ticket: Ticket, includeIdentity = false): Database
         zone: ticket.zone,
         platform: ticket.platform,
         platformName: ticket.platformName,
+        pinView: ticket.pinView,
         followers: ticket.followers,
         snapshots: ticket.snapshots,
         snapshotConfig: ticket.snapshotConfig,
@@ -268,6 +281,7 @@ function ticketFromDatabase(value: unknown): Ticket {
     yaw,
     pitch,
     zoom,
+    pinView: pinViewFromDatabase(metadata.pinView),
     distanceM,
     lat,
     lng,

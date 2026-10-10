@@ -9,7 +9,8 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 4731,
-    strictPort: true,
+    // Let Vite select the next available port when the preview supervisor already owns 4731.
+    strictPort: false,
     allowedHosts: true,
   },
   preview: {

@@ -29,6 +29,8 @@ export interface CameraDevice {
   zone?: string
   /** Fixed CCTV only: what the 360° head cannot inspect properly that this camera covers. */
   blindSpot?: string
+  /** Optional dedicated still scene used by fixed CCTV previews. */
+  scene?: string
 }
 
 export interface CameraSite {
@@ -61,13 +63,14 @@ export const HOME_LOCATION = {
   label: 'OominiEye Industrial Estate — Port Newark',
 }
 
-type DeviceSpec = Omit<CameraDevice, 'siteId' | 'kind' | 'id' | 'streamLabel' | 'view' | 'zone' | 'blindSpot'>
+type DeviceSpec = Omit<CameraDevice, 'siteId' | 'kind' | 'id' | 'streamLabel' | 'view' | 'zone' | 'blindSpot' | 'scene'>
 
 interface CctvSpec {
   slot: string
   name: string
   zone: string
   blindSpot: string
+  scene?: string
   view: { yaw: number; pitch: number; fov: number }
   status?: DeviceStatus
 }
@@ -98,6 +101,7 @@ const site = (
     name: spec.name,
     zone: spec.zone,
     blindSpot: spec.blindSpot,
+    scene: spec.scene,
     view: spec.view,
     model: 'OE-Fixed 4K Bullet',
     lat: cam360.lat,
@@ -138,33 +142,33 @@ export const SITES: CameraSite[] = [
       ip: '10.40.1.12',
     },
     [
-    { slot: 'zone', name: 'Construction Zone CCTV', zone: 'Construction zone', blindSpot: 'Rear face of the tower block, hidden behind the structure from the crane head', view: { yaw: 14, pitch: -14, fov: 32 } },
-    { slot: 'storage', name: 'Material Storage CCTV', zone: 'Material storage', blindSpot: 'Gap between the container stack and the perimeter fence', view: { yaw: 199, pitch: -22, fov: 30 } },
-    { slot: 'entrance', name: 'Site Entrance CCTV', zone: 'Site entrance', blindSpot: 'Gate and approach road, foreshortened directly beneath the crane head', view: { yaw: 283, pitch: -50, fov: 30 } },
+    { slot: 'zone', name: 'Construction Zone CCTV', zone: 'Construction zone', blindSpot: 'Rear face of the tower block, hidden behind the structure from the crane head', scene: '/panoramas/construction_zone_cctv.png', view: { yaw: 0, pitch: 0, fov: 48 } },
+    { slot: 'storage', name: 'Material Storage CCTV', zone: 'Material storage', blindSpot: 'Gap between the container stack and the perimeter fence', scene: '/panoramas/material_storage_cctv.png', view: { yaw: 0, pitch: 0, fov: 48 } },
+    { slot: 'entrance', name: 'Site Entrance CCTV', zone: 'Site entrance', blindSpot: 'Gate and approach road, foreshortened directly beneath the crane head', scene: '/panoramas/site_entrance_cctv.png', view: { yaw: 0, pitch: 0, fov: 48 } },
     ],
     { yaw: 100, pitch: -18, fov: 22 },
   ),
   site(
     'factory-1',
-    'Factory 1',
+    'Warehouse',
     'factory',
     'Automated assembly plant — production line, warehouse and dispatch dock',
     '/panoramas/factory_1.png',
     {
-      name: 'Factory 1 360',
+      name: 'Warehouse 360',
       model: 'OE-360 Ultra · truss mount',
-      lat: 40.68618,
-      lng: -74.13985,
+      lat: 40.71684,
+      lng: -74.17692,
       mountHeightM: 8,
       headingDeg: 0,
       status: 'online',
       ip: '10.40.2.11',
     },
     {
-      name: 'Factory 1 PTZ',
+      name: 'Warehouse PTZ',
       model: 'OE-PTZ 40X',
-      lat: 40.68624,
-      lng: -74.13972,
+      lat: 40.71691,
+      lng: -74.17678,
       mountHeightM: 8,
       headingDeg: 0,
       status: 'online',
@@ -187,8 +191,8 @@ export const SITES: CameraSite[] = [
     {
       name: 'Factory 2 360',
       model: 'OE-360 Ultra · column mount',
-      lat: 40.68108,
-      lng: -74.15045,
+      lat: 40.66274,
+      lng: -74.18926,
       mountHeightM: 9,
       headingDeg: 0,
       status: 'online',
@@ -197,8 +201,8 @@ export const SITES: CameraSite[] = [
     {
       name: 'Factory 2 PTZ',
       model: 'OE-PTZ 40X',
-      lat: 40.68114,
-      lng: -74.15032,
+      lat: 40.66281,
+      lng: -74.18911,
       mountHeightM: 9,
       headingDeg: 0,
       status: 'degraded',

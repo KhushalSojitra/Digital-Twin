@@ -63,7 +63,7 @@ function FixedFeed({
       onWheelCapture={(e) => e.stopPropagation()}
     >
       <PanoramaViewer
-        src={site.panorama}
+        src={device.scene ?? site.panorama}
         view={view}
         fovRange={[view.fov, view.fov]}
         pitchRange={[view.pitch, view.pitch]}

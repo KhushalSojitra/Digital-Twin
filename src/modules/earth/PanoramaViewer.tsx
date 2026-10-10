@@ -37,25 +37,79 @@ interface Props {
 
 const textureCache = new Map<string, Promise<THREE.Texture>>()
 
+const MAX_TEXTURE_WIDTH = 4096
+const SHARPEN_AMOUNT = 0.45
+
+/** Light 3×3 unsharp pass that restores edge contrast lost to upscaling. */
+function sharpen(ctx: CanvasRenderingContext2D, width: number, height: number, amount: number) {
+  const image = ctx.getImageData(0, 0, width, height)
+  const src = image.data
+  const out = new Uint8ClampedArray(src.length)
+  const stride = width * 4
+  for (let y = 0; y < height; y++) {
+    const up = Math.max(0, y - 1) * stride
+    const row = y * stride
+    const down = Math.min(height - 1, y + 1) * stride
+    for (let x = 0; x < width; x++) {
+      const left = Math.max(0, x - 1) * 4
+      const mid = x * 4
+      const right = Math.min(width - 1, x + 1) * 4
+      for (let c = 0; c < 3; c++) {
+        const centre = src[row + mid + c]
+        const blur = (src[up + mid + c] + src[down + mid + c] + src[row + left + c] + src[row + right + c]) / 4
+        out[row + mid + c] = centre + (centre - blur) * amount
+      }
+      out[row + mid + 3] = 255
+    }
+  }
+  image.data.set(out)
+  ctx.putImageData(image, 0, 0)
+}
+
+/**
+ * Small source panoramas are upscaled once with high-quality resampling (instead of per-frame bilinear
+ * magnification) and lightly sharpened. Sources that are already large are used untouched.
+ */
+function buildTexture(image: HTMLImageElement): THREE.Texture {
+  const scale = image.naturalWidth >= 3000 ? 1 : Math.min(2, MAX_TEXTURE_WIDTH / image.naturalWidth)
+  let tex: THREE.Texture
+  if (scale > 1) {
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(image.naturalWidth * scale)
+    canvas.height = Math.round(image.naturalHeight * scale)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (ctx) {
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+      sharpen(ctx, canvas.width, canvas.height, SHARPEN_AMOUNT)
+      tex = new THREE.CanvasTexture(canvas)
+    } else {
+      tex = new THREE.Texture(image)
+    }
+  } else {
+    tex = new THREE.Texture(image)
+  }
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.minFilter = THREE.LinearMipmapLinearFilter
+  tex.magFilter = THREE.LinearFilter
+  tex.generateMipmaps = true
+  tex.needsUpdate = true
+  return tex
+}
+
 function loadTexture(src: string) {
   let pending = textureCache.get(src)
   if (!pending) {
     pending = new Promise<THREE.Texture>((resolve, reject) => {
-      new THREE.TextureLoader().load(
-        src,
-        (tex) => {
-          tex.colorSpace = THREE.SRGBColorSpace
-          tex.minFilter = THREE.LinearMipmapLinearFilter
-          tex.magFilter = THREE.LinearFilter
-          tex.generateMipmaps = true
-          resolve(tex)
-        },
-        undefined,
-        (err) => {
-          textureCache.delete(src)
-          reject(err)
-        },
-      )
+      const image = new Image()
+      image.crossOrigin = 'anonymous'
+      image.onload = () => resolve(buildTexture(image))
+      image.onerror = (err) => {
+        textureCache.delete(src)
+        reject(err)
+      }
+      image.src = src
     })
     textureCache.set(src, pending)
   }
@@ -108,6 +162,7 @@ export default function PanoramaViewer({
   const pairedCurrentRef = useRef<View | null>(pairedView ? { ...pairedView } : null)
   const movingRef = useRef(false)
   const draggingRef = useRef(false)
+  const committedViewsRef = useRef(new WeakSet<View>())
   const dirtyRef = useRef(true)
   const rangesRef = useRef({ fovRange, pitchRange })
   const smoothingRef = useRef(smoothing)
@@ -139,6 +194,8 @@ export default function PanoramaViewer({
   }, [fovRange, pitchRange, smoothing])
 
   useEffect(() => {
+    // Views produced by dragging are already applied; echoing them back would pull the camera backwards.
+    if (draggingRef.current || committedViewsRef.current.has(view)) return
     targetRef.current = view
     movingRef.current = true
     dirtyRef.current = true
@@ -335,9 +392,13 @@ export default function PanoramaViewer({
       const dt = Math.min(0.25, (now - last) / 1000)
       last = now
 
-      // Dragging tracks the pointer tightly; commands glide like a motorised head.
-      const rate = draggingRef.current ? 18 : smoothingRef.current
-      const alpha = 1 - Math.exp(-rate * dt)
+      // Commands glide like a motorised head; dragging bypasses easing and writes the view directly.
+      const alpha = 1 - Math.exp(-smoothingRef.current * dt)
+
+      if (draggingRef.current && now - lastReport > 100) {
+        lastReport = now
+        callbacksRef.current.onCurrentChange?.({ ...currentRef.current })
+      }
 
       let stillMoving = false
       if (movingRef.current) {
@@ -403,6 +464,16 @@ export default function PanoramaViewer({
       callbacksRef.current.onViewChange(merged)
     }
 
+    /** Applies a drag straight to the rendered view so the panorama stays under the cursor. */
+    const dragTo = (next: View) => {
+      targetRef.current = next
+      currentRef.current = { ...next }
+      movingRef.current = false
+      dirtyRef.current = true
+      committedViewsRef.current.add(next)
+      callbacksRef.current.onViewChange(next)
+    }
+
     const pickAt = (clientX: number, clientY: number) => {
       const rect = renderer.domElement.getBoundingClientRect()
       ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -(((clientY - rect.top) / rect.height) * 2 - 1))
@@ -435,6 +506,9 @@ export default function PanoramaViewer({
       downAt = performance.now()
       holdOpened = false
       draggingRef.current = true
+      // Grabbing mid-glide freezes the view where it is.
+      targetRef.current = { ...currentRef.current }
+      movingRef.current = false
       renderer.domElement.setPointerCapture(e.pointerId)
       renderer.domElement.style.cursor = 'grabbing'
       if (isCoarseTouch(e) && callbacksRef.current.onPointContextMenu) {
@@ -457,14 +531,23 @@ export default function PanoramaViewer({
       moved += Math.abs(dx) + Math.abs(dy)
       if (moved >= 8) clearHold()
       if (holdOpened) return
-      const degPerPx = currentRef.current.fov / host.clientHeight
-      commit({ yaw: targetRef.current.yaw - dx * degPerPx, pitch: targetRef.current.pitch + dy * degPerPx })
+      if (dx === 0 && dy === 0) return
+      const base = currentRef.current
+      // Exact angular size of a pixel at the view centre, so the scene follows the cursor 1:1.
+      const degPerPx = THREE.MathUtils.radToDeg((2 * Math.tan(THREE.MathUtils.degToRad(base.fov) / 2)) / host.clientHeight)
+      const pr = rangesRef.current.pitchRange
+      dragTo({
+        yaw: wrapDeg(base.yaw - dx * degPerPx),
+        pitch: clamp(base.pitch + dy * degPerPx, pr[0], pr[1]),
+        fov: base.fov,
+      })
     }
 
     const onPointerUp = (e: PointerEvent) => {
       if (e.pointerId !== pointerId) return
       pointerId = null
       draggingRef.current = false
+      callbacksRef.current.onCurrentChange?.({ ...currentRef.current })
       renderer.domElement.style.cursor = 'grab'
       clearHold()
       if (holdOpened) {

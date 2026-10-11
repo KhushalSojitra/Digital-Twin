@@ -142,7 +142,7 @@ export const SITES: CameraSite[] = [
       ip: '10.40.1.12',
     },
     [
-{ slot: 'zone', name: 'Construction Site CCTV-4', zone: 'Construction zone', blindSpot: 'Rear face of the tower block, hidden behind the structure from the crane head', scene: '/panoramas/construction_zone_cctv.png', view: { yaw: 0, pitch: 0, fov: 48 } },
+{ slot: 'zone', name: 'CCTV-4', zone: 'Construction zone', blindSpot: 'Rear face of the tower block, hidden behind the structure from the crane head', scene: '/panoramas/construction_zone_cctv.png', view: { yaw: 0, pitch: 0, fov: 48 } },
  { slot: 'storage', name: 'Material Storage CCTV', zone: 'Material storage', blindSpot: 'Gap between the container stack and the perimeter fence', scene: '/panoramas/material_storage_cctv.png', view: { yaw: 0, pitch: 0, fov: 48 } },
     ],
     { yaw: 100, pitch: -18, fov: 22 },
@@ -208,10 +208,10 @@ export const SITES: CameraSite[] = [
       ip: '10.40.3.12',
     },
     [
-{ slot: 'press', name: 'Press Line CCTV', zone: 'Press line', blindSpot: 'Welding bay behind the press and the steel columns', view: { yaw: 40, pitch: -14, fov: 30 } },
- { slot: 'coil', name: 'Coil Store CCTV', zone: 'Coil store', blindSpot: 'Far side of the racking, behind the pallet stacks', view: { yaw: 262, pitch: -12, fov: 30 } },
- { slot: 'dispatch', name: 'Dispatch Bay CCTV', zone: 'Dispatch bay', blindSpot: 'Trailer bay partly screened by the forklift lane and the door frame', view: { yaw: 318, pitch: -9, fov: 28 } },
- { slot: 'packaging', name: 'Packaging Line CCTV', zone: 'Packaging line', blindSpot: 'Packaging lane behind the loading equipment and steel columns', view: { yaw: 350, pitch: -24, fov: 26 } },
+{ slot: 'press', name: 'Press Line CCTV', zone: 'Press line', status: 'offline', blindSpot: 'Welding bay behind the press and the steel columns', view: { yaw: 40, pitch: -14, fov: 30 } },
+ { slot: 'coil', name: 'Coil Store CCTV', zone: 'Coil store', scene: '/panoramas/factory2_coil_store_cctv.png', blindSpot: 'Far side of the racking, behind the pallet stacks', view: { yaw: 262, pitch: -12, fov: 30 } },
+ { slot: 'dispatch', name: 'Dispatch Bay CCTV', zone: 'Dispatch bay', scene: '/panoramas/factory2_dispatch_bay_cctv.png', blindSpot: 'Trailer bay partly screened by the forklift lane and the door frame', view: { yaw: 318, pitch: -9, fov: 28 } },
+ { slot: 'packaging', name: 'Packaging Line CCTV', zone: 'Packaging line', scene: '/panoramas/factory2_packaging_line_cctv.png', blindSpot: 'Packaging lane behind the loading equipment and steel columns', view: { yaw: 350, pitch: -24, fov: 26 } },
     ],
     { yaw: 124, pitch: -30, fov: 22 },
   ),

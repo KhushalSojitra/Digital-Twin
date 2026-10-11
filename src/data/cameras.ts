@@ -142,7 +142,7 @@ export const SITES: CameraSite[] = [
       ip: '10.40.1.12',
     },
     [
-    { slot: 'zone', name: 'Construction Zone CCTV', zone: 'Construction zone', blindSpot: 'Rear face of the tower block, hidden behind the structure from the crane head', scene: '/panoramas/construction_zone_cctv.png', view: { yaw: 0, pitch: 0, fov: 48 } },
+    { slot: 'zone', name: 'CCTV-4', zone: 'Construction zone', blindSpot: 'Rear face of the tower block, hidden behind the structure from the crane head', scene: '/panoramas/construction_zone_cctv.png', view: { yaw: 0, pitch: 0, fov: 48 } },
     { slot: 'storage', name: 'Material Storage CCTV', zone: 'Material storage', blindSpot: 'Gap between the container stack and the perimeter fence', scene: '/panoramas/material_storage_cctv.png', view: { yaw: 0, pitch: 0, fov: 48 } },
     { slot: 'entrance', name: 'Site Entrance CCTV', zone: 'Site entrance', blindSpot: 'Gate and approach road, foreshortened directly beneath the crane head', scene: '/panoramas/site_entrance_cctv.png', view: { yaw: 0, pitch: 0, fov: 48 } },
     ],
@@ -176,7 +176,7 @@ export const SITES: CameraSite[] = [
     },
     [
     { slot: 'production', name: 'Production Floor CCTV', zone: 'Production floor', blindSpot: 'Behind the CNC machining cell, screened by the machines', view: { yaw: 135, pitch: -14, fov: 34 } },
-    { slot: 'warehouse', name: 'Warehouse CCTV', zone: 'Warehouse', blindSpot: 'Aisle ends behind the racking and the forklift lane', view: { yaw: 240, pitch: -8, fov: 28 } },
+    { slot: 'warehouse', name: 'Warehouse CCTV', zone: 'Warehouse', blindSpot: 'Aisle ends behind the racking and the forklift lane', scene: '/panoramas/warehouse_cctv.png', view: { yaw: 240, pitch: -8, fov: 28 } },
     { slot: 'entrance', name: 'Entrance CCTV', zone: 'Entrance', blindSpot: 'Door under the mezzanine, hidden by the office structure', view: { yaw: 295, pitch: -14, fov: 28 } },
     { slot: 'loading', name: 'Loading Area CCTV', zone: 'Loading area', blindSpot: 'Dock doors and trailer bays, blocked by door frames and stacked pallets', view: { yaw: 342, pitch: -10, fov: 28 } },
     ],

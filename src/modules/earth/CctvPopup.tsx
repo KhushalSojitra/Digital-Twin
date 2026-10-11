@@ -62,8 +62,26 @@ function FixedFeed({
       onPointerMoveCapture={(e) => e.stopPropagation()}
       onWheelCapture={(e) => e.stopPropagation()}
     >
+      {device.scene && (
+        <Box
+          component="img"
+          src={device.scene}
+          alt={`${device.name} camera view`}
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 1,
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            backgroundColor: '#000',
+            filter: device.status === 'offline' ? 'grayscale(1) brightness(0.4)' : 'contrast(1.04) saturate(0.92)',
+            pointerEvents: 'none',
+          }}
+        />
+      )}
       <PanoramaViewer
-        src={device.scene ?? site.panorama}
+        src={device.scene ? site.panorama : site.panorama}
         view={view}
         fovRange={[view.fov, view.fov]}
         pitchRange={[view.pitch, view.pitch]}
@@ -72,7 +90,7 @@ function FixedFeed({
         onPointContextMenu={onPick ? (dir) => onPick(dir) : undefined}
         apiRef={apiRef}
         pickCursor={pinning}
-        cssFilter={device.status === 'offline' ? 'grayscale(1) brightness(0.4)' : 'contrast(1.04) saturate(0.92)'}
+        cssFilter={device.scene ? 'opacity(0)' : device.status === 'offline' ? 'grayscale(1) brightness(0.4)' : 'contrast(1.04) saturate(0.92)'}
       >
         <TicketMarkerLayer tickets={tickets} selectedId={null} draft={draft} compact={compact} onSelect={onSelectTicket} />
       </PanoramaViewer>

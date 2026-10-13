@@ -1,5 +1,6 @@
 import { Component, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import {
+  alpha,
   Box,
   Button,
   Checkbox,
@@ -21,10 +22,13 @@ import {
   Typography,
   useMediaQuery,
   useTheme,
+  type Theme,
 } from '@mui/material'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import CameraAltRoundedIcon from '@mui/icons-material/CameraAltRounded'
 import MicNoneRoundedIcon from '@mui/icons-material/MicNoneRounded'
+import ConfirmationNumberRoundedIcon from '@mui/icons-material/ConfirmationNumberRounded'
+import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import TitleRoundedIcon from '@mui/icons-material/TitleRounded'
 import NotesRoundedIcon from '@mui/icons-material/NotesRounded'
 import { dialogPaperSx } from '../../theme/hud'
@@ -173,7 +177,7 @@ function CreateForm({
 }) {
   const { defaultIntegration } = useIntegrations()
   const capture = useCapture()
-  const [tab, setTab] = useState<'general' | 'additional'>('general')
+  const [tab, setTab] = useState<'general' | 'additional' | 'activity'>('general')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<TicketPriority>('medium')
@@ -225,13 +229,29 @@ function CreateForm({
     }
   }
 
-  const fieldSx = { '& .MuiInputLabel-root': { fontSize: 12, fontWeight: 600 }, '& .MuiInputBase-root': { borderRadius: 2, bgcolor: 'rgba(255,255,255,0.035)' } }
+  const fieldSx = {
+    '& .MuiInputLabel-root': { fontSize: 12, fontWeight: 600 },
+    '& .MuiInputBase-root': { borderRadius: 2, bgcolor: 'rgba(255,255,255,0.035)' },
+    '& .MuiOutlinedInput-notchedOutline': { borderWidth: 1.5, borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.34) },
+    '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.6) },
+    '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main', borderWidth: 2 },
+    '& .MuiOutlinedInput-root.Mui-error .MuiOutlinedInput-notchedOutline': { borderColor: 'error.main' },
+  }
   const iconSx = { color: 'primary.main', fontSize: 19 }
+  const sectionHeading = (icon: ReactNode, label: string) => (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.25 }}>
+      {icon}
+      <Typography sx={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</Typography>
+    </Box>
+  )
   const coordinates = `P ${draft.yaw.toFixed(1)}° · T ${draft.pitch.toFixed(1)}° · Z ${draft.zoom.toFixed(1)}×`
 
   return (
     <Box component="form" onSubmit={submit}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1.75, px: 2.25 }}>
+        <Box sx={{ width: 44, height: 44, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: 2.5, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+          <ConfirmationNumberRoundedIcon sx={{ fontSize: 26 }} />
+        </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>Create Ticket</Typography>
           <Typography variant="caption" color="text.secondary">Create and route an issue from the current view</Typography>
@@ -242,6 +262,7 @@ function CreateForm({
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ px: 2, borderBottom: 1, borderColor: 'divider', minHeight: 42, '& .MuiTab-root': { minHeight: 42, textTransform: 'uppercase', fontSize: 12, fontWeight: 800, letterSpacing: '0.08em' } }}>
         <Tab value="general" label={<Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}><TitleRoundedIcon sx={{ fontSize: 17 }} />General</Box>} />
         <Tab value="additional" label={<Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}><NotesRoundedIcon sx={{ fontSize: 17 }} />Additional</Box>} />
+        <Tab value="activity" label={<Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}><HistoryRoundedIcon sx={{ fontSize: 17 }} />Activity</Box>} />
       </Tabs>
       <DialogContent sx={{ p: { xs: 1.5, sm: 2.25 }, bgcolor: 'rgba(105,145,220,0.035)' }}>
         {tab === 'general' && (
@@ -272,6 +293,24 @@ function CreateForm({
               </Stack>
             </Box>
           </Stack>
+        )}
+        {tab === 'activity' && (
+          <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 3, bgcolor: 'background.paper' }}>
+            <Stack spacing={2}>
+              <Box>
+                {sectionHeading(<HistoryRoundedIcon sx={iconSx} />, 'Ticket history')}
+                <Typography variant="body2" color="text.secondary">History starts when the ticket is created.</Typography>
+              </Box>
+              <Box>
+                {sectionHeading(<ConfirmationNumberRoundedIcon sx={iconSx} />, 'Status history')}
+                <Typography variant="body2" color="text.secondary">Default status is To Do.</Typography>
+              </Box>
+              <Box>
+                {sectionHeading(<NotesRoundedIcon sx={iconSx} />, 'Assignment history')}
+                <Typography variant="body2" color="text.secondary">Will be assigned to {assignee} on {draft.camera.name}.</Typography>
+              </Box>
+            </Stack>
+          </Box>
         )}
         {createError && <Typography color="error" variant="body2" sx={{ mt: 1 }}>{createError}</Typography>}
       </DialogContent>

@@ -1,28 +1,10 @@
 import { useState, type FormEvent } from 'react'
-import {
-  Alert,
-  Box,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  IconButton,
-  InputLabel,
-  MenuItem,
-  Select,
-  Stack,
-  TextField,
-  Typography,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material'
-import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
+import { Dialog, useMediaQuery, useTheme } from '@mui/material'
 import { dialogPaperSx } from '../../theme/hud'
-import { ASSIGNEES, PRIORITY_LABEL, TICKETING_SYSTEM, type Ticket, type TicketPriority } from '../../data/tickets'
+import { ASSIGNEES, TICKETING_SYSTEM, type Ticket, type TicketPriority } from '../../data/tickets'
 import { formatDateTime } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
+import TicketCreateLayout from '../tickets/TicketCreateLayout'
 
 export interface EarthLocation {
   lat: number
@@ -45,7 +27,7 @@ export default function EarthTicketCreateDialog({ location, creator, onClose, on
       onClose={onClose}
       fullWidth
       fullScreen={isXs}
-      maxWidth="sm"
+      maxWidth="md"
       sx={{ zIndex: (t) => t.zIndex.modal + 4 }}
       slotProps={{ paper: { sx: dialogPaperSx } }}
     >
@@ -95,84 +77,33 @@ function CreateForm({ location, creator, onClose, onCreated }: Omit<Props, 'loca
     }
   }
 
+  const coordinates = `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`
+
   return (
-    <Box component="form" onSubmit={submit}>
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', py: 1.5 }}>
-        <Typography variant="h6" sx={{ flex: 1, minWidth: 0 }}>
-          Create Ticket
-        </Typography>
-        <IconButton size="small" onClick={onClose} aria-label="Close">
-          <CloseRoundedIcon fontSize="small" />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent sx={{ pt: 1.5 }}>
-        <Stack spacing={1.25}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
-            <TextField size="small" label="Coordinates" value={`${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`} slotProps={{ htmlInput: { readOnly: true } }} />
-            <TextField size="small" label="Source" value="Earth" slotProps={{ htmlInput: { readOnly: true } }} />
-            <TextField size="small" label="Ticket ID" value="Assigned on submit" slotProps={{ htmlInput: { readOnly: true } }} />
-            <TextField size="small" label="Date/Time" value={formatDateTime(openedAt)} slotProps={{ htmlInput: { readOnly: true } }} />
-            <TextField size="small" label="Reporter" value={creator} slotProps={{ htmlInput: { readOnly: true } }} />
-            <TextField size="small" label="Status" value="Open" slotProps={{ htmlInput: { readOnly: true } }} />
-          </Box>
-          <TextField
-            size="small"
-            label="Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            error={touched && !title.trim()}
-            helperText={touched && !title.trim() ? 'Title is required' : ' '}
-            required
-          />
-          <TextField size="small" label="Description" value={description} onChange={(e) => setDescription(e.target.value)} multiline minRows={2} />
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
-            <FormControl size="small">
-              <InputLabel>Priority</InputLabel>
-              <Select
-                label="Priority"
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as TicketPriority)}
-                MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}
-              >
-                {(Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => (
-                  <MenuItem key={p} value={p}>
-                    {PRIORITY_LABEL[p]}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl size="small">
-              <InputLabel>Assignee</InputLabel>
-              <Select
-                label="Assignee"
-                value={assignee}
-                onChange={(e) => setAssignee(e.target.value)}
-                MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}
-              >
-                {ASSIGNEES.map((p) => (
-                  <MenuItem key={p} value={p}>
-                    {p}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              size="small"
-              label="Ticketing System"
-              value={TICKETING_SYSTEM}
-              sx={{ gridColumn: { sm: '1 / -1' } }}
-              slotProps={{ htmlInput: { readOnly: true } }}
-            />
-          </Box>
-          {error && <Alert severity="error">{error}</Alert>}
-        </Stack>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button type="submit" variant="contained" disabled={isSubmitting}>
-          {isSubmitting ? 'Creating…' : 'Create Ticket'}
-        </Button>
-      </DialogActions>
-    </Box>
+    <TicketCreateLayout
+      context={{ icon: 'earth', name: 'Earth Location', subtitle: `Earth • ${coordinates}` }}
+      title={title}
+      onTitleChange={setTitle}
+      description={description}
+      onDescriptionChange={setDescription}
+      priority={priority}
+      onPriorityChange={setPriority}
+      assignee={assignee}
+      onAssigneeChange={setAssignee}
+      touched={touched}
+      snapshot={{ mode: 'unavailable' }}
+      coordinates={{ label: 'Coordinates', value: coordinates, hint: 'Latitude, Longitude' }}
+      reporter={creator}
+      system={TICKETING_SYSTEM}
+      activity={[
+        { label: 'Ticket Created', detail: `Reported by ${creator}`, meta: `Opened ${formatDateTime(openedAt)} · Ticket ID assigned on submit` },
+        { label: 'Assigned', detail: assignee, meta: 'Assigned on creation' },
+        { label: 'Status', detail: 'Open', meta: 'Default status' },
+      ]}
+      error={error}
+      isSubmitting={isSubmitting}
+      onSubmit={submit}
+      onClose={onClose}
+    />
   )
 }

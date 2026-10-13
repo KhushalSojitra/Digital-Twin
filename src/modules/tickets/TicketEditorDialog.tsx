@@ -185,6 +185,11 @@ function CreateForm({
   const [createError, setCreateError] = useState('')
   const snapshotPolicy = defaultIntegration.snapshotPolicy
   const [proof, setProof] = useState(snapshotPolicy !== 'disabled')
+  const [snapshotPreview] = useState<string | null>(() => {
+    const { view } = draft
+    const frame = view ? { yaw: view.yaw, pitch: view.pitch } : { yaw: draft.yaw, pitch: draft.pitch }
+    return capture?.(draft.camera.id, frame, 'before', { fov: view?.fov, marks: [{ yaw: draft.yaw, pitch: draft.pitch }] }) ?? null
+  })
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -253,6 +258,7 @@ function CreateForm({
       onAssigneeChange={setAssignee}
       touched={touched}
       snapshot={snapshot}
+      snapshotPreview={snapshotPreview}
       coordinates={{
         label: 'Pin Orientation',
         value: `P ${draft.yaw.toFixed(1)}° · T ${draft.pitch.toFixed(1)}° · Z ${draft.zoom.toFixed(1)}×`,

@@ -26,12 +26,6 @@ import ConfirmationNumberRoundedIcon from '@mui/icons-material/ConfirmationNumbe
 import DescriptionRoundedIcon from '@mui/icons-material/DescriptionRounded'
 import PlaceRoundedIcon from '@mui/icons-material/PlaceRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
-import SubjectRoundedIcon from '@mui/icons-material/SubjectRounded'
-import NotesRoundedIcon from '@mui/icons-material/NotesRounded'
-import FlagRoundedIcon from '@mui/icons-material/FlagRounded'
-import PersonRoundedIcon from '@mui/icons-material/PersonRounded'
-import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded'
-import HubRoundedIcon from '@mui/icons-material/HubRounded'
 import { ASSIGNEES, PRIORITY_COLOR, PRIORITY_LABEL, type TicketPriority } from '../../data/tickets'
 
 type TicketTab = 'general' | 'additional' | 'activity'
@@ -66,6 +60,7 @@ interface Props {
   onAssigneeChange: (value: string) => void
   touched: boolean
   snapshot: SnapshotControl
+  snapshotPreview?: string | null
   coordinates: { label: string; value: string; hint?: string }
   reporter: string
   system: string
@@ -125,39 +120,27 @@ function IconTile({ children, size = 36, solid = false }: { children: ReactNode;
 }
 
 function FieldRow({
-  icon,
   label,
   labelId,
   htmlFor,
-  required,
   action,
   children,
 }: {
-  icon: ReactNode
   label: string
   labelId: string
   htmlFor?: string
-  required?: boolean
   action?: ReactNode
   children: ReactNode
 }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
-      <IconTile>{icon}</IconTile>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, minHeight: 36, mb: 0.25 }}>
-          <Typography id={labelId} component="label" htmlFor={htmlFor} sx={{ fontSize: 14, fontWeight: 700 }}>
-            {label}
-            {required && (
-              <Box component="span" aria-hidden sx={{ color: 'error.main', ml: 0.5 }}>
-                *
-              </Box>
-            )}
-          </Typography>
-          {action}
-        </Box>
-        {children}
+    <Box sx={{ minWidth: 0 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, minHeight: action ? 36 : 24, mb: 0.5 }}>
+        <Typography id={labelId} component="label" htmlFor={htmlFor} sx={{ fontSize: 14, fontWeight: 700 }}>
+          {label}
+        </Typography>
+        {action}
       </Box>
+      {children}
     </Box>
   )
 }
@@ -178,7 +161,7 @@ function ContextBadge({ context }: { context: TicketCreateContext }) {
   )
 }
 
-function SnapshotCard({ snapshot }: { snapshot: SnapshotControl }) {
+function SnapshotCard({ snapshot, previewSrc }: { snapshot: SnapshotControl; previewSrc?: string | null }) {
   const checked = snapshot.mode === 'toggle' ? snapshot.checked : snapshot.mode === 'locked-on'
   const disabled = snapshot.mode !== 'toggle'
   const note =
@@ -220,24 +203,42 @@ function SnapshotCard({ snapshot }: { snapshot: SnapshotControl }) {
           slotProps={{ input: { 'aria-labelledby': 'snapshot-proof-label' } }}
         />
       </Box>
-      <Box
-        sx={{
-          mt: 1.5,
-          p: 1.5,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.25,
-          border: '1.5px dashed',
-          borderColor: (t: Theme) => alpha(t.palette.primary.main, 0.45),
-          borderRadius: 2,
-          opacity: checked ? 1 : 0.7,
-        }}
-      >
-        <CameraAltRoundedIcon sx={{ color: 'text.secondary', fontSize: 28, flexShrink: 0 }} />
-        <Typography variant="body2" color="text.secondary">
-          {note}
-        </Typography>
-      </Box>
+      {checked && previewSrc ? (
+        <Box
+          component="img"
+          src={previewSrc}
+          alt="Snapshot of the current camera view that will be attached to this ticket"
+          sx={{
+            mt: 1.5,
+            display: 'block',
+            width: '100%',
+            aspectRatio: '16 / 10',
+            objectFit: 'cover',
+            borderRadius: 2,
+            border: 1,
+            borderColor: (t: Theme) => alpha(t.palette.primary.main, 0.45),
+          }}
+        />
+      ) : (
+        <Box
+          sx={{
+            mt: 1.5,
+            p: 1.5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.25,
+            border: '1.5px dashed',
+            borderColor: (t: Theme) => alpha(t.palette.primary.main, 0.45),
+            borderRadius: 2,
+            opacity: checked ? 1 : 0.7,
+          }}
+        >
+          <CameraAltRoundedIcon sx={{ color: 'text.secondary', fontSize: 28, flexShrink: 0 }} />
+          <Typography variant="body2" color="text.secondary">
+            {note}
+          </Typography>
+        </Box>
+      )}
     </Box>
   )
 }
@@ -298,6 +299,7 @@ export default function TicketCreateLayout({
   onAssigneeChange,
   touched,
   snapshot,
+  snapshotPreview,
   coordinates,
   reporter,
   system,
@@ -375,11 +377,9 @@ export default function TicketCreateLayout({
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1.45fr) minmax(0, 1fr)' }, gap: 3, alignItems: 'start' }}>
             <Stack spacing={2.25}>
               <FieldRow
-                icon={<SubjectRoundedIcon />}
                 label="Title"
                 labelId={`${uid}-title-label`}
                 htmlFor={`${uid}-title`}
-                required
                 action={
                   <Tooltip title="Click to speak. AI can fill ticket details automatically." describeChild>
                     <Button
@@ -409,7 +409,7 @@ export default function TicketCreateLayout({
                 />
               </FieldRow>
 
-              <FieldRow icon={<NotesRoundedIcon />} label="Description" labelId={`${uid}-description-label`} htmlFor={`${uid}-description`}>
+              <FieldRow label="Description" labelId={`${uid}-description-label`} htmlFor={`${uid}-description`}>
                 <TextField
                   variant="outlined"
                   id={`${uid}-description`}
@@ -424,7 +424,7 @@ export default function TicketCreateLayout({
                 />
               </FieldRow>
 
-              <FieldRow icon={<FlagRoundedIcon />} label="Priority" labelId={`${uid}-priority-label`}>
+              <FieldRow label="Priority" labelId={`${uid}-priority-label`}>
                 <Select
                   fullWidth
                   size="small"
@@ -443,7 +443,7 @@ export default function TicketCreateLayout({
                 </Select>
               </FieldRow>
 
-              <FieldRow icon={<PersonRoundedIcon />} label="Assignee" labelId={`${uid}-assignee-label`}>
+              <FieldRow label="Assignee" labelId={`${uid}-assignee-label`}>
                 <Select
                   fullWidth
                   size="small"
@@ -462,15 +462,15 @@ export default function TicketCreateLayout({
               </FieldRow>
             </Stack>
 
-            <SnapshotCard snapshot={snapshot} />
+            <SnapshotCard snapshot={snapshot} previewSrc={snapshotPreview} />
           </Box>
         )}
 
         {tab === 'additional' && (
           <Stack spacing={2.25} sx={{ maxWidth: 560 }}>
-            <FieldRow icon={<PlaceRoundedIcon />} label={coordinates.label} labelId={`${uid}-coordinates-label`} htmlFor={`${uid}-coordinates`}>
+            <FieldRow label={coordinates.label} labelId={`${uid}-coordinates-label`} htmlFor={`${uid}-coordinates`}>
               <TextField
-                  variant="outlined"
+                variant="outlined"
                 id={`${uid}-coordinates`}
                 fullWidth
                 size="small"
@@ -480,10 +480,10 @@ export default function TicketCreateLayout({
                 sx={fieldSx}
               />
             </FieldRow>
-            <FieldRow icon={<BadgeRoundedIcon />} label="Reporter" labelId={`${uid}-reporter-label`} htmlFor={`${uid}-reporter`}>
+            <FieldRow label="Reporter" labelId={`${uid}-reporter-label`} htmlFor={`${uid}-reporter`}>
               <TextField variant="outlined" id={`${uid}-reporter`} fullWidth size="small" value={reporter} slotProps={{ htmlInput: { readOnly: true } }} sx={fieldSx} />
             </FieldRow>
-            <FieldRow icon={<HubRoundedIcon />} label="Inspection Management System" labelId={`${uid}-system-label`} htmlFor={`${uid}-system`}>
+            <FieldRow label="Inspection Management System" labelId={`${uid}-system-label`} htmlFor={`${uid}-system`}>
               <TextField variant="outlined" id={`${uid}-system`} fullWidth size="small" value={system} slotProps={{ htmlInput: { readOnly: true } }} sx={fieldSx} />
             </FieldRow>
           </Stack>

@@ -11,7 +11,6 @@ import {
   FormControl,
   FormControlLabel,
   IconButton,
-  InputAdornment,
   InputLabel,
   MenuItem,
   Select,
@@ -28,11 +27,6 @@ import CameraAltRoundedIcon from '@mui/icons-material/CameraAltRounded'
 import MicNoneRoundedIcon from '@mui/icons-material/MicNoneRounded'
 import TitleRoundedIcon from '@mui/icons-material/TitleRounded'
 import NotesRoundedIcon from '@mui/icons-material/NotesRounded'
-import FlagRoundedIcon from '@mui/icons-material/FlagRounded'
-import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded'
-import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined'
-import AccountCircleOutlinedIcon from '@mui/icons-material/AccountCircleOutlined'
-import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import { dialogPaperSx } from '../../theme/hud'
 import {
   ASSIGNEES,
@@ -246,23 +240,22 @@ function CreateForm({
         <IconButton size="small" onClick={onClose} aria-label="Close"><CloseRoundedIcon fontSize="small" /></IconButton>
       </DialogTitle>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ px: 2, borderBottom: 1, borderColor: 'divider', minHeight: 42, '& .MuiTab-root': { minHeight: 42, textTransform: 'uppercase', fontSize: 12, fontWeight: 800, letterSpacing: '0.08em' } }}>
-        <Tab value="general" label="General" />
-        <Tab value="additional" label="Additional" />
+        <Tab value="general" label={<Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}><TitleRoundedIcon sx={{ fontSize: 17 }} />General</Box>} />
+        <Tab value="additional" label={<Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}><NotesRoundedIcon sx={{ fontSize: 17 }} />Additional</Box>} />
       </Tabs>
       <DialogContent sx={{ p: { xs: 1.5, sm: 2.25 }, bgcolor: 'rgba(105,145,220,0.035)' }}>
         {tab === 'general' && (
           <Stack spacing={1.5}>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 0.75, color: 'text.secondary' }}>
-              <MicNoneRoundedIcon sx={iconSx} />
-              <Button type="button" size="small" variant="outlined" startIcon={<MicNoneRoundedIcon />} sx={{ borderRadius: 2, textTransform: 'none' }} aria-label="Voice input for ticket fields">Use voice input</Button>
+              <Button type="button" size="small" variant="outlined" startIcon={<MicNoneRoundedIcon sx={iconSx} />} sx={{ borderRadius: 2, textTransform: 'none' }} aria-label="Voice input for ticket fields">Use voice input</Button>
             </Box>
             <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 3, bgcolor: 'background.paper' }}>
               <Stack spacing={1.35}>
-                <TextField fullWidth size="small" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} error={touched && !title.trim()} helperText={touched && !title.trim() ? 'Title is required' : ' '} required sx={fieldSx} slotProps={{ input: { startAdornment: <InputAdornment position="start"><TitleRoundedIcon sx={iconSx} /></InputAdornment> } }} />
-                <TextField fullWidth size="small" label="Description" value={description} onChange={(e) => setDescription(e.target.value)} multiline minRows={3} sx={fieldSx} slotProps={{ input: { startAdornment: <InputAdornment position="start" sx={{ alignSelf: 'flex-start', mt: 1 }}><NotesRoundedIcon sx={iconSx} /></InputAdornment> } }} />
+                <TextField fullWidth size="small" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} error={touched && !title.trim()} helperText={touched && !title.trim() ? 'Title is required' : ' '} required sx={fieldSx} />
+                <TextField fullWidth size="small" label="Description" value={description} onChange={(e) => setDescription(e.target.value)} multiline minRows={3} sx={fieldSx} />
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
-                  <FormControl size="small" sx={fieldSx}><InputLabel>Priority</InputLabel><Select label="Priority" value={priority} onChange={(e) => setPriority(e.target.value as TicketPriority)} startAdornment={<InputAdornment position="start"><FlagRoundedIcon sx={iconSx} /></InputAdornment>} MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}>{(Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => <MenuItem key={p} value={p}>{PRIORITY_LABEL[p]}</MenuItem>)}</Select></FormControl>
-                  <FormControl size="small" sx={fieldSx}><InputLabel>Assignee</InputLabel><Select label="Assignee" value={assignee} onChange={(e) => setAssignee(e.target.value)} startAdornment={<InputAdornment position="start"><PersonOutlineRoundedIcon sx={iconSx} /></InputAdornment>} MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}>{ASSIGNEES.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}</Select></FormControl>
+                  <FormControl size="small" sx={fieldSx}><InputLabel>Priority</InputLabel><Select label="Priority" value={priority} onChange={(e) => setPriority(e.target.value as TicketPriority)} MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}>{(Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => <MenuItem key={p} value={p}>{PRIORITY_LABEL[p]}</MenuItem>)}</Select></FormControl>
+                  <FormControl size="small" sx={fieldSx}><InputLabel>Assignee</InputLabel><Select label="Assignee" value={assignee} onChange={(e) => setAssignee(e.target.value)} MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}>{ASSIGNEES.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}</Select></FormControl>
                 </Box>
                 {snapshotPolicy === 'creator_chooses' && <FormControlLabel control={<Checkbox size="small" checked={proof} onChange={(_, v) => setProof(v)} />} label="Capture Snapshot as Proof" />}
               </Stack>
@@ -273,9 +266,9 @@ function CreateForm({
           <Stack spacing={1.5}>
             <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 3, bgcolor: 'background.paper' }}>
               <Stack spacing={1.35}>
-                <TextField fullWidth size="small" label="Coordinates" value={coordinates} slotProps={{ htmlInput: { readOnly: true }, input: { startAdornment: <InputAdornment position="start"><LocationOnOutlinedIcon sx={iconSx} /></InputAdornment> } }} sx={fieldSx} />
-                <TextField fullWidth size="small" label="Reporter" value={creator} slotProps={{ htmlInput: { readOnly: true }, input: { startAdornment: <InputAdornment position="start"><AccountCircleOutlinedIcon sx={iconSx} /></InputAdornment> } }} sx={fieldSx} />
-                <TextField fullWidth size="small" label="Inspection Management System" value={TICKETING_SYSTEM} slotProps={{ htmlInput: { readOnly: true }, input: { startAdornment: <InputAdornment position="start"><HubOutlinedIcon sx={iconSx} /></InputAdornment> } }} sx={fieldSx} />
+                <TextField fullWidth size="small" label="Coordinates" value={coordinates} slotProps={{ htmlInput: { readOnly: true } }} sx={fieldSx} />
+                <TextField fullWidth size="small" label="Reporter" value={creator} slotProps={{ htmlInput: { readOnly: true } }} sx={fieldSx} />
+                <TextField fullWidth size="small" label="Inspection Management System" value={TICKETING_SYSTEM} slotProps={{ htmlInput: { readOnly: true } }} sx={fieldSx} />
               </Stack>
             </Box>
           </Stack>
@@ -321,6 +314,7 @@ function Existing({
   return (
     <>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 0.75, py: 1.5, flexWrap: 'wrap' }}>
+        <NotesRoundedIcon sx={{ color: 'primary.main', fontSize: 20 }} />
         <Typography variant="h6" sx={{ fontFamily: '"SF Mono", ui-monospace, Menlo, monospace' }}>
           {ticket.id}
         </Typography>
@@ -341,8 +335,8 @@ function Existing({
         </IconButton>
       </DialogTitle>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ minHeight: 36, px: 1, '& .MuiTab-root': { minHeight: 36, textTransform: 'none' } }}>
-        <Tab value="details" label="Details" />
-        <Tab value="activity" label="Activity" />
+        <Tab value="details" label={<Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}><TitleRoundedIcon sx={{ fontSize: 17 }} />Details</Box>} />
+        <Tab value="activity" label={<Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}><NotesRoundedIcon sx={{ fontSize: 17 }} />Activity</Box>} />
       </Tabs>
       <DialogContent sx={{ pt: 1.5 }}>
         {tab === 'details' && (

@@ -11,6 +11,7 @@ import {
   FormControl,
   FormControlLabel,
   IconButton,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Select,
@@ -23,6 +24,15 @@ import {
   useTheme,
 } from '@mui/material'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
+import CameraAltRoundedIcon from '@mui/icons-material/CameraAltRounded'
+import MicNoneRoundedIcon from '@mui/icons-material/MicNoneRounded'
+import TitleRoundedIcon from '@mui/icons-material/TitleRounded'
+import NotesRoundedIcon from '@mui/icons-material/NotesRounded'
+import FlagRoundedIcon from '@mui/icons-material/FlagRounded'
+import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded'
+import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined'
+import AccountCircleOutlinedIcon from '@mui/icons-material/AccountCircleOutlined'
+import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import { dialogPaperSx } from '../../theme/hud'
 import {
   ASSIGNEES,
@@ -169,7 +179,7 @@ function CreateForm({
 }) {
   const { defaultIntegration } = useIntegrations()
   const capture = useCapture()
-  const [tab, setTab] = useState<'general' | 'activity'>('general')
+  const [tab, setTab] = useState<'general' | 'additional'>('general')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<TicketPriority>('medium')
@@ -221,113 +231,58 @@ function CreateForm({
     }
   }
 
+  const fieldSx = { '& .MuiInputLabel-root': { fontSize: 12, fontWeight: 600 }, '& .MuiInputBase-root': { borderRadius: 2, bgcolor: 'rgba(255,255,255,0.035)' } }
+  const iconSx = { color: 'primary.main', fontSize: 19 }
+  const coordinates = `P ${draft.yaw.toFixed(1)}° · T ${draft.pitch.toFixed(1)}° · Z ${draft.zoom.toFixed(1)}×`
+
   return (
     <Box component="form" onSubmit={submit}>
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', py: 1.5 }}>
-        <Typography variant="h6" sx={{ flex: 1, minWidth: 0 }}>
-          Create Ticket
-        </Typography>
-        <IconButton size="small" onClick={onClose} aria-label="Close" sx={{ ml: 0.5 }}>
-          <CloseRoundedIcon fontSize="small" />
-        </IconButton>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1.75, px: 2.25 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>Create Ticket</Typography>
+          <Typography variant="caption" color="text.secondary">Create and route an issue from the current view</Typography>
+        </Box>
+        <Chip icon={<CameraAltRoundedIcon />} label={draft.camera.name} size="small" sx={{ maxWidth: '48%', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' } }} />
+        <IconButton size="small" onClick={onClose} aria-label="Close"><CloseRoundedIcon fontSize="small" /></IconButton>
       </DialogTitle>
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ minHeight: 36, px: 1, '& .MuiTab-root': { minHeight: 36, textTransform: 'none' } }}>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ px: 2, borderBottom: 1, borderColor: 'divider', minHeight: 42, '& .MuiTab-root': { minHeight: 42, textTransform: 'uppercase', fontSize: 12, fontWeight: 800, letterSpacing: '0.08em' } }}>
         <Tab value="general" label="General" />
-        <Tab value="activity" label="Activity" />
+        <Tab value="additional" label="Additional" />
       </Tabs>
-      <DialogContent sx={{ pt: 1.5 }}>
+      <DialogContent sx={{ p: { xs: 1.5, sm: 2.25 }, bgcolor: 'rgba(105,145,220,0.035)' }}>
         {tab === 'general' && (
-          <Stack spacing={1.25}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
-              <TextField size="small" label="Coordinates" value={`P ${draft.yaw.toFixed(1)}° · T ${draft.pitch.toFixed(1)}° · Z ${draft.zoom.toFixed(1)}×`} slotProps={{ htmlInput: { readOnly: true } }} />
-              <TextField size="small" label="Camera Name" value={draft.camera.name} slotProps={{ htmlInput: { readOnly: true } }} />
+          <Stack spacing={1.5}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 0.75, color: 'text.secondary' }}>
+              <MicNoneRoundedIcon sx={iconSx} />
+              <Button type="button" size="small" variant="outlined" startIcon={<MicNoneRoundedIcon />} sx={{ borderRadius: 2, textTransform: 'none' }} aria-label="Voice input for ticket fields">Use voice input</Button>
             </Box>
-            <TextField size="small" label="Ticket ID" value="Assigned on submit" slotProps={{ htmlInput: { readOnly: true } }} />
-            <TextField size="small" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} error={touched && !title.trim()} helperText={touched && !title.trim() ? 'Title is required' : ' '} required />
-            <TextField size="small" label="Description" value={description} onChange={(e) => setDescription(e.target.value)} multiline minRows={2} />
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
-              <FormControl size="small">
-                <InputLabel>Priority</InputLabel>
-                <Select
-                  label="Priority"
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value as TicketPriority)}
-                  MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}
-                >
-                  {(Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => (
-                    <MenuItem key={p} value={p}>
-                      {PRIORITY_LABEL[p]}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl size="small">
-                <InputLabel>Assignee</InputLabel>
-                <Select
-                  label="Assignee"
-                  value={assignee}
-                  onChange={(e) => setAssignee(e.target.value)}
-                  MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}
-                >
-                  {ASSIGNEES.map((p) => (
-                    <MenuItem key={p} value={p}>
-                      {p}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <TextField
-                size="small"
-                label="Ticketing System"
-                value={TICKETING_SYSTEM}
-                sx={{ gridColumn: { sm: '1 / -1' } }}
-                slotProps={{ htmlInput: { readOnly: true } }}
-              />
+            <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 3, bgcolor: 'background.paper' }}>
+              <Stack spacing={1.35}>
+                <TextField fullWidth size="small" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} error={touched && !title.trim()} helperText={touched && !title.trim() ? 'Title is required' : ' '} required sx={fieldSx} slotProps={{ input: { startAdornment: <InputAdornment position="start"><TitleRoundedIcon sx={iconSx} /></InputAdornment> } }} />
+                <TextField fullWidth size="small" label="Description" value={description} onChange={(e) => setDescription(e.target.value)} multiline minRows={3} sx={fieldSx} slotProps={{ input: { startAdornment: <InputAdornment position="start" sx={{ alignSelf: 'flex-start', mt: 1 }}><NotesRoundedIcon sx={iconSx} /></InputAdornment> } }} />
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
+                  <FormControl size="small" sx={fieldSx}><InputLabel>Priority</InputLabel><Select label="Priority" value={priority} onChange={(e) => setPriority(e.target.value as TicketPriority)} startAdornment={<InputAdornment position="start"><FlagRoundedIcon sx={iconSx} /></InputAdornment>} MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}>{(Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => <MenuItem key={p} value={p}>{PRIORITY_LABEL[p]}</MenuItem>)}</Select></FormControl>
+                  <FormControl size="small" sx={fieldSx}><InputLabel>Assignee</InputLabel><Select label="Assignee" value={assignee} onChange={(e) => setAssignee(e.target.value)} startAdornment={<InputAdornment position="start"><PersonOutlineRoundedIcon sx={iconSx} /></InputAdornment>} MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}>{ASSIGNEES.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}</Select></FormControl>
+                </Box>
+                {snapshotPolicy === 'creator_chooses' && <FormControlLabel control={<Checkbox size="small" checked={proof} onChange={(_, v) => setProof(v)} />} label="Capture Snapshot as Proof" />}
+              </Stack>
             </Box>
-            {snapshotPolicy === 'creator_chooses' && (
-              <FormControlLabel
-                control={<Checkbox size="small" checked={proof} onChange={(_, v) => setProof(v)} />}
-                label="Capture Snapshot As Proof"
-              />
-            )}
           </Stack>
         )}
-        {tab === 'activity' && (
+        {tab === 'additional' && (
           <Stack spacing={1.5}>
-            <Box>
-              <Typography variant="overline" color="text.secondary">
-                Ticket history
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                History starts when the ticket is created.
-              </Typography>
-            </Box>
-            <Box>
-              <Typography variant="overline" color="text.secondary">
-                Status history
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Default status is To Do.
-              </Typography>
-            </Box>
-            <Box>
-              <Typography variant="overline" color="text.secondary">
-                Assignment history
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Will be assigned to {assignee} on {draft.camera.name}.
-              </Typography>
+            <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 3, bgcolor: 'background.paper' }}>
+              <Stack spacing={1.35}>
+                <TextField fullWidth size="small" label="Coordinates" value={coordinates} slotProps={{ htmlInput: { readOnly: true }, input: { startAdornment: <InputAdornment position="start"><LocationOnOutlinedIcon sx={iconSx} /></InputAdornment> } }} sx={fieldSx} />
+                <TextField fullWidth size="small" label="Reporter" value={creator} slotProps={{ htmlInput: { readOnly: true }, input: { startAdornment: <InputAdornment position="start"><AccountCircleOutlinedIcon sx={iconSx} /></InputAdornment> } }} sx={fieldSx} />
+                <TextField fullWidth size="small" label="Inspection Management System" value={TICKETING_SYSTEM} slotProps={{ htmlInput: { readOnly: true }, input: { startAdornment: <InputAdornment position="start"><HubOutlinedIcon sx={iconSx} /></InputAdornment> } }} sx={fieldSx} />
+              </Stack>
             </Box>
           </Stack>
         )}
         {createError && <Typography color="error" variant="body2" sx={{ mt: 1 }}>{createError}</Typography>}
       </DialogContent>
-      <DialogActions sx={{ px: 2, pb: 1.5 }}>
-        <Button onClick={onClose} disabled={isSubmitting}>Cancel</Button>
-        <Button type="submit" variant="contained" disabled={isSubmitting}>
-          Create
-        </Button>
-      </DialogActions>
+      <DialogActions sx={{ px: 2.25, pb: 1.75, pt: 0.5 }}><Button onClick={onClose} disabled={isSubmitting}>Cancel</Button><Button type="submit" variant="contained" disabled={isSubmitting}>Create</Button></DialogActions>
     </Box>
   )
 }

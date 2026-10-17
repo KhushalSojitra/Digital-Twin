@@ -167,7 +167,10 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
   const [colorAnchor, setColorAnchor] = useState<HTMLElement | null>(null)
   const [textDraft, setTextDraft] = useState<TextDraft | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
+  const [toolbarOffset, setToolbarOffset] = useState({ x: 0, y: 0 })
   const [saving, setSaving] = useState(false)
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null)
 
   const shapes = history.stack[history.index]
   const canUndo = history.index > 0
@@ -266,6 +269,42 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
     setTextDraft((current) => (current === value ? null : current))
   }
 
+  const handleToolbarPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement
+    if (target.closest('button, input, [role="button"]')) return
+    const toolbar = toolbarRef.current
+    const parent = toolbar?.parentElement
+    if (!toolbar || !parent) return
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: toolbarOffset.x,
+      originY: toolbarOffset.y,
+    }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const handleToolbarPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current
+    const toolbar = toolbarRef.current
+    const parent = toolbar?.parentElement
+    if (!drag || !toolbar || !parent) return
+    const maxX = Math.max(0, parent.clientWidth - toolbar.offsetWidth - 24)
+    const maxY = Math.max(0, parent.clientHeight - toolbar.offsetHeight - 24)
+    setToolbarOffset({
+      x: Math.max(-12, Math.min(maxX, drag.originX + e.clientX - drag.startX)),
+      y: Math.max(-12, Math.min(maxY, drag.originY + drag.startY - e.clientY)),
+    })
+  }
+
+  const handleToolbarPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId === e.pointerId) {
+      dragRef.current = null
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+  }
+
   const finish = async () => {
     const pending = textDraft?.value.trim() ? [...shapes, { kind: 'text' as const, color, at: textDraft.at, text: textDraft.value.trim() }] : shapes
     if (pending.length === 0) {
@@ -328,13 +367,19 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
       )}
 
       <Box
+        ref={toolbarRef}
         role="toolbar"
         aria-label="Markup tools"
+        onPointerDown={handleToolbarPointerDown}
+        onPointerMove={handleToolbarPointerMove}
+        onPointerUp={handleToolbarPointerUp}
+        onPointerCancel={handleToolbarPointerUp}
         sx={{
           position: 'absolute',
           left: 12,
-          right: 12,
           bottom: 12,
+          maxWidth: 'calc(100% - 24px)',
+          transform: `translate(${toolbarOffset.x}px, ${toolbarOffset.y}px)`,
           display: 'flex',
           alignItems: 'center',
           flexWrap: 'wrap',
@@ -345,6 +390,9 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
           color: '#fff',
           bgcolor: 'rgba(14, 17, 23, 0.94)',
           backdropFilter: 'blur(8px)',
+          cursor: dragRef.current ? 'grabbing' : 'grab',
+          userSelect: 'none',
+          touchAction: 'none',
         }}
       >
         <Box sx={groupSx}>

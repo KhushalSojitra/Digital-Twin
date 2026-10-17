@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import {
   alpha,
+  Badge,
   Box,
   Button,
   Dialog,
@@ -9,7 +10,6 @@ import {
   DialogTitle,
   FormControl,
   IconButton,
-  InputLabel,
   MenuItem,
   Select,
   Stack,
@@ -28,7 +28,17 @@ import MicRoundedIcon from '@mui/icons-material/MicRounded'
 import StopRoundedIcon from '@mui/icons-material/StopRounded'
 import FullscreenRoundedIcon from '@mui/icons-material/FullscreenRounded'
 import ConfirmationNumberRoundedIcon from '@mui/icons-material/ConfirmationNumberRounded'
+import DescriptionRoundedIcon from '@mui/icons-material/DescriptionRounded'
+import PlaceRoundedIcon from '@mui/icons-material/PlaceRounded'
+import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
+import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded'
+import PersonRoundedIcon from '@mui/icons-material/PersonRounded'
+import EditRoundedIcon from '@mui/icons-material/EditRounded'
 import { ASSIGNEES, PRIORITY_COLOR, PRIORITY_LABEL, type TicketPriority } from '../../data/tickets'
+import { useAttachments, type Attachment } from './attachments'
+import AttachmentPopover from './AttachmentPopover'
+import DocumentPreview from './DocumentPreview'
+import SnapshotMarkup, { type MarkupShape } from './SnapshotMarkup'
 
 type TicketTab = 'general' | 'additional' | 'activity'
 type VoiceState = 'idle' | 'listening' | 'transcribing'
@@ -64,6 +74,7 @@ interface Props {
   touched: boolean
   snapshot: SnapshotControl
   snapshotPreview?: string | null
+  onMarkupChange?: (image: string | null) => void
   coordinates: { label: string; value: string; hint?: string }
   reporter: string
   system: string
@@ -83,11 +94,12 @@ const VOICE_SAMPLE = {
 
 const fieldSx = {
   '& .MuiInputBase-root': {
-    borderRadius: 2,
-    fontSize: 14,
-    bgcolor: (t: Theme) => alpha(t.palette.text.primary, 0.03),
+    borderRadius: '14px',
+    fontSize: 16,
+    bgcolor: (t: Theme) => alpha(t.palette.text.primary, 0.02),
   },
-  '& .MuiInputLabel-root': { fontSize: 14, fontWeight: 600 },
+  '& .MuiInputLabel-root': { fontSize: 15, fontWeight: 500, color: 'text.secondary' },
+  '& .MuiInputLabel-root.Mui-focused': { color: 'primary.main' },
   '& .MuiOutlinedInput-notchedOutline': {
     borderWidth: 1.5,
     borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.34),
@@ -102,53 +114,86 @@ const fieldSx = {
 const overlayControlSx = {
   display: 'flex',
   alignItems: 'center',
-  height: 28,
+  height: 32,
   borderRadius: 999,
   color: '#fff',
   bgcolor: 'rgba(8, 12, 20, 0.62)',
   backdropFilter: 'blur(6px)',
 }
 
+const overlayButtonSx = {
+  width: 40,
+  height: 40,
+  borderRadius: '10px',
+  color: '#fff',
+  bgcolor: 'rgba(8, 12, 20, 0.78)',
+  '&:hover': { bgcolor: 'rgba(8, 12, 20, 0.92)' },
+}
+
 const smallSwitchSx = {
-  width: 34,
-  height: 20,
+  width: 38,
+  height: 22,
   p: 0,
-  '& .MuiSwitch-switchBase': { p: '2px', '&.Mui-checked': { transform: 'translateX(14px)' } },
+  '& .MuiSwitch-switchBase': { p: '3px', '&.Mui-checked': { transform: 'translateX(16px)' } },
   '& .MuiSwitch-thumb': { width: 16, height: 16, boxShadow: 'none' },
-  '& .MuiSwitch-track': { borderRadius: 10, opacity: 1 },
+  '& .MuiSwitch-track': { borderRadius: 11, opacity: 1 },
+}
+
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+function snapshotStamp(date: Date) {
+  const two = (n: number) => String(n).padStart(2, '0')
+  const day = `${two(date.getDate())}-${two(date.getMonth() + 1)}-${date.getFullYear()}`
+  const time = `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`
+  return `${day} ${time} ${DAYS[date.getDay()]}`
 }
 
 function SnapshotPanel({
   snapshot,
-  previewSrc,
+  originalSrc,
+  displaySrc,
+  cameraName,
+  stamp,
+  editing,
+  shapes,
+  onStartEdit,
+  onCancelEdit,
+  onFinishEdit,
   onExpand,
 }: {
   snapshot: SnapshotControl
-  previewSrc?: string | null
+  originalSrc?: string | null
+  displaySrc?: string | null
+  cameraName: string
+  stamp: string
+  editing: boolean
+  shapes: MarkupShape[]
+  onStartEdit: () => void
+  onCancelEdit: () => void
+  onFinishEdit: (shapes: MarkupShape[], image: string | null) => void
   onExpand: () => void
 }) {
   const checked = snapshot.mode === 'toggle' ? snapshot.checked : snapshot.mode === 'locked-on'
   const showToggle = snapshot.mode !== 'unavailable'
-  const showImage = checked && Boolean(previewSrc)
+  const showImage = checked && Boolean(displaySrc)
+  const isEditing = editing && showImage && Boolean(originalSrc)
   const emptyLabel = snapshot.mode === 'unavailable' ? 'No snapshot for Earth tickets' : checked ? 'Snapshot unavailable' : 'Snapshot off'
 
   return (
     <Box
       sx={{
         position: 'relative',
-        minHeight: { xs: 240, md: 380 },
+        minHeight: { xs: 260, md: 420 },
         height: '100%',
         overflow: 'hidden',
-        borderRadius: 3,
-        border: 1,
-        borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.2),
-        bgcolor: (t: Theme) => alpha(t.palette.text.primary, 0.06),
+        borderRadius: '16px',
+        bgcolor: (t: Theme) => alpha(t.palette.text.primary, 0.08),
       }}
     >
       {showImage ? (
         <Box
           component="img"
-          src={previewSrc ?? undefined}
+          src={(isEditing ? originalSrc : displaySrc) ?? undefined}
           alt="Snapshot of the current camera view that will be attached to this ticket"
           sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
         />
@@ -159,11 +204,33 @@ function SnapshotPanel({
         </Box>
       )}
 
-      <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1 }}>
+      {isEditing && originalSrc && <SnapshotMarkup src={originalSrc} initialShapes={shapes} onCancel={onCancelEdit} onDone={onFinishEdit} />}
+
+      <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, p: 1.25, pointerEvents: 'none' }}>
+        {showImage ? (
+          <Box
+            sx={{
+              ...overlayControlSx,
+              px: 1.5,
+              borderRadius: '10px',
+              fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontSize: 14,
+              fontWeight: 500,
+              letterSpacing: '0.02em',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+            }}
+          >
+            {stamp}
+          </Box>
+        ) : (
+          <span />
+        )}
         {showToggle ? (
-          <Box sx={{ ...overlayControlSx, px: 0.75 }}>
+          <Box sx={{ ...overlayControlSx, px: 0.75, pointerEvents: 'auto' }}>
             <Switch
               checked={checked}
+              color="success"
               disabled={snapshot.mode !== 'toggle'}
               onChange={snapshot.mode === 'toggle' ? (_, value) => snapshot.onChange(value) : undefined}
               sx={smallSwitchSx}
@@ -173,19 +240,44 @@ function SnapshotPanel({
         ) : (
           <span />
         )}
-        {showImage && (
-          <Tooltip title="Fullscreen">
-            <IconButton
-              size="small"
-              onClick={onExpand}
-              aria-label="View snapshot fullscreen"
-              sx={{ ...overlayControlSx, width: 28, p: 0, '&:hover': { bgcolor: 'rgba(8, 12, 20, 0.8)' } }}
-            >
-              <FullscreenRoundedIcon sx={{ fontSize: 18 }} />
-            </IconButton>
-          </Tooltip>
-        )}
       </Box>
+
+      {showImage && !isEditing && (
+        <>
+          <Box
+            sx={{
+              ...overlayControlSx,
+              position: 'absolute',
+              left: 12,
+              bottom: 12,
+              maxWidth: 'calc(100% - 140px)',
+              px: 1.75,
+              height: 40,
+              borderRadius: '10px',
+              fontSize: 15,
+              fontWeight: 500,
+            }}
+          >
+            <Typography noWrap component="span" sx={{ fontSize: 'inherit', fontWeight: 'inherit' }}>
+              {cameraName}
+            </Typography>
+          </Box>
+          <Box sx={{ position: 'absolute', right: 12, bottom: 12, display: 'flex', gap: 1 }}>
+            {Boolean(originalSrc) && (
+              <Tooltip title="Mark up snapshot">
+                <IconButton onClick={onStartEdit} aria-label="Mark up snapshot" sx={overlayButtonSx}>
+                  <EditRoundedIcon sx={{ fontSize: 20 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+            <Tooltip title="Fullscreen">
+              <IconButton onClick={onExpand} aria-label="View snapshot fullscreen" sx={overlayButtonSx}>
+                <FullscreenRoundedIcon sx={{ fontSize: 22 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </>
+      )}
     </Box>
   )
 }
@@ -231,6 +323,7 @@ export default function TicketCreateLayout({
   touched,
   snapshot,
   snapshotPreview,
+  onMarkupChange,
   coordinates,
   reporter,
   system,
@@ -245,10 +338,26 @@ export default function TicketCreateLayout({
   const [fullscreen, setFullscreen] = useState(false)
   const [voice, setVoice] = useState<VoiceState>('idle')
   const timers = useRef<number[]>([])
+  const attachments = useAttachments()
+  const [attachAnchor, setAttachAnchor] = useState<HTMLElement | null>(null)
+  const [previewing, setPreviewing] = useState<Attachment | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [shapes, setShapes] = useState<MarkupShape[]>([])
+  const [markedImage, setMarkedImage] = useState<string | null>(null)
+  const [stamp] = useState(() => snapshotStamp(new Date()))
   const titleInvalid = touched && !title.trim()
   const menuProps = { sx: { zIndex: (t: Theme) => t.zIndex.modal + 10 } }
   const snapshotOn = snapshot.mode === 'toggle' ? snapshot.checked : snapshot.mode === 'locked-on'
-  const canExpand = snapshotOn && Boolean(snapshotPreview)
+  const displaySrc = markedImage ?? snapshotPreview
+  const canExpand = snapshotOn && Boolean(displaySrc)
+
+  const finishMarkup = (next: MarkupShape[], image: string | null) => {
+    const marked = next.length > 0 ? image : null
+    setShapes(next)
+    setMarkedImage(marked)
+    onMarkupChange?.(marked)
+    setEditing(false)
+  }
 
   useEffect(() => {
     const pending = timers.current
@@ -287,55 +396,61 @@ export default function TicketCreateLayout({
 
   return (
     <Box component="form" onSubmit={handleSubmit} noValidate sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1.25, py: 1.75, px: { xs: 2, sm: 2.75 } }}>
+      <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1.75, pt: 2.5, pb: 1.5, px: { xs: 2, sm: 3.5 } }}>
         <Box
           aria-hidden
-          sx={{ width: 36, height: 36, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: 2, color: 'primary.contrastText', bgcolor: 'primary.main' }}
+          sx={{ width: 48, height: 48, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: '50%', color: 'primary.contrastText', bgcolor: 'primary.main' }}
         >
-          <ConfirmationNumberRoundedIcon sx={{ fontSize: 20 }} />
+          <ConfirmationNumberRoundedIcon sx={{ fontSize: 26 }} />
         </Box>
-        <Typography component="h2" sx={{ flex: 1, minWidth: 0, fontSize: { xs: 20, sm: 24 }, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+        <Typography component="h2" sx={{ flex: 1, minWidth: 0, fontSize: { xs: 22, sm: 28 }, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
           Create Ticket
         </Typography>
-        <Tooltip title={context.name}>
+        <Tooltip title={context.name} placement="bottom">
           <IconButton
-            size="small"
             onClick={() => canExpand && setFullscreen(true)}
             aria-label={`${context.name} camera view`}
-            sx={{ color: 'primary.main', bgcolor: (t: Theme) => alpha(t.palette.primary.main, 0.14) }}
+            sx={{ width: 44, height: 44, borderRadius: '12px', color: 'primary.main', bgcolor: (t: Theme) => alpha(t.palette.primary.main, 0.14) }}
           >
-            {context.icon === 'earth' ? <PublicRoundedIcon fontSize="small" /> : <CameraAltRoundedIcon fontSize="small" />}
+            {context.icon === 'earth' ? <PublicRoundedIcon /> : <CameraAltRoundedIcon />}
           </IconButton>
         </Tooltip>
-        <IconButton size="small" onClick={onClose} aria-label="Close">
-          <CloseRoundedIcon fontSize="small" />
+        <Box aria-hidden sx={{ width: '1px', height: 28, flexShrink: 0, bgcolor: 'divider' }} />
+        <IconButton onClick={onClose} aria-label="Close">
+          <CloseRoundedIcon />
         </IconButton>
       </DialogTitle>
 
       <Tabs
         value={tab}
         onChange={(_, value: TicketTab) => setTab(value)}
-        variant="fullWidth"
         aria-label="Ticket sections"
-        sx={{ px: { xs: 1, sm: 2.25 }, borderBottom: 1, borderColor: 'divider', minHeight: 44, '& .MuiTab-root': { minHeight: 44, fontSize: 13, fontWeight: 800, letterSpacing: '0.06em' } }}
+        sx={{
+          mx: { xs: 2, sm: 3.5 },
+          borderBottom: 1,
+          borderColor: 'divider',
+          minHeight: 52,
+          '& .MuiTab-root': { minHeight: 52, minWidth: 0, mr: { xs: 1, sm: 4 }, px: 1.5, fontSize: 14, fontWeight: 800, letterSpacing: '0.04em', gap: 1 },
+          '& .MuiTab-root .MuiSvgIcon-root': { fontSize: 22 },
+          '& .MuiTabs-indicator': { height: 3, borderRadius: 3 },
+        }}
       >
-        <Tab value="general" id={tabId('general')} aria-controls={`${uid}-panel`} label="General" />
-        <Tab value="additional" id={tabId('additional')} aria-controls={`${uid}-panel`} label="Additional" />
-        <Tab value="activity" id={tabId('activity')} aria-controls={`${uid}-panel`} label="Activity" />
+        <Tab value="general" id={tabId('general')} aria-controls={`${uid}-panel`} icon={<DescriptionRoundedIcon />} iconPosition="start" label="General" />
+        <Tab value="additional" id={tabId('additional')} aria-controls={`${uid}-panel`} icon={<PlaceRoundedIcon />} iconPosition="start" label="Additional" />
+        <Tab value="activity" id={tabId('activity')} aria-controls={`${uid}-panel`} icon={<HistoryRoundedIcon />} iconPosition="start" label="Activity" />
       </Tabs>
 
-      <DialogContent id={`${uid}-panel`} role="tabpanel" aria-labelledby={tabId(tab)} sx={{ p: { xs: 2, sm: 2.75 } }}>
+      <DialogContent id={`${uid}-panel`} role="tabpanel" aria-labelledby={tabId(tab)} sx={{ p: { xs: 2, sm: 3.5 } }}>
         {tab === 'general' && (
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: 3, alignItems: 'stretch', pt: 0.5 }}>
-            <Stack spacing={2.5}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: { xs: 3, md: 4 }, alignItems: 'stretch', pt: 0.5 }}>
+            <Stack spacing={3}>
               <Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                   <TextField
                     variant="outlined"
                     id={`${uid}-title`}
                     label="Title"
                     fullWidth
-                    size="small"
                     placeholder="Enter ticket title..."
                     value={title}
                     onChange={(e) => onTitleChange(e.target.value)}
@@ -350,12 +465,12 @@ export default function TicketCreateLayout({
                       aria-label={voice === 'idle' ? 'Start voice input' : 'Stop voice input'}
                       aria-pressed={voice !== 'idle'}
                       sx={{
-                        width: 36,
-                        height: 36,
+                        width: 48,
+                        height: 48,
                         flexShrink: 0,
-                        color: 'primary.contrastText',
-                        bgcolor: 'primary.main',
-                        '&:hover': { bgcolor: 'primary.dark' },
+                        color: 'primary.main',
+                        bgcolor: (t: Theme) => alpha(t.palette.primary.main, 0.16),
+                        '&:hover': { bgcolor: (t: Theme) => alpha(t.palette.primary.main, 0.26) },
                         ...(voice === 'listening' && {
                           animation: 'voicePulse 1.2s ease-out infinite',
                           '@keyframes voicePulse': {
@@ -365,7 +480,7 @@ export default function TicketCreateLayout({
                         }),
                       }}
                     >
-                      {voice === 'idle' ? <MicRoundedIcon sx={{ fontSize: 20 }} /> : <StopRoundedIcon sx={{ fontSize: 20 }} />}
+                      {voice === 'idle' ? <MicRoundedIcon /> : <StopRoundedIcon />}
                     </IconButton>
                   </Tooltip>
                 </Box>
@@ -376,56 +491,81 @@ export default function TicketCreateLayout({
                 )}
               </Box>
 
-              <TextField
-                variant="outlined"
-                id={`${uid}-description`}
-                label="Description"
-                fullWidth
-                size="small"
-                placeholder="Enter detailed description of the issue..."
-                value={description}
-                onChange={(e) => onDescriptionChange(e.target.value)}
-                multiline
-                minRows={4}
-                slotProps={{ inputLabel: { shrink: true } }}
-                sx={fieldSx}
-              />
+              <Box sx={{ position: 'relative' }}>
+                <TextField
+                  variant="outlined"
+                  id={`${uid}-description`}
+                  label="Description"
+                  fullWidth
+                  placeholder="Enter detailed description of the issue..."
+                  value={description}
+                  onChange={(e) => onDescriptionChange(e.target.value)}
+                  multiline
+                  minRows={5}
+                  slotProps={{ inputLabel: { shrink: true }, htmlInput: { style: { paddingBottom: 28 } } }}
+                  sx={fieldSx}
+                />
+                <Tooltip title="Attach files">
+                  <IconButton
+                    onClick={(e) => setAttachAnchor(e.currentTarget)}
+                    aria-label={attachments.items.length > 0 ? `Attachments (${attachments.items.length})` : 'Attach files'}
+                    sx={{ position: 'absolute', right: 10, bottom: 8, color: 'text.secondary' }}
+                  >
+                    <Badge badgeContent={attachments.items.length} color="error" overlap="circular">
+                      <AttachFileRoundedIcon sx={{ transform: 'rotate(45deg)' }} />
+                    </Badge>
+                  </IconButton>
+                </Tooltip>
+              </Box>
 
-              <FormControl fullWidth size="small" sx={fieldSx}>
-                <Select
-                  value={priority}
-                  onChange={(e) => onPriorityChange(e.target.value as TicketPriority)}
-                  MenuProps={menuProps}
-                  inputProps={{ 'aria-label': 'Priority' }}
-                  renderValue={(value) => <PriorityOption priority={value as TicketPriority} />}
-                >
-                  {(Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => (
-                    <MenuItem key={p} value={p}>
-                      <PriorityOption priority={p} />
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
+                <FormControl fullWidth sx={fieldSx}>
+                  <Select
+                    value={priority}
+                    onChange={(e) => onPriorityChange(e.target.value as TicketPriority)}
+                    MenuProps={menuProps}
+                    inputProps={{ 'aria-label': 'Priority' }}
+                    renderValue={(value) => <PriorityOption priority={value as TicketPriority} />}
+                  >
+                    {(Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => (
+                      <MenuItem key={p} value={p}>
+                        <PriorityOption priority={p} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-              <FormControl fullWidth size="small" sx={fieldSx}>
-                <InputLabel id={`${uid}-assignee-label`}>Assignee</InputLabel>
-                <Select
-                  labelId={`${uid}-assignee-label`}
-                  label="Assignee"
-                  value={assignee}
-                  onChange={(e) => onAssigneeChange(e.target.value)}
-                  MenuProps={menuProps}
-                >
-                  {ASSIGNEES.map((person) => (
-                    <MenuItem key={person} value={person}>
-                      {person}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                <FormControl fullWidth sx={fieldSx}>
+                  <Select
+                    value={assignee}
+                    onChange={(e) => onAssigneeChange(e.target.value)}
+                    MenuProps={menuProps}
+                    inputProps={{ 'aria-label': 'Assignee' }}
+                    renderValue={(value) => <AssigneeOption name={value} />}
+                  >
+                    {ASSIGNEES.map((person) => (
+                      <MenuItem key={person} value={person}>
+                        <AssigneeOption name={person} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
             </Stack>
 
-            <SnapshotPanel snapshot={snapshot} previewSrc={snapshotPreview} onExpand={() => setFullscreen(true)} />
+            <SnapshotPanel
+              snapshot={snapshot}
+              originalSrc={snapshotPreview}
+              displaySrc={displaySrc}
+              cameraName={context.name}
+              stamp={stamp}
+              editing={editing}
+              shapes={shapes}
+              onStartEdit={() => setEditing(true)}
+              onCancelEdit={() => setEditing(false)}
+              onFinishEdit={finishMarkup}
+              onExpand={() => setFullscreen(true)}
+            />
           </Box>
         )}
 
@@ -435,19 +575,19 @@ export default function TicketCreateLayout({
               variant="outlined"
               id={`${uid}-coordinates`}
               label={coordinates.label}
+             
               fullWidth
-              size="small"
               value={coordinates.value}
               slotProps={{ htmlInput: { readOnly: true } }}
               sx={fieldSx}
             />
-            <TextField variant="outlined" id={`${uid}-reporter`} label="Reporter" fullWidth size="small" value={reporter} slotProps={{ htmlInput: { readOnly: true } }} sx={fieldSx} />
+            <TextField variant="outlined" id={`${uid}-reporter`} label="Reporter" fullWidth value={reporter} slotProps={{ htmlInput: { readOnly: true } }} sx={fieldSx} />
             <TextField
               variant="outlined"
               id={`${uid}-system`}
               label="Inspection Management System"
+             
               fullWidth
-              size="small"
               value={system}
               slotProps={{ htmlInput: { readOnly: true } }}
               sx={fieldSx}
@@ -468,14 +608,22 @@ export default function TicketCreateLayout({
         )}
       </DialogContent>
 
-      <DialogActions sx={{ px: { xs: 2, sm: 2.75 }, py: 2, gap: 1 }}>
-        <Button type="button" variant="outlined" color="inherit" onClick={onClose} disabled={isSubmitting} sx={{ borderRadius: 2, px: 3, fontWeight: 700 }}>
+      <DialogActions sx={{ px: { xs: 2, sm: 3.5 }, py: 2.25, gap: 1.5, borderTop: 1, borderColor: 'divider' }}>
+        <Button type="button" variant="outlined" color="inherit" onClick={onClose} disabled={isSubmitting} sx={{ borderRadius: 999, minWidth: 120, py: 1.1, fontWeight: 700, fontSize: 16, borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.34) }}>
           Cancel
         </Button>
-        <Button type="submit" variant="contained" disabled={isSubmitting} sx={{ borderRadius: 2, px: 3, fontWeight: 700 }}>
+        <Button type="submit" variant="contained" disabled={isSubmitting} sx={{ borderRadius: 999, minWidth: 170, py: 1.1, fontWeight: 700, fontSize: 16 }}>
           {isSubmitting ? 'Creating…' : 'Create Ticket'}
         </Button>
       </DialogActions>
+
+      <AttachmentPopover
+        anchorEl={attachAnchor}
+        onClose={() => setAttachAnchor(null)}
+        attachments={attachments}
+        onPreview={(item) => setPreviewing(item)}
+      />
+      <DocumentPreview attachment={previewing} onClose={() => setPreviewing(null)} />
 
       <Dialog
         open={fullscreen && canExpand}
@@ -493,7 +641,7 @@ export default function TicketCreateLayout({
         </IconButton>
         <Box
           component="img"
-          src={snapshotPreview ?? undefined}
+          src={displaySrc ?? undefined}
           alt="Snapshot of the current camera view"
           sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
         />
@@ -505,9 +653,22 @@ export default function TicketCreateLayout({
 function PriorityOption({ priority }: { priority: TicketPriority }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-      <Box aria-hidden sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: PRIORITY_COLOR[priority], flexShrink: 0 }} />
-      <Typography component="span" sx={{ fontSize: 14, fontWeight: 600 }}>
+      <Box aria-hidden sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: PRIORITY_COLOR[priority], flexShrink: 0 }} />
+      <Typography component="span" sx={{ fontSize: 16, fontWeight: 500 }}>
         {PRIORITY_LABEL[priority]}
+      </Typography>
+    </Box>
+  )
+}
+
+function AssigneeOption({ name }: { name: string }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+      <Box aria-hidden sx={{ width: 32, height: 32, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: '50%', color: 'primary.main', bgcolor: (t: Theme) => alpha(t.palette.primary.main, 0.16) }}>
+        <PersonRoundedIcon sx={{ fontSize: 20 }} />
+      </Box>
+      <Typography component="span" sx={{ fontSize: 16, fontWeight: 500 }}>
+        {name}
       </Typography>
     </Box>
   )

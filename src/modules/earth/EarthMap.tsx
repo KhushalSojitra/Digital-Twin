@@ -25,9 +25,10 @@ interface Props {
   selectedTicketId: string | null
   onSelectTicket: (ticket: Ticket) => void
   flyToTicket?: { lat: number; lng: number; nonce: number } | null
+  focusLocation?: { lat: number; lng: number; zoom: number; pitch: number; bearing: number; nonce: number } | null
   /** While true the next map click is reported through onPickLocation instead of panning. */
   pickMode?: boolean
-  onPickLocation?: (lat: number, lng: number) => void
+  onPickLocation?: (location: { lat: number; lng: number; preview: string | null; view: { zoom: number; pitch: number; bearing: number } }) => void
   /** Location of a ticket being drafted; rendered as a temporary marker. */
   draft?: { lat: number; lng: number } | null
 }
@@ -75,6 +76,7 @@ export default function EarthMap({
   selectedTicketId,
   onSelectTicket,
   flyToTicket = null,
+  focusLocation = null,
   pickMode = false,
   onPickLocation,
   draft = null,
@@ -111,7 +113,7 @@ export default function EarthMap({
       pitch: 0,
       bearing: 0,
       attributionControl: { compact: true },
-      canvasContextAttributes: { antialias: true },
+      canvasContextAttributes: { antialias: true, preserveDrawingBuffer: true },
     })
     mapRef.current = map
     setMapReady(true)
@@ -141,7 +143,13 @@ export default function EarthMap({
     syncZoom()
     map.on('zoom', syncZoom)
     map.on('click', (e) => {
-      if (pickModeRef.current) onPickRef.current?.(e.lngLat.lat, e.lngLat.lng)
+      if (!pickModeRef.current) return
+      onPickRef.current?.({
+        lat: e.lngLat.lat,
+        lng: e.lngLat.lng,
+        preview: map.getCanvas().toDataURL('image/jpeg', 0.88),
+        view: { zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() },
+      })
     })
 
     let tileOk = false
@@ -234,6 +242,12 @@ export default function EarthMap({
     }
     setTicketEntries([...live.values()])
   }, [overlays, mapReady, selectedTicketId])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !focusLocation) return
+    map.flyTo({ center: [focusLocation.lng, focusLocation.lat], zoom: focusLocation.zoom, pitch: focusLocation.pitch, bearing: focusLocation.bearing, duration: 900, essential: true })
+  }, [focusLocation])
 
   useEffect(() => {
     const map = mapRef.current

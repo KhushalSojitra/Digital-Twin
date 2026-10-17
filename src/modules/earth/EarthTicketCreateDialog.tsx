@@ -9,6 +9,8 @@ import TicketCreateLayout from '../tickets/TicketCreateLayout'
 export interface EarthLocation {
   lat: number
   lng: number
+  preview?: string | null
+  view?: { zoom: number; pitch: number; bearing: number }
 }
 
 interface Props {
@@ -16,9 +18,10 @@ interface Props {
   creator: string
   onClose: () => void
   onCreated: (ticket: Ticket) => void
+  onPreviewClick?: (location: EarthLocation) => void
 }
 
-export default function EarthTicketCreateDialog({ location, creator, onClose, onCreated }: Props) {
+export default function EarthTicketCreateDialog({ location, creator, onClose, onCreated, onPreviewClick }: Props) {
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
   return (
@@ -31,12 +34,12 @@ export default function EarthTicketCreateDialog({ location, creator, onClose, on
       sx={{ zIndex: (t) => t.zIndex.modal + 4 }}
       slotProps={{ paper: { sx: dialogPaperSx } }}
     >
-      {location && <CreateForm key={`${location.lat}:${location.lng}`} location={location} creator={creator} onClose={onClose} onCreated={onCreated} />}
+      {location && <CreateForm key={`${location.lat}:${location.lng}`} location={location} creator={creator} onClose={onClose} onCreated={onCreated} onPreviewClick={onPreviewClick} />}
     </Dialog>
   )
 }
 
-function CreateForm({ location, creator, onClose, onCreated }: Omit<Props, 'location'> & { location: EarthLocation }) {
+function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: Omit<Props, 'location'> & { location: EarthLocation }) {
   const { addTicket } = useTickets()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -92,6 +95,8 @@ function CreateForm({ location, creator, onClose, onCreated }: Omit<Props, 'loca
       onAssigneeChange={setAssignee}
       touched={touched}
       snapshot={{ mode: 'unavailable' }}
+      snapshotPreview={location.preview}
+      onSnapshotClick={location.view ? () => onPreviewClick?.(location) : undefined}
       coordinates={{ label: 'Coordinates', value: coordinates, hint: 'Latitude, Longitude' }}
       reporter={creator}
       system={TICKETING_SYSTEM}

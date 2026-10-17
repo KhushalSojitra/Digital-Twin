@@ -75,6 +75,7 @@ interface Props {
   snapshot: SnapshotControl
   snapshotPreview?: string | null
   onMarkupChange?: (image: string | null) => void
+  onSnapshotClick?: () => void
   coordinates: { label: string; value: string; hint?: string }
   reporter: string
   system: string
@@ -160,6 +161,7 @@ function SnapshotPanel({
   onCancelEdit,
   onFinishEdit,
   onExpand,
+  onSnapshotClick,
 }: {
   snapshot: SnapshotControl
   originalSrc?: string | null
@@ -172,8 +174,9 @@ function SnapshotPanel({
   onCancelEdit: () => void
   onFinishEdit: (shapes: MarkupShape[], image: string | null) => void
   onExpand: () => void
+  onSnapshotClick?: () => void
 }) {
-  const checked = snapshot.mode === 'toggle' ? snapshot.checked : snapshot.mode === 'locked-on'
+  const checked = snapshot.mode === 'toggle' ? snapshot.checked : snapshot.mode === 'locked-on' || snapshot.mode === 'unavailable'
   const showToggle = snapshot.mode !== 'unavailable'
   const showImage = checked && Boolean(displaySrc)
   const isEditing = editing && showImage && Boolean(originalSrc)
@@ -195,7 +198,8 @@ function SnapshotPanel({
           component="img"
           src={(isEditing ? originalSrc : displaySrc) ?? undefined}
           alt="Snapshot of the current camera view that will be attached to this ticket"
-          sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          onClick={onSnapshotClick}
+          sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', cursor: onSnapshotClick ? 'pointer' : 'default' }}
         />
       ) : (
         <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, color: 'text.secondary' }}>
@@ -324,6 +328,7 @@ export default function TicketCreateLayout({
   snapshot,
   snapshotPreview,
   onMarkupChange,
+  onSnapshotClick,
   coordinates,
   reporter,
   system,
@@ -565,6 +570,7 @@ export default function TicketCreateLayout({
               onCancelEdit={() => setEditing(false)}
               onFinishEdit={finishMarkup}
               onExpand={() => setFullscreen(true)}
+              onSnapshotClick={onSnapshotClick}
             />
           </Box>
         )}

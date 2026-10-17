@@ -82,7 +82,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   const capture = useCallback<CaptureFn>(
     (cameraId, dir, treatment, options) => {
       const ref =
-        cameraId === site.ptz.id ? apiPtz : cameraId === site.cam360.id ? api360 : cameraId === cctvOpen?.device.id ? apiCctv : null
+        cameraId === site.ptz.id ? apiPtz : cameraId === site.cam360.id ? api360 : site.cctv.some((device) => device.id === cameraId) ? apiCctv : null
       return ref?.current?.captureAt(dir, options?.fov ?? 26, treatment, options?.marks) ?? null
     },
     [site.ptz.id, site.cam360.id, cctvOpen?.device.id],

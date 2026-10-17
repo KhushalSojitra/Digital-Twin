@@ -51,6 +51,7 @@ export default function EarthModule() {
   const [focus, setFocus] = useState<TicketFocus | null>(null)
   const [pickMode, setPickMode] = useState(false)
   const [createAt, setCreateAt] = useState<EarthLocation | null>(null)
+  const [earthFocus, setEarthFocus] = useState<{ lat: number; lng: number; zoom: number; pitch: number; bearing: number; nonce: number } | null>(null)
 
   const earthTickets = useMemo(() => tickets.filter((t) => t.source === 'EARTH'), [tickets])
   const visibleTickets = useMemo(
@@ -131,10 +132,11 @@ export default function EarthModule() {
           onSelectTicket={handleSelectTicket}
           flyToTicket={flyTo}
           pickMode={pickMode}
-          onPickLocation={(lat, lng) => {
+          onPickLocation={(picked) => {
             setPickMode(false)
-            setCreateAt({ lat, lng })
+            setCreateAt(picked)
           }}
+          focusLocation={earthFocus}
           draft={createAt}
         />
 
@@ -275,7 +277,12 @@ export default function EarthModule() {
           location={createAt}
           creator={me}
           onClose={() => setCreateAt(null)}
+          onPreviewClick={(location) => {
+            setEarthFocus(location.view ? { lat: location.lat, lng: location.lng, ...location.view, nonce: Date.now() } : null)
+            setCreateAt(null)
+          }}
           onCreated={(ticket) => {
+            setEarthFocus(createAt?.view ? { lat: ticket.lat, lng: ticket.lng, ...createAt.view, nonce: Date.now() } : null)
             setCreateAt(null)
             setFlyTo({ lat: ticket.lat, lng: ticket.lng, nonce: Date.now() })
             setSelectedTicketId(ticket.id)

@@ -26,7 +26,7 @@ export type MarkupShape =
 
 type Tool = 'pen' | 'text' | 'ellipse' | 'rect' | 'eraser'
 
-const COLORS = ['#ef4444', '#facc15', '#22c55e', '#3b82f6', '#ffffff']
+const COLORS = ['#111827', '#ef4444', '#facc15', '#22c55e', '#3b82f6', '#ffffff']
 const STROKE = 3.5
 const FONT_SIZE = 20
 const FONT_FAMILY = 'Inter, system-ui, sans-serif'
@@ -174,7 +174,7 @@ interface Props {
   onDone: (shapes: MarkupShape[], image: string | null) => void
 }
 
-const barButtonSx = { width: 40, height: 40, borderRadius: '10px', color: '#fff' }
+const barButtonSx = { width: 34, height: 34, borderRadius: '8px', color: '#fff', flexShrink: 0 }
 const groupSx = { display: 'flex', alignItems: 'center', gap: 0.5 }
 
 export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }: Props) {
@@ -186,6 +186,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
   const [tool, setTool] = useState<Tool>('pen')
   const [color, setColor] = useState(COLORS[0])
   const [colorAnchor, setColorAnchor] = useState<HTMLElement | null>(null)
+  const [colorTarget, setColorTarget] = useState<'text' | 'box' | 'markup'>('markup')
   const [textDraft, setTextDraft] = useState<TextDraft | null>(null)
   const [editingTextIndex, setEditingTextIndex] = useState<number | null>(null)
   const [textBold, setTextBold] = useState(true)
@@ -255,7 +256,13 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
     if (e.pointerType === 'mouse' && e.button !== 0) return
     const p = pointFrom(e)
     if (tool === 'text') {
-      const existingIndex = shapes.findIndex((shape) => shape.kind === 'text' && hitsShape(shape, p, size.w, size.h))
+      const existingIndex = shapes.findIndex((shape) => {
+        try {
+          return shape.kind === 'text' && hitsShape(shape, p, size.w, size.h)
+        } catch {
+          return false
+        }
+      })
       const existing = existingIndex >= 0 ? shapes[existingIndex] : null
       if (existing?.kind === 'text') {
         setEditingTextIndex(existingIndex)
@@ -264,7 +271,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
         setTextSize(existing.fontSize ?? FONT_SIZE)
         setBoxColor(existing.boxColor ?? '#ffe56b')
         setColor(existing.color)
-        setTextDraft({ at: existing.at, value: existing.text, index: existingIndex, color: existing.color, boxColor: existing.boxColor, fontSize: existing.fontSize, bold: existing.bold, align: existing.align })
+        setTextDraft({ at: { ...existing.at }, value: existing.text, index: existingIndex, color: existing.color, boxColor: existing.boxColor, fontSize: existing.fontSize, bold: existing.bold, align: existing.align })
       } else {
         setEditingTextIndex(null)
         setTextDraft({ at: p, value: '' })
@@ -446,7 +453,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
         <Box
           role="toolbar"
           aria-label="Text annotation tools"
-          sx={{ position: 'absolute', left: 12, right: 12, bottom: 12, display: 'flex', alignItems: 'center', gap: 0.5, p: 0.75, borderRadius: '16px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', backdropFilter: 'blur(8px)', overflowX: 'auto' }}
+          sx={{ position: 'absolute', left: 10, right: 10, bottom: 10, display: 'flex', alignItems: 'center', gap: 0, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', backdropFilter: 'blur(8px)', overflow: 'hidden' }}
         >
           <Tooltip title="Voice to text"><IconButton aria-label="Voice to text" onClick={() => document.querySelector<HTMLInputElement>('[aria-label=\"Markup text\"]')?.focus()} sx={barButtonSx}><MicRoundedIcon /></IconButton></Tooltip>
           <Tooltip title="Bold"><IconButton aria-label="Bold" aria-pressed={textBold} onClick={() => setTextBold((value) => !value)} sx={{ ...barButtonSx, bgcolor: textBold ? 'rgba(255,255,255,0.16)' : 'transparent' }}><FormatBoldRoundedIcon /></IconButton></Tooltip>
@@ -454,14 +461,14 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
           <Tooltip title={`Decrease text size (${textSize}px)`}><IconButton aria-label="Decrease text size" onClick={() => setTextSize((value) => Math.max(12, value - 4))} sx={barButtonSx}><Box component="span" sx={{ fontSize: 17, fontWeight: 800, lineHeight: 1 }}>A−</Box></IconButton></Tooltip>
           <Tooltip title="Align text"><IconButton aria-label="Align text" onClick={() => setTextAlign((value) => value === 'left' ? 'center' : value === 'center' ? 'right' : 'left')} sx={barButtonSx}><FormatAlignLeftRoundedIcon /></IconButton></Tooltip>
           <Tooltip title="List"><IconButton aria-label="List" sx={barButtonSx}><FormatListBulletedRoundedIcon /></IconButton></Tooltip>
-          <Button aria-label="Text color" onClick={(e) => setColorAnchor(e.currentTarget)} sx={{ minWidth: 54, height: 40, gap: 0.5, color: '#fff' }}><Box component="span" sx={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: '#fff' }}>A</Box><Box component="span" aria-hidden sx={{ width: 24, height: 5, borderRadius: 2, bgcolor: color }} /><KeyboardArrowDownRoundedIcon fontSize="small" /></Button>
-          <Tooltip title="Box color"><IconButton aria-label="Box color" onClick={() => setBoxColor((value) => value === '#ffe56b' ? '#ffffff' : value === '#ffffff' ? '#111827' : '#ffe56b')} sx={barButtonSx}><Box sx={{ width: 20, height: 16, borderRadius: '3px', bgcolor: boxColor, border: '2px solid #fff' }} /></IconButton></Tooltip>
+          <Button aria-label="Text color" onClick={(e) => { setColorTarget('text'); setColorAnchor(e.currentTarget) }} sx={{ minWidth: 42, height: 34, gap: 0.25, px: 0.5, color: '#fff', flexShrink: 0 }}><Box component="span" sx={{ fontSize: 20, fontWeight: 800, lineHeight: 1, color: '#fff' }}>A</Box><Box component="span" aria-hidden sx={{ width: 22, height: 4, borderRadius: 2, bgcolor: color }} /><KeyboardArrowDownRoundedIcon sx={{ fontSize: 16 }} /></Button>
+          <Tooltip title="Box color"><IconButton aria-label="Box color" onClick={(e) => { setColorTarget('box'); setColorAnchor(e.currentTarget) }} sx={barButtonSx}><Box sx={{ width: 20, height: 15, borderRadius: '3px', bgcolor: boxColor, border: '2px solid #fff' }} /></IconButton></Tooltip>
           <Tooltip title="Delete selected text"><IconButton aria-label="Delete selected text" onClick={() => { if (editingTextIndex !== null) pushShapes(shapes.filter((_, index) => index !== editingTextIndex)); setEditingTextIndex(null); setTextDraft(null) }} sx={barButtonSx}><DeleteOutlineRoundedIcon /></IconButton></Tooltip>
-          <Box sx={{ flex: 1, minWidth: 8 }} />
+          <Box sx={{ flex: 1, minWidth: 2 }} />
           <Tooltip title="Undo"><span><IconButton aria-label="Undo" disabled={!canUndo} onClick={() => setHistory((h) => ({ ...h, index: h.index - 1 }))} sx={barButtonSx}><UndoRoundedIcon /></IconButton></span></Tooltip>
           <Tooltip title="Redo"><span><IconButton aria-label="Redo" disabled={!canRedo} onClick={() => setHistory((h) => ({ ...h, index: h.index + 1 }))} sx={barButtonSx}><RedoRoundedIcon /></IconButton></span></Tooltip>
-          <Button onClick={onCancel} sx={{ height: 40, px: 1.5, color: '#fff', fontWeight: 700 }}>Cancel</Button>
-          <Button variant="contained" onClick={finish} disabled={saving} sx={{ height: 40, px: 2, borderRadius: '10px', fontWeight: 700 }}>Save</Button>
+          <Button onClick={onCancel} sx={{ height: 34, minWidth: 58, px: 1, color: '#fff', fontWeight: 700, flexShrink: 0 }}>Cancel</Button>
+          <Button variant="contained" onClick={finish} disabled={saving} sx={{ height: 34, minWidth: 58, px: 1.25, borderRadius: '8px', fontWeight: 700, flexShrink: 0 }}>Save</Button>
         </Box>
       )}
 
@@ -510,7 +517,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
 
         <Button
           aria-label="Markup color"
-          onClick={(e) => setColorAnchor(e.currentTarget)}
+          onClick={(e) => { setColorTarget('markup'); setColorAnchor(e.currentTarget) }}
           sx={{ minWidth: 0, height: 40, ml: 0.5, px: 1.25, gap: 0.5, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(255,255,255,0.08)' }}
         >
           <Box aria-hidden sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: color, border: '2px solid rgba(255,255,255,0.85)' }} />
@@ -531,10 +538,11 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
               size="small"
               aria-label={`Use color ${c}`}
               onClick={() => {
-                setColor(c)
+                if (colorTarget === 'box') setBoxColor(c)
+                else setColor(c)
                 setColorAnchor(null)
               }}
-              sx={{ p: 0.5, border: 2, borderColor: c === color ? 'primary.main' : 'transparent' }}
+              sx={{ p: 0.5, border: 2, borderColor: (colorTarget === 'box' ? c === boxColor : c === color) ? 'primary.main' : 'transparent' }}
             >
               <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: c, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.25)' }} />
             </IconButton>

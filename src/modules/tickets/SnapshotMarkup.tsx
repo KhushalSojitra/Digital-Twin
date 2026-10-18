@@ -197,7 +197,9 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
   const textDrag = useRef<{ pointerId: number; startX: number; startY: number; origin: Point } | null>(null)
   const [saving, setSaving] = useState(false)
   const textToolbarRef = useRef<HTMLDivElement>(null)
+  const actionToolbarRef = useRef<HTMLDivElement>(null)
   const [textToolbarOffset, setTextToolbarOffset] = useState({ x: 0, y: 0 })
+  const [actionToolbarOffset, setActionToolbarOffset] = useState({ x: 0, y: 0 })
   const textToolbarDragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null)
 
   const shapes = history.stack[history.index]
@@ -342,6 +344,32 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
     }
   }
 
+  const actionToolbarDragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null)
+
+  const handleActionToolbarPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button, input, [role="button"]')) return
+    actionToolbarDragRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, originX: actionToolbarOffset.x, originY: actionToolbarOffset.y }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const handleActionToolbarPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = actionToolbarDragRef.current
+    const toolbar = actionToolbarRef.current
+    const parent = toolbar?.parentElement
+    if (!drag || !toolbar || !parent) return
+    setActionToolbarOffset({
+      x: Math.max(-12, Math.min(parent.clientWidth - toolbar.offsetWidth - 12, drag.originX + e.clientX - drag.startX)),
+      y: Math.max(-12, Math.min(parent.clientHeight - toolbar.offsetHeight - 12, drag.originY + e.clientY - drag.startY)),
+    })
+  }
+
+  const handleActionToolbarPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (actionToolbarDragRef.current?.pointerId === e.pointerId) {
+      actionToolbarDragRef.current = null
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+  }
+
   const handleTextToolbarPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button, input, [role="button"]')) return
     textToolbarDragRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, originX: textToolbarOffset.x, originY: textToolbarOffset.y }
@@ -438,33 +466,36 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
       )}
 
       {tool === 'text' && (
-        <Box
-          ref={textToolbarRef}
-          role="toolbar"
-          aria-label="Text annotation tools"
-          onPointerDown={handleTextToolbarPointerDown}
-          onPointerMove={handleTextToolbarPointerMove}
-          onPointerUp={handleTextToolbarPointerUp}
-          onPointerCancel={handleTextToolbarPointerUp}
-          sx={{ position: 'absolute', right: 10, bottom: 58, display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 0.25, p: 0.5, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', backdropFilter: 'blur(8px)', transform: `translate(${textToolbarOffset.x}px, ${textToolbarOffset.y}px)`, cursor: textToolbarDragRef.current ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', zIndex: 3 }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, flexWrap: 'wrap', maxWidth: 150 }}>
-          <Tooltip title="Voice to text"><IconButton aria-label="Voice to text" onClick={() => document.querySelector<HTMLInputElement>('[aria-label=\"Markup text\"]')?.focus()} sx={barButtonSx}><MicRoundedIcon /></IconButton></Tooltip>
-          <Tooltip title="Bold"><IconButton aria-label="Bold" aria-pressed={textBold} onClick={() => setTextBold((value) => !value)} sx={{ ...barButtonSx, bgcolor: textBold ? 'rgba(255,255,255,0.16)' : 'transparent' }}><FormatBoldRoundedIcon /></IconButton></Tooltip>
-          <Tooltip title={`Increase text size (${textSize}px)`}><IconButton aria-label="Increase text size" onClick={() => setTextSize((value) => Math.min(40, value + 4))} sx={barButtonSx}><Box component="span" sx={{ fontSize: 23, fontWeight: 800, lineHeight: 1 }}>A+</Box></IconButton></Tooltip>
-          <Tooltip title={`Decrease text size (${textSize}px)`}><IconButton aria-label="Decrease text size" onClick={() => setTextSize((value) => Math.max(12, value - 4))} sx={barButtonSx}><Box component="span" sx={{ fontSize: 17, fontWeight: 800, lineHeight: 1 }}>A−</Box></IconButton></Tooltip>
-          <Tooltip title="Align text"><IconButton aria-label="Align text" onClick={() => setTextAlign((value) => value === 'left' ? 'center' : value === 'center' ? 'right' : 'left')} sx={barButtonSx}><FormatAlignLeftRoundedIcon /></IconButton></Tooltip>
-          <Tooltip title="List"><IconButton aria-label="List" sx={barButtonSx}><FormatListBulletedRoundedIcon /></IconButton></Tooltip>
-          <Button aria-label="Text color" onClick={(e) => { setColorTarget('text'); setColorAnchor(e.currentTarget) }} sx={{ minWidth: 38, height: 40, flexDirection: 'column', gap: 0, px: 0.25, color: '#fff', flexShrink: 0 }}><Box component="span" sx={{ fontSize: 20, fontWeight: 800, lineHeight: 1, color: '#fff' }}>A</Box><Box component="span" aria-hidden sx={{ width: 22, height: 4, borderRadius: 2, bgcolor: color, mt: 0.25 }} /><KeyboardArrowDownRoundedIcon sx={{ fontSize: 14, height: 10 }} /></Button>
-          <Tooltip title="Box color"><IconButton aria-label="Box color" onClick={(e) => { setColorTarget('box'); setColorAnchor(e.currentTarget) }} sx={barButtonSx}><Box sx={{ width: 20, height: 15, borderRadius: '3px', bgcolor: boxColor, border: '2px solid #fff' }} /></IconButton></Tooltip>
-          <Tooltip title="Delete selected text"><IconButton aria-label="Delete selected text" onClick={() => { if (editingTextIndex !== null) pushShapes(shapes.filter((_, index) => index !== editingTextIndex)); setEditingTextIndex(null); setTextDraft(null) }} sx={barButtonSx}><DeleteOutlineRoundedIcon /></IconButton></Tooltip>
-          <Box sx={{ flex: 1, minWidth: 2 }} />
-          <Tooltip title="Undo"><span><IconButton aria-label="Undo" disabled={!canUndo} onClick={() => setHistory((h) => ({ ...h, index: h.index - 1 }))} sx={barButtonSx}><UndoRoundedIcon /></IconButton></span></Tooltip>
-          <Tooltip title="Redo"><span><IconButton aria-label="Redo" disabled={!canRedo} onClick={() => setHistory((h) => ({ ...h, index: h.index + 1 }))} sx={barButtonSx}><RedoRoundedIcon /></IconButton></span></Tooltip>
-          <Button onClick={onCancel} sx={{ height: 34, minWidth: 58, px: 1, color: '#fff', fontWeight: 700, flexShrink: 0 }}>Cancel</Button>
-          <Button variant="contained" onClick={finish} disabled={saving} sx={{ height: 34, minWidth: 58, px: 1.25, borderRadius: '8px', fontWeight: 700, flexShrink: 0 }}>Save</Button>
+        <>
+          <Box
+            ref={textToolbarRef}
+            role="toolbar"
+            aria-label="Text annotation options"
+            onPointerDown={handleTextToolbarPointerDown}
+            onPointerMove={handleTextToolbarPointerMove}
+            onPointerUp={handleTextToolbarPointerUp}
+            onPointerCancel={handleTextToolbarPointerUp}
+            sx={{ position: 'absolute', right: 10, bottom: 58, display: 'flex', flexDirection: 'column', gap: 0, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', backdropFilter: 'blur(8px)', transform: `translate(${textToolbarOffset.x}px, ${textToolbarOffset.y}px)`, cursor: textToolbarDragRef.current ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', zIndex: 3 }}
+          >
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+              <Tooltip title="Voice to text"><IconButton aria-label="Voice to text" onClick={() => document.querySelector<HTMLInputElement>('[aria-label=\"Markup text\"]')?.focus()} sx={barButtonSx}><MicRoundedIcon /></IconButton></Tooltip>
+              <Tooltip title="Bold"><IconButton aria-label="Bold" aria-pressed={textBold} onClick={() => setTextBold((value) => !value)} sx={{ ...barButtonSx, bgcolor: textBold ? 'rgba(255,255,255,0.16)' : 'transparent' }}><FormatBoldRoundedIcon /></IconButton></Tooltip>
+              <Tooltip title={`Increase text size (${textSize}px)`}><IconButton aria-label="Increase text size" onClick={() => setTextSize((value) => Math.min(40, value + 4))} sx={barButtonSx}><Box component="span" sx={{ fontSize: 23, fontWeight: 800, lineHeight: 1 }}>A+</Box></IconButton></Tooltip>
+              <Tooltip title={`Decrease text size (${textSize}px)`}><IconButton aria-label="Decrease text size" onClick={() => setTextSize((value) => Math.max(12, value - 4))} sx={barButtonSx}><Box component="span" sx={{ fontSize: 17, fontWeight: 800, lineHeight: 1 }}>A−</Box></IconButton></Tooltip>
+              <Tooltip title="Align text"><IconButton aria-label="Align text" onClick={() => setTextAlign((value) => value === 'left' ? 'center' : value === 'center' ? 'right' : 'left')} sx={barButtonSx}><FormatAlignLeftRoundedIcon /></IconButton></Tooltip>
+              <Tooltip title="List"><IconButton aria-label="List" sx={barButtonSx}><FormatListBulletedRoundedIcon /></IconButton></Tooltip>
+              <Button aria-label="Text color" onClick={(e) => { setColorTarget('text'); setColorAnchor(e.currentTarget) }} sx={{ minWidth: 38, height: 40, flexDirection: 'column', gap: 0, px: 0.25, color: '#fff', flexShrink: 0 }}><Box component="span" sx={{ fontSize: 20, fontWeight: 800, lineHeight: 1 }}>A</Box><Box component="span" aria-hidden sx={{ width: 22, height: 4, borderRadius: 2, bgcolor: color, mt: 0.25 }} /></Button>
+              <Tooltip title="Box color"><IconButton aria-label="Box color" onClick={(e) => { setColorTarget('box'); setColorAnchor(e.currentTarget) }} sx={barButtonSx}><Box sx={{ width: 20, height: 15, borderRadius: '3px', bgcolor: boxColor, border: '2px solid #fff' }} /></IconButton></Tooltip>
+            </Box>
           </Box>
-        </Box>
+          <Box ref={actionToolbarRef} onPointerDown={handleActionToolbarPointerDown} onPointerMove={handleActionToolbarPointerMove} onPointerUp={handleActionToolbarPointerUp} onPointerCancel={handleActionToolbarPointerUp} sx={{ position: 'absolute', right: 10, bottom: 10, display: 'flex', alignItems: 'center', gap: 0.25, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', transform: `translate(${actionToolbarOffset.x}px, ${actionToolbarOffset.y}px)`, cursor: actionToolbarDragRef.current ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', zIndex: 3 }}>
+            <Tooltip title="Delete selected text"><IconButton aria-label="Delete selected text" onClick={() => { if (editingTextIndex !== null) pushShapes(shapes.filter((_, index) => index !== editingTextIndex)); setEditingTextIndex(null); setTextDraft(null) }} sx={barButtonSx}><DeleteOutlineRoundedIcon /></IconButton></Tooltip>
+            <Tooltip title="Undo"><span><IconButton aria-label="Undo" disabled={!canUndo} onClick={() => setHistory((h) => ({ ...h, index: h.index - 1 }))} sx={barButtonSx}><UndoRoundedIcon /></IconButton></span></Tooltip>
+            <Tooltip title="Redo"><span><IconButton aria-label="Redo" disabled={!canRedo} onClick={() => setHistory((h) => ({ ...h, index: h.index + 1 }))} sx={barButtonSx}><RedoRoundedIcon /></IconButton></span></Tooltip>
+            <Button onClick={onCancel} sx={{ height: 34, minWidth: 58, px: 1, color: '#fff', fontWeight: 700 }}>Cancel</Button>
+            <Button variant="contained" onClick={finish} disabled={saving} sx={{ height: 34, minWidth: 58, px: 1.25, borderRadius: '8px', fontWeight: 700 }}>Save</Button>
+          </Box>
+        </>
       )}
 
       <Box

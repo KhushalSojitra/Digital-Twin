@@ -12,6 +12,7 @@ import FormatSizeRoundedIcon from '@mui/icons-material/FormatSizeRounded'
 import FormatAlignLeftRoundedIcon from '@mui/icons-material/FormatAlignLeftRounded'
 import FormatListBulletedRoundedIcon from '@mui/icons-material/FormatListBulletedRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import MicRoundedIcon from '@mui/icons-material/MicRounded'
 
 interface Point {
   x: number
@@ -22,7 +23,7 @@ export type MarkupShape =
   | { kind: 'pen'; color: string; points: Point[] }
   | { kind: 'ellipse'; color: string; a: Point; b: Point }
   | { kind: 'rect'; color: string; a: Point; b: Point }
-  | { kind: 'text'; color: string; at: Point; text: string }
+  | { kind: 'text'; color: string; at: Point; text: string; boxColor?: string; fontSize?: number; bold?: boolean; align?: 'left' | 'center' | 'right' }
 
 type Tool = 'pen' | 'text' | 'ellipse' | 'rect' | 'eraser'
 
@@ -74,8 +75,16 @@ function drawShapes(ctx: CanvasRenderingContext2D, shapes: MarkupShape[], toPx: 
       ctx.stroke()
     } else {
       const q = toPx(shape.at)
-      ctx.font = `600 ${FONT_SIZE * unit}px ${FONT_FAMILY}`
+      ctx.font = `${shape.bold === false ? 500 : 700} ${(shape.fontSize ?? FONT_SIZE) * unit}px ${FONT_FAMILY}`
       ctx.textBaseline = 'top'
+      ctx.textAlign = shape.align ?? 'left'
+      if (shape.boxColor) {
+        const padding = 8 * unit
+        const width = ctx.measureText(shape.text).width + padding * 2
+        ctx.fillStyle = shape.boxColor
+        ctx.fillRect(q.x - padding, q.y - padding / 2, width, (shape.fontSize ?? FONT_SIZE) * 1.5 * unit)
+        ctx.fillStyle = shape.color
+      }
       ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
       ctx.shadowBlur = 3 * unit
       ctx.fillText(shape.text, q.x, q.y)
@@ -173,6 +182,8 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
   const [textDraft, setTextDraft] = useState<TextDraft | null>(null)
   const [textBold, setTextBold] = useState(true)
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('left')
+  const [textSize, setTextSize] = useState(FONT_SIZE)
+  const [boxColor, setBoxColor] = useState('#ffe56b')
   const [size, setSize] = useState({ w: 0, h: 0 })
   const textDrag = useRef<{ pointerId: number; startX: number; startY: number; origin: Point } | null>(null)
   const [toolbarOffset, setToolbarOffset] = useState({ x: 0, y: 0 })
@@ -273,7 +284,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
   }
 
   const commitText = (value: TextDraft) => {
-    if (value.value.trim()) pushShapes([...shapes, { kind: 'text', color, at: value.at, text: value.value.trim() }])
+    if (value.value.trim()) pushShapes([...shapes, { kind: 'text', color, at: value.at, text: value.value.trim(), boxColor, fontSize: textSize, bold: textBold, align: textAlign }])
     setTextDraft((current) => (current === value ? null : current))
   }
 
@@ -333,7 +344,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
   }
 
   const finish = async () => {
-    const pending = textDraft?.value.trim() ? [...shapes, { kind: 'text' as const, color, at: textDraft.at, text: textDraft.value.trim() }] : shapes
+    const pending = textDraft?.value.trim() ? [...shapes, { kind: 'text' as const, color, at: textDraft.at, text: textDraft.value.trim(), boxColor, fontSize: textSize, bold: textBold, align: textAlign }] : shapes
     if (pending.length === 0) {
       onDone([], null)
       return
@@ -378,7 +389,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
             if (e.key === 'Enter') commitText(textDraft)
             if (e.key === 'Escape') setTextDraft(null)
           }}
-          onBlur={() => commitText(textDraft)}
+          onBlur={() => undefined}
           sx={{
             position: 'absolute',
             left: `${textDraft.at.x * 100}%`,
@@ -389,12 +400,12 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
             border: '2px solid #1976ff',
             outline: 'none',
             borderRadius: '7px',
-            bgcolor: '#ffe56b',
+            bgcolor: boxColor,
             color: '#111827',
             p: '8px 12px',
             cursor: textDrag.current ? 'grabbing' : 'grab',
             textAlign,
-            font: `${textBold ? 700 : 500} ${FONT_SIZE}px/1.2 ${FONT_FAMILY}`, 
+            font: `${textBold ? 700 : 500} ${textSize}px/1.2 ${FONT_FAMILY}`,  
             boxShadow: '0 0 0 2px rgba(255,255,255,0.85), 0 0 0 4px #1976ff',
           }}
         />
@@ -406,11 +417,14 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
           aria-label="Text annotation tools"
           sx={{ position: 'absolute', left: 12, right: 12, bottom: 12, display: 'flex', alignItems: 'center', gap: 0.5, p: 0.75, borderRadius: '16px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', backdropFilter: 'blur(8px)', overflowX: 'auto' }}
         >
-          <Tooltip title="Text style"><IconButton aria-label="Text style" aria-pressed={textBold} onClick={() => setTextBold((value) => !value)} sx={{ ...barButtonSx, bgcolor: textBold ? 'rgba(255,255,255,0.16)' : 'transparent' }}><FormatBoldRoundedIcon /></IconButton></Tooltip>
-          <Tooltip title="Text size"><IconButton aria-label="Text size" sx={barButtonSx}><FormatSizeRoundedIcon /></IconButton></Tooltip>
+          <Tooltip title="Voice to text"><IconButton aria-label="Voice to text" onClick={() => document.querySelector<HTMLInputElement>('[aria-label=\"Markup text\"]')?.focus()} sx={barButtonSx}><MicRoundedIcon /></IconButton></Tooltip>
+          <Tooltip title="Bold"><IconButton aria-label="Bold" aria-pressed={textBold} onClick={() => setTextBold((value) => !value)} sx={{ ...barButtonSx, bgcolor: textBold ? 'rgba(255,255,255,0.16)' : 'transparent' }}><FormatBoldRoundedIcon /></IconButton></Tooltip>
+          <Tooltip title="Text size"><IconButton aria-label="Text size" onClick={() => setTextSize((value) => value >= 28 ? 16 : value + 4)} sx={barButtonSx}><FormatSizeRoundedIcon /></IconButton></Tooltip>
+          <Tooltip title="Smaller text"><IconButton aria-label="Smaller text" onClick={() => setTextSize((value) => Math.max(12, value - 2))} sx={barButtonSx}><FormatSizeRoundedIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
           <Tooltip title="Align text"><IconButton aria-label="Align text" onClick={() => setTextAlign((value) => value === 'left' ? 'center' : value === 'center' ? 'right' : 'left')} sx={barButtonSx}><FormatAlignLeftRoundedIcon /></IconButton></Tooltip>
           <Tooltip title="List"><IconButton aria-label="List" sx={barButtonSx}><FormatListBulletedRoundedIcon /></IconButton></Tooltip>
           <Button aria-label="Text color" onClick={(e) => setColorAnchor(e.currentTarget)} sx={{ minWidth: 48, height: 40, color: '#fff' }}><Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: color, border: '2px solid #fff' }} /><KeyboardArrowDownRoundedIcon fontSize="small" /></Button>
+          <Tooltip title="Box color"><IconButton aria-label="Box color" onClick={() => setBoxColor((value) => value === '#ffe56b' ? '#ffffff' : value === '#ffffff' ? '#111827' : '#ffe56b')} sx={barButtonSx}><Box sx={{ width: 20, height: 16, borderRadius: '3px', bgcolor: boxColor, border: '2px solid #fff' }} /></IconButton></Tooltip>
           <Tooltip title="Erase text"><IconButton aria-label="Erase text" onClick={() => setTextDraft(null)} sx={barButtonSx}><DeleteOutlineRoundedIcon /></IconButton></Tooltip>
           <Box sx={{ flex: 1, minWidth: 8 }} />
           <Tooltip title="Undo"><span><IconButton aria-label="Undo" disabled={!canUndo} onClick={() => setHistory((h) => ({ ...h, index: h.index - 1 }))} sx={barButtonSx}><UndoRoundedIcon /></IconButton></span></Tooltip>

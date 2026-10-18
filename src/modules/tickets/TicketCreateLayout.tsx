@@ -653,6 +653,7 @@ export default function TicketCreateLayout({
             <SnapshotMarkup
               src={snapshotPreview ?? displaySrc}
               initialShapes={shapes}
+              defaultCollapsed
               onCancel={() => setFullscreen(false)}
               onDone={(next, image) => { finishMarkup(next, image); setFullscreen(false) }}
             />

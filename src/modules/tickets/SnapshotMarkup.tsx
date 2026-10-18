@@ -172,20 +172,28 @@ interface Props {
   initialShapes: MarkupShape[]
   onCancel: () => void
   onDone: (shapes: MarkupShape[], image: string | null) => void
+  defaultCollapsed?: boolean
 }
 
 const barButtonSx = { width: 34, height: 34, borderRadius: '8px', color: '#fff', flexShrink: 0 }
 const groupSx = { display: 'flex', alignItems: 'center', gap: 0.5 }
 
-export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }: Props) {
+export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, defaultCollapsed = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const draftRef = useRef<MarkupShape | null>(null)
   const erasing = useRef(false)
   const [history, setHistory] = useState({ stack: [initialShapes], index: 0 })
   const [draft, setDraft] = useState<MarkupShape | null>(null)
-  const [tool, setTool] = useState<Tool>('pen')
+  const [tool, setTool] = useState<Tool | null>(null)
+  const [expanded, setExpanded] = useState(!defaultCollapsed)
   const [color, setColor] = useState(COLORS[0])
   const selectTool = (nextTool: Tool) => {
+    if (tool === nextTool) {
+      setTool(null)
+      setTextDraft(null)
+      setEditingTextIndex(null)
+      return
+    }
     setTool(nextTool)
     if (nextTool === 'text') setColor('#ffffff')
     else if (nextTool !== 'eraser') setColor('#ef4444')
@@ -260,7 +268,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
   }
 
   const handleDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return
+    if (!tool || (e.pointerType === 'mouse' && e.button !== 0)) return
     const p = pointFrom(e)
     if (tool === 'text') {
       const existingIndex = shapes.findIndex((shape) => {
@@ -449,8 +457,20 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
         onPointerMove={handleMove}
         onPointerUp={handleUp}
         onPointerCancel={handleUp}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', zIndex: 1, cursor: tool === 'text' ? 'text' : 'crosshair' }}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', zIndex: 1, pointerEvents: tool ? 'auto' : 'none', cursor: !tool ? 'default' : tool === 'text' ? 'text' : 'crosshair' }}
       />
+
+      {!expanded && (
+        <Tooltip title="Mark up snapshot">
+          <IconButton
+            aria-label="Mark up snapshot"
+            onClick={() => setExpanded(true)}
+            sx={{ ...barButtonSx, position: 'absolute', right: 12, bottom: 12, zIndex: 3, width: 40, height: 40, bgcolor: 'rgba(14, 17, 23, 0.94)', '&:hover': { bgcolor: 'rgba(14, 17, 23, 1)' } }}
+          >
+            <EditRoundedIcon />
+          </IconButton>
+        </Tooltip>
+      )}
 
       {textDraft && (
         <Box
@@ -529,7 +549,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
           left: 12,
           right: 12,
           bottom: 12,
-          display: tool === 'text' ? 'none' : 'flex',
+          display: !expanded || tool === 'text' ? 'none' : 'flex',
           alignItems: 'center',
           flexWrap: 'wrap',
           rowGap: 0.5,

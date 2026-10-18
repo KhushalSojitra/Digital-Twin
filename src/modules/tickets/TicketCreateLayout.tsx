@@ -634,23 +634,32 @@ export default function TicketCreateLayout({
       <Dialog
         open={fullscreen && canExpand}
         onClose={() => setFullscreen(false)}
-        fullScreen
+        maxWidth="xl"
+        fullWidth
         sx={{ zIndex: (t: Theme) => t.zIndex.modal + 20 }}
-        slotProps={{ paper: { sx: { bgcolor: '#000' } } }}
+        slotProps={{
+          backdrop: { sx: { bgcolor: 'rgba(3, 7, 18, 0.78)', backdropFilter: 'blur(5px)' } },
+          paper: { sx: { width: 'min(96vw, 1500px)', height: 'min(92vh, 960px)', maxWidth: 'none', overflow: 'hidden', borderRadius: { xs: 1.5, sm: 2.5 }, bgcolor: '#080c14', border: '1px solid rgba(255,255,255,0.14)', boxShadow: '0 24px 80px rgba(0,0,0,0.55)' } },
+        }}
       >
-        <IconButton
-          onClick={() => setFullscreen(false)}
-          aria-label="Close fullscreen snapshot"
-          sx={{ position: 'absolute', top: 12, right: 12, zIndex: 1, color: '#fff', bgcolor: 'rgba(8, 12, 20, 0.62)', '&:hover': { bgcolor: 'rgba(8, 12, 20, 0.85)' } }}
-        >
-          <CloseRoundedIcon />
-        </IconButton>
-        <Box
-          component="img"
-          src={displaySrc ?? undefined}
-          alt="Snapshot of the current camera view"
-          sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
-        />
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 0.75, minHeight: 48, color: '#fff', bgcolor: 'rgba(14, 20, 32, 0.96)', borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
+          <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Snapshot preview</Typography>
+          <IconButton onClick={() => setFullscreen(false)} aria-label="Close fullscreen snapshot" sx={{ color: '#fff' }}>
+            <CloseRoundedIcon />
+          </IconButton>
+        </Box>
+        <Box sx={{ position: 'relative', flex: 1, minHeight: 0, p: { xs: 0.75, sm: 1.5 }, bgcolor: '#000' }}>
+          {snapshotOn && snapshotPreview ? (
+            <SnapshotMarkup
+              src={snapshotPreview}
+              initialShapes={shapes}
+              onCancel={() => setFullscreen(false)}
+              onDone={(next, image) => { finishMarkup(next, image); setFullscreen(false) }}
+            />
+          ) : (
+            <Box component="img" src={displaySrc ?? undefined} alt="Snapshot of the current camera view" sx={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          )}
+        </Box>
       </Dialog>
     </Box>
   )

@@ -651,7 +651,7 @@ export default function TicketCreateLayout({
         <Box sx={{ position: 'relative', flex: 1, minHeight: 0, p: { xs: 0.75, sm: 1.5 }, bgcolor: '#000' }}>
           {snapshotOn && displaySrc ? (
             <SnapshotMarkup
-              src={displaySrc}
+              src={snapshotPreview ?? displaySrc}
               initialShapes={shapes}
               onCancel={() => setFullscreen(false)}
               onDone={(next, image) => { finishMarkup(next, image); setFullscreen(false) }}

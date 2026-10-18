@@ -125,14 +125,17 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   const completedCount = useMemo(() => manageTickets.filter(isHistoricalTicket).length, [manageTickets])
   const overlayTickets = useMemo(
     () => liveTicketView
-      ? scopedTickets.filter((ticket) =>
-          !isHistoricalTicket(ticket)
-          || ticket.id === selectedTicketId
-          || ticket.id === targetTicketId
-          || showImprovements,
-        )
+      ? scopedTickets.filter((ticket) => {
+          const belongsToActiveViewer = ticket.cameraId === (primary === '360' ? site.cam360.id : site.ptz.id)
+          return belongsToActiveViewer && (
+            !isHistoricalTicket(ticket)
+            || ticket.id === selectedTicketId
+            || ticket.id === targetTicketId
+            || showImprovements
+          )
+        })
       : [],
-    [scopedTickets, showImprovements, selectedTicketId, targetTicketId, liveTicketView],
+    [scopedTickets, showImprovements, selectedTicketId, targetTicketId, liveTicketView, primary, site.cam360.id, site.ptz.id],
   )
 
   const mainDevice = primary === '360' ? site.cam360 : site.ptz

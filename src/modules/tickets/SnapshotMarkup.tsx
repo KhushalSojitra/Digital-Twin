@@ -26,7 +26,7 @@ export type MarkupShape =
 
 type Tool = 'pen' | 'text' | 'ellipse' | 'rect' | 'eraser'
 
-const COLORS = ['#111827', '#ef4444', '#facc15', '#22c55e', '#3b82f6', '#ffffff']
+const COLORS = ['#ef4444', '#111827', '#facc15', '#22c55e', '#3b82f6', '#ffffff']
 const STROKE = 3.5
 const FONT_SIZE = 20
 const FONT_FAMILY = 'Inter, system-ui, sans-serif'
@@ -185,6 +185,11 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
   const [draft, setDraft] = useState<MarkupShape | null>(null)
   const [tool, setTool] = useState<Tool>('pen')
   const [color, setColor] = useState(COLORS[0])
+  const selectTool = (nextTool: Tool) => {
+    setTool(nextTool)
+    if (nextTool === 'text') setColor('#ffffff')
+    else if (nextTool !== 'eraser') setColor('#ef4444')
+  }
   const [colorAnchor, setColorAnchor] = useState<HTMLElement | null>(null)
   const [colorTarget, setColorTarget] = useState<'text' | 'box' | 'markup'>('markup')
   const [textDraft, setTextDraft] = useState<TextDraft | null>(null)
@@ -524,7 +529,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
             <IconButton
               aria-label={item.label}
               aria-pressed={tool === item.id}
-              onClick={() => setTool(item.id)}
+              onClick={() => selectTool(item.id)}
               sx={{ ...barButtonSx, bgcolor: tool === item.id ? 'primary.main' : 'transparent', '&:hover': { bgcolor: tool === item.id ? 'primary.main' : 'rgba(255,255,255,0.12)' } }}
             >
               {item.icon}
@@ -570,7 +575,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
           <IconButton
             aria-label="Eraser"
             aria-pressed={tool === 'eraser'}
-            onClick={() => setTool('eraser')}
+            onClick={() => selectTool('eraser')}
             sx={{ ...barButtonSx, ml: 0.5, bgcolor: tool === 'eraser' ? 'primary.main' : 'transparent', '&:hover': { bgcolor: tool === 'eraser' ? 'primary.main' : 'rgba(255,255,255,0.12)' } }}
           >
             <EraserIcon />

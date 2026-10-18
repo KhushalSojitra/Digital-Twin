@@ -362,9 +362,15 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
     const toolbar = actionToolbarRef.current
     const parent = toolbar?.parentElement
     if (!drag || !toolbar || !parent) return
+    const parentRect = parent.getBoundingClientRect()
+    const toolbarRect = toolbar.getBoundingClientRect()
+    const deltaX = e.clientX - drag.startX
+    const deltaY = e.clientY - drag.startY
+    const currentX = toolbarRect.left - parentRect.left
+    const currentY = toolbarRect.top - parentRect.top
     setActionToolbarOffset({
-      x: Math.max(-12, Math.min(parent.clientWidth - toolbar.offsetWidth - 12, drag.originX + e.clientX - drag.startX)),
-      y: Math.max(-12, Math.min(parent.clientHeight - toolbar.offsetHeight - 12, drag.originY + e.clientY - drag.startY)),
+      x: drag.originX + Math.max(-currentX, Math.min(parent.clientWidth - toolbar.offsetWidth - currentX, deltaX)),
+      y: drag.originY + Math.max(-currentY, Math.min(parent.clientHeight - toolbar.offsetHeight - currentY, deltaY)),
     })
   }
 
@@ -386,9 +392,15 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
     const toolbar = textToolbarRef.current
     const parent = toolbar?.parentElement
     if (!drag || !toolbar || !parent) return
+    const parentRect = parent.getBoundingClientRect()
+    const toolbarRect = toolbar.getBoundingClientRect()
+    const deltaX = e.clientX - drag.startX
+    const deltaY = e.clientY - drag.startY
+    const currentX = toolbarRect.left - parentRect.left
+    const currentY = toolbarRect.top - parentRect.top
     setTextToolbarOffset({
-      x: Math.max(-12, Math.min(parent.clientWidth - toolbar.offsetWidth - 12, drag.originX + e.clientX - drag.startX)),
-      y: Math.max(-12, Math.min(parent.clientHeight - toolbar.offsetHeight - 12, drag.originY + e.clientY - drag.startY)),
+      x: drag.originX + Math.max(-currentX, Math.min(parent.clientWidth - toolbar.offsetWidth - currentX, deltaX)),
+      y: drag.originY + Math.max(-currentY, Math.min(parent.clientHeight - toolbar.offsetHeight - currentY, deltaY)),
     })
   }
 

@@ -356,27 +356,22 @@ export default function PanoramaViewer({
         for (const pin of pins) {
           out.save()
           out.translate(pin.x, pin.y)
-          out.lineCap = 'round'
-          const stroke = (style: string, width: number) => {
-            out.strokeStyle = style
-            out.lineWidth = width
-            out.beginPath()
-            out.arc(0, 0, 13, 0, Math.PI * 2)
-            for (const [sx, sy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-              out.moveTo(sx * 17, sy * 17)
-              out.lineTo(sx * 25, sy * 25)
-            }
-            out.stroke()
-          }
-          stroke('#ffffff', 7)
-          stroke('#0A84FF', 3.5)
+          out.lineJoin = 'round'
+          // Map pin whose tip sits exactly on the ticket location.
+          out.beginPath()
+          out.moveTo(0, 0)
+          out.bezierCurveTo(-3, -5, -7, -9, -7, -13)
+          out.arc(0, -13, 7, Math.PI, 0)
+          out.bezierCurveTo(7, -9, 3, -5, 0, 0)
+          out.closePath()
+          out.lineWidth = 1.5
+          out.strokeStyle = 'rgba(255,255,255,0.9)'
+          out.fillStyle = '#0A84FF'
+          out.fill()
+          out.stroke()
           out.fillStyle = '#ffffff'
           out.beginPath()
-          out.arc(0, 0, 5.5, 0, Math.PI * 2)
-          out.fill()
-          out.fillStyle = '#0A84FF'
-          out.beginPath()
-          out.arc(0, 0, 3.5, 0, Math.PI * 2)
+          out.arc(0, -13, 2.6, 0, Math.PI * 2)
           out.fill()
           out.restore()
         }

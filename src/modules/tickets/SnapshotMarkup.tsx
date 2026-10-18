@@ -314,7 +314,10 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
     else if (current.kind === 'rect' || current.kind === 'ellipse') setDraftShape({ ...current, b: p })
   }
 
-  const handleUp = () => {
+  const handleUp = (e?: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (e && e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
     erasing.current = false
     const current = draftRef.current
     if (!current) return
@@ -457,6 +460,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
         onPointerMove={handleMove}
         onPointerUp={handleUp}
         onPointerCancel={handleUp}
+        onLostPointerCapture={() => { erasing.current = false }}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', zIndex: 1, pointerEvents: tool ? 'auto' : 'none', cursor: !tool ? 'default' : tool === 'text' ? 'text' : 'crosshair' }}
       />
 

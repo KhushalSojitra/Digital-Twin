@@ -8,7 +8,6 @@ import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownR
 import UndoRoundedIcon from '@mui/icons-material/UndoRounded'
 import RedoRoundedIcon from '@mui/icons-material/RedoRounded'
 import FormatBoldRoundedIcon from '@mui/icons-material/FormatBoldRounded'
-import FormatSizeRoundedIcon from '@mui/icons-material/FormatSizeRounded'
 import FormatAlignLeftRoundedIcon from '@mui/icons-material/FormatAlignLeftRounded'
 import FormatListBulletedRoundedIcon from '@mui/icons-material/FormatListBulletedRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
@@ -112,8 +111,10 @@ function hitsShape(shape: MarkupShape, p: Point, w: number, h: number) {
   }
   if (shape.kind === 'text') {
     const q = px(shape.at)
-    const width = shape.text.length * FONT_SIZE * 0.6
-    return at.x >= q.x - ERASE_RADIUS && at.x <= q.x + width + ERASE_RADIUS && at.y >= q.y - ERASE_RADIUS && at.y <= q.y + FONT_SIZE + ERASE_RADIUS
+    const fontSize = shape.fontSize ?? FONT_SIZE
+    const width = Math.max(shape.text.length * fontSize * 0.6, 44)
+    const padding = 12
+    return at.x >= q.x - padding - ERASE_RADIUS && at.x <= q.x + width + padding + ERASE_RADIUS && at.y >= q.y - padding - ERASE_RADIUS && at.y <= q.y + fontSize * 1.6 + padding + ERASE_RADIUS
   }
   const a = px(shape.a)
   const b = px(shape.b)
@@ -158,6 +159,12 @@ async function composeSnapshot(src: string, shapes: MarkupShape[], panel: { w: n
 interface TextDraft {
   at: Point
   value: string
+  index?: number
+  color?: string
+  boxColor?: string
+  fontSize?: number
+  bold?: boolean
+  align?: 'left' | 'center' | 'right'
 }
 
 interface Props {
@@ -180,6 +187,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
   const [color, setColor] = useState(COLORS[0])
   const [colorAnchor, setColorAnchor] = useState<HTMLElement | null>(null)
   const [textDraft, setTextDraft] = useState<TextDraft | null>(null)
+  const [editingTextIndex, setEditingTextIndex] = useState<number | null>(null)
   const [textBold, setTextBold] = useState(true)
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('left')
   const [textSize, setTextSize] = useState(FONT_SIZE)
@@ -247,7 +255,20 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
     if (e.pointerType === 'mouse' && e.button !== 0) return
     const p = pointFrom(e)
     if (tool === 'text') {
-      setTextDraft({ at: p, value: '' })
+      const existingIndex = shapes.findIndex((shape) => shape.kind === 'text' && hitsShape(shape, p, size.w, size.h))
+      const existing = existingIndex >= 0 ? shapes[existingIndex] : null
+      if (existing?.kind === 'text') {
+        setEditingTextIndex(existingIndex)
+        setTextBold(existing.bold !== false)
+        setTextAlign(existing.align ?? 'left')
+        setTextSize(existing.fontSize ?? FONT_SIZE)
+        setBoxColor(existing.boxColor ?? '#ffe56b')
+        setColor(existing.color)
+        setTextDraft({ at: existing.at, value: existing.text, index: existingIndex, color: existing.color, boxColor: existing.boxColor, fontSize: existing.fontSize, bold: existing.bold, align: existing.align })
+      } else {
+        setEditingTextIndex(null)
+        setTextDraft({ at: p, value: '' })
+      }
       return
     }
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -284,8 +305,15 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
   }
 
   const commitText = (value: TextDraft) => {
-    if (value.value.trim()) pushShapes([...shapes, { kind: 'text', color, at: value.at, text: value.value.trim(), boxColor, fontSize: textSize, bold: textBold, align: textAlign }])
-    setTextDraft((current) => (current === value ? null : current))
+    if (!value.value.trim()) return
+    const nextText: MarkupShape = { kind: 'text', color, at: value.at, text: value.value.trim(), boxColor, fontSize: textSize, bold: textBold, align: textAlign }
+    if (editingTextIndex !== null) {
+      pushShapes(shapes.map((shape, index) => index === editingTextIndex ? nextText : shape))
+    } else {
+      pushShapes([...shapes, nextText])
+    }
+    setEditingTextIndex(null)
+    setTextDraft(null)
   }
 
   const handleTextPointerDown = (e: ReactPointerEvent<HTMLInputElement>) => {
@@ -344,7 +372,10 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
   }
 
   const finish = async () => {
-    const pending = textDraft?.value.trim() ? [...shapes, { kind: 'text' as const, color, at: textDraft.at, text: textDraft.value.trim(), boxColor, fontSize: textSize, bold: textBold, align: textAlign }] : shapes
+    const pendingText: MarkupShape | null = textDraft?.value.trim() ? { kind: 'text', color, at: textDraft.at, text: textDraft.value.trim(), boxColor, fontSize: textSize, bold: textBold, align: textAlign } : null
+    const pending = pendingText
+      ? editingTextIndex !== null ? shapes.map((shape, index) => index === editingTextIndex ? pendingText : shape) : [...shapes, pendingText]
+      : shapes
     if (pending.length === 0) {
       onDone([], null)
       return
@@ -419,13 +450,13 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
         >
           <Tooltip title="Voice to text"><IconButton aria-label="Voice to text" onClick={() => document.querySelector<HTMLInputElement>('[aria-label=\"Markup text\"]')?.focus()} sx={barButtonSx}><MicRoundedIcon /></IconButton></Tooltip>
           <Tooltip title="Bold"><IconButton aria-label="Bold" aria-pressed={textBold} onClick={() => setTextBold((value) => !value)} sx={{ ...barButtonSx, bgcolor: textBold ? 'rgba(255,255,255,0.16)' : 'transparent' }}><FormatBoldRoundedIcon /></IconButton></Tooltip>
-          <Tooltip title="Text size"><IconButton aria-label="Text size" onClick={() => setTextSize((value) => value >= 28 ? 16 : value + 4)} sx={barButtonSx}><FormatSizeRoundedIcon /></IconButton></Tooltip>
-          <Tooltip title="Smaller text"><IconButton aria-label="Smaller text" onClick={() => setTextSize((value) => Math.max(12, value - 2))} sx={barButtonSx}><FormatSizeRoundedIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
+          <Tooltip title={`Increase text size (${textSize}px)`}><IconButton aria-label="Increase text size" onClick={() => setTextSize((value) => Math.min(40, value + 4))} sx={barButtonSx}><Box component="span" sx={{ fontSize: 23, fontWeight: 800, lineHeight: 1 }}>A+</Box></IconButton></Tooltip>
+          <Tooltip title={`Decrease text size (${textSize}px)`}><IconButton aria-label="Decrease text size" onClick={() => setTextSize((value) => Math.max(12, value - 4))} sx={barButtonSx}><Box component="span" sx={{ fontSize: 17, fontWeight: 800, lineHeight: 1 }}>A−</Box></IconButton></Tooltip>
           <Tooltip title="Align text"><IconButton aria-label="Align text" onClick={() => setTextAlign((value) => value === 'left' ? 'center' : value === 'center' ? 'right' : 'left')} sx={barButtonSx}><FormatAlignLeftRoundedIcon /></IconButton></Tooltip>
           <Tooltip title="List"><IconButton aria-label="List" sx={barButtonSx}><FormatListBulletedRoundedIcon /></IconButton></Tooltip>
-          <Button aria-label="Text color" onClick={(e) => setColorAnchor(e.currentTarget)} sx={{ minWidth: 48, height: 40, color: '#fff' }}><Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: color, border: '2px solid #fff' }} /><KeyboardArrowDownRoundedIcon fontSize="small" /></Button>
+          <Button aria-label="Text color" onClick={(e) => setColorAnchor(e.currentTarget)} sx={{ minWidth: 54, height: 40, gap: 0.5, color: '#fff' }}><Box component="span" sx={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: '#fff' }}>A</Box><Box component="span" aria-hidden sx={{ width: 24, height: 5, borderRadius: 2, bgcolor: color }} /><KeyboardArrowDownRoundedIcon fontSize="small" /></Button>
           <Tooltip title="Box color"><IconButton aria-label="Box color" onClick={() => setBoxColor((value) => value === '#ffe56b' ? '#ffffff' : value === '#ffffff' ? '#111827' : '#ffe56b')} sx={barButtonSx}><Box sx={{ width: 20, height: 16, borderRadius: '3px', bgcolor: boxColor, border: '2px solid #fff' }} /></IconButton></Tooltip>
-          <Tooltip title="Erase text"><IconButton aria-label="Erase text" onClick={() => setTextDraft(null)} sx={barButtonSx}><DeleteOutlineRoundedIcon /></IconButton></Tooltip>
+          <Tooltip title="Delete selected text"><IconButton aria-label="Delete selected text" onClick={() => { if (editingTextIndex !== null) pushShapes(shapes.filter((_, index) => index !== editingTextIndex)); setEditingTextIndex(null); setTextDraft(null) }} sx={barButtonSx}><DeleteOutlineRoundedIcon /></IconButton></Tooltip>
           <Box sx={{ flex: 1, minWidth: 8 }} />
           <Tooltip title="Undo"><span><IconButton aria-label="Undo" disabled={!canUndo} onClick={() => setHistory((h) => ({ ...h, index: h.index - 1 }))} sx={barButtonSx}><UndoRoundedIcon /></IconButton></span></Tooltip>
           <Tooltip title="Redo"><span><IconButton aria-label="Redo" disabled={!canRedo} onClick={() => setHistory((h) => ({ ...h, index: h.index + 1 }))} sx={barButtonSx}><RedoRoundedIcon /></IconButton></span></Tooltip>

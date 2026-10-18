@@ -449,7 +449,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
         onPointerMove={handleMove}
         onPointerUp={handleUp}
         onPointerCancel={handleUp}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', zIndex: 1, cursor: tool === 'text' ? 'text' : 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2724%27 height=%2724%27 viewBox=%270 0 24 24%27%3E%3Cpath fill=%27%23ef4444%27 stroke=%27white%27 stroke-width=%271.5%27 d=%27M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5Z%27/%3E%3C/svg%3E") 12 22, crosshair' }}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', zIndex: 1, cursor: tool === 'text' ? 'text' : 'crosshair' }}
       />
 
       {textDraft && (

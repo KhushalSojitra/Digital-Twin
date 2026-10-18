@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { Box, Tooltip, Typography } from '@mui/material'
+import LocationOnRoundedIcon from '@mui/icons-material/LocationOnRounded'
 import { PRIORITY_LABEL, STATUS_COLOR, STATUS_LABEL, type Ticket } from '../../data/tickets'
 import TicketGlyph from '../../components/TicketGlyph'
 import { useViewerFrame, type Projector } from './viewerProjection'
@@ -147,14 +148,15 @@ export default function TicketMarkerLayer({ tickets, selectedId, targetId = null
             top: 0,
             left: 0,
             display: 'none',
-            width: 30,
-            height: 22,
-            borderRadius: '6px',
-            border: '2px dashed #0A84FF',
-            bgcolor: 'rgba(10,132,255,0.35)',
-            boxShadow: '0 0 0 2px rgba(255,255,255,0.7)',
+            width: 36,
+            height: 44,
+            placeItems: 'center',
+            color: '#0A84FF',
+            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.7))',
           }}
-        />
+        >
+          <LocationOnRoundedIcon sx={{ fontSize: 38, stroke: '#fff', strokeWidth: 0.8 }} />
+        </Box>
       )}
     </Box>
   )

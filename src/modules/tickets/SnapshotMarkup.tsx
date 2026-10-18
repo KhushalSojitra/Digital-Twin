@@ -315,8 +315,12 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
   }
 
   const handleUp = (e?: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (e && e.currentTarget.hasPointerCapture?.(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId)
+    if (e) {
+      try {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+      } catch {
+        // The pointer may already have been released by the browser.
+      }
     }
     erasing.current = false
     const current = draftRef.current
@@ -460,7 +464,8 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
         onPointerMove={handleMove}
         onPointerUp={handleUp}
         onPointerCancel={handleUp}
-        onLostPointerCapture={() => { erasing.current = false }}
+        onPointerLeave={(e) => { if (e.buttons === 0) handleUp(e) }}
+        onLostPointerCapture={() => { erasing.current = false; draftRef.current = null }}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', zIndex: 1, pointerEvents: tool ? 'auto' : 'none', cursor: !tool ? 'default' : tool === 'text' ? 'text' : 'crosshair' }}
       />
 
@@ -522,7 +527,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
             onPointerMove={handleTextToolbarPointerMove}
             onPointerUp={handleTextToolbarPointerUp}
             onPointerCancel={handleTextToolbarPointerUp}
-            sx={{ position: 'absolute', right: 10, bottom: 58, display: 'flex', flexDirection: 'column', gap: 0, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', backdropFilter: 'blur(8px)', transform: `translate(${textToolbarOffset.x}px, ${textToolbarOffset.y}px)`, cursor: textToolbarDragRef.current ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', zIndex: 3 }}
+            sx={{ position: 'absolute', right: 10, bottom: 58, display: 'flex', flexDirection: 'column', gap: 0, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', backdropFilter: 'blur(8px)', transform: `translate(${textToolbarOffset.x}px, ${textToolbarOffset.y}px)`, cursor: textToolbarDragRef.current ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', pointerEvents: 'auto', zIndex: 10 }}
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
               <Tooltip title="Voice to text"><IconButton aria-label="Voice to text" onClick={() => document.querySelector<HTMLInputElement>('[aria-label=\"Markup text\"]')?.focus()} sx={barButtonSx}><MicRoundedIcon /></IconButton></Tooltip>
@@ -535,7 +540,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
               <Tooltip title="Box color"><IconButton aria-label="Box color" onClick={(e) => { setColorTarget('box'); setColorAnchor(e.currentTarget) }} sx={barButtonSx}><Box sx={{ width: 20, height: 15, borderRadius: '3px', bgcolor: boxColor, border: '2px solid #fff' }} /></IconButton></Tooltip>
             </Box>
           </Box>
-          <Box ref={actionToolbarRef} onPointerDown={handleActionToolbarPointerDown} onPointerMove={handleActionToolbarPointerMove} onPointerUp={handleActionToolbarPointerUp} onPointerCancel={handleActionToolbarPointerUp} sx={{ position: 'absolute', right: 10, bottom: 10, display: 'flex', alignItems: 'center', gap: 0.25, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', transform: `translate(${actionToolbarOffset.x}px, ${actionToolbarOffset.y}px)`, cursor: actionToolbarDragRef.current ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', zIndex: 3 }}>
+          <Box ref={actionToolbarRef} onPointerDown={handleActionToolbarPointerDown} onPointerMove={handleActionToolbarPointerMove} onPointerUp={handleActionToolbarPointerUp} onPointerCancel={handleActionToolbarPointerUp} sx={{ position: 'absolute', right: 10, bottom: 10, display: 'flex', alignItems: 'center', gap: 0.25, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', transform: `translate(${actionToolbarOffset.x}px, ${actionToolbarOffset.y}px)`, cursor: actionToolbarDragRef.current ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', pointerEvents: 'auto', zIndex: 10 }}>
             <Tooltip title="Delete selected text"><IconButton aria-label="Delete selected text" onClick={() => { if (editingTextIndex !== null) pushShapes(shapes.filter((_, index) => index !== editingTextIndex)); setEditingTextIndex(null); setTextDraft(null) }} sx={barButtonSx}><DeleteOutlineRoundedIcon /></IconButton></Tooltip>
             <Tooltip title="Undo"><span><IconButton aria-label="Undo" disabled={!canUndo} onClick={() => setHistory((h) => ({ ...h, index: h.index - 1 }))} sx={barButtonSx}><UndoRoundedIcon /></IconButton></span></Tooltip>
             <Tooltip title="Redo"><span><IconButton aria-label="Redo" disabled={!canRedo} onClick={() => setHistory((h) => ({ ...h, index: h.index + 1 }))} sx={barButtonSx}><RedoRoundedIcon /></IconButton></span></Tooltip>
@@ -563,6 +568,8 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
           color: '#fff',
           bgcolor: 'rgba(14, 17, 23, 0.94)',
           backdropFilter: 'blur(8px)',
+          pointerEvents: 'auto',
+          zIndex: 10,
         }}
       >
         <Box sx={groupSx}>

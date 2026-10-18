@@ -7,6 +7,11 @@ import CheckBoxOutlineBlankRoundedIcon from '@mui/icons-material/CheckBoxOutline
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
 import UndoRoundedIcon from '@mui/icons-material/UndoRounded'
 import RedoRoundedIcon from '@mui/icons-material/RedoRounded'
+import FormatBoldRoundedIcon from '@mui/icons-material/FormatBoldRounded'
+import FormatSizeRoundedIcon from '@mui/icons-material/FormatSizeRounded'
+import FormatAlignLeftRoundedIcon from '@mui/icons-material/FormatAlignLeftRounded'
+import FormatListBulletedRoundedIcon from '@mui/icons-material/FormatListBulletedRounded'
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 
 interface Point {
   x: number
@@ -166,7 +171,10 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
   const [color, setColor] = useState(COLORS[0])
   const [colorAnchor, setColorAnchor] = useState<HTMLElement | null>(null)
   const [textDraft, setTextDraft] = useState<TextDraft | null>(null)
+  const [textBold, setTextBold] = useState(true)
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('left')
   const [size, setSize] = useState({ w: 0, h: 0 })
+  const textDrag = useRef<{ pointerId: number; startX: number; startY: number; origin: Point } | null>(null)
   const [toolbarOffset, setToolbarOffset] = useState({ x: 0, y: 0 })
   const [saving, setSaving] = useState(false)
   const toolbarRef = useRef<HTMLDivElement>(null)
@@ -269,6 +277,25 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
     setTextDraft((current) => (current === value ? null : current))
   }
 
+  const handleTextPointerDown = (e: ReactPointerEvent<HTMLInputElement>) => {
+    if (e.target !== e.currentTarget || !textDraft) return
+    textDrag.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, origin: textDraft.at }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const handleTextPointerMove = (e: ReactPointerEvent<HTMLInputElement>) => {
+    const drag = textDrag.current
+    if (!drag || !textDraft || !size.w || !size.h) return
+    setTextDraft({ ...textDraft, at: { x: Math.max(0, Math.min(1, drag.origin.x + (e.clientX - drag.startX) / size.w)), y: Math.max(0, Math.min(1, drag.origin.y + (e.clientY - drag.startY) / size.h)) } })
+  }
+
+  const handleTextPointerUp = (e: ReactPointerEvent<HTMLInputElement>) => {
+    if (textDrag.current?.pointerId === e.pointerId) {
+      textDrag.current = null
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+  }
+
   const handleToolbarPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement
     if (target.closest('button, input, [role="button"]')) return
@@ -343,6 +370,9 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
           autoFocus
           value={textDraft.value}
           aria-label="Markup text"
+          onPointerDown={handleTextPointerDown}
+          onPointerMove={handleTextPointerMove}
+          onPointerUp={handleTextPointerUp}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTextDraft({ ...textDraft, value: e.target.value })}
           onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
             if (e.key === 'Enter') commitText(textDraft)
@@ -355,15 +385,39 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
             top: `${textDraft.at.y * 100}%`,
             width: `${Math.max(8, textDraft.value.length + 1)}ch`,
             maxWidth: '80%',
-            p: 0,
             m: 0,
-            border: 0,
-            outline: '1px dashed rgba(255, 255, 255, 0.75)',
-            bgcolor: 'transparent',
-            color,
-            font: `600 ${FONT_SIZE}px/1.2 ${FONT_FAMILY}`,
+            border: '2px solid #1976ff',
+            outline: 'none',
+            borderRadius: '7px',
+            bgcolor: '#ffe56b',
+            color: '#111827',
+            p: '8px 12px',
+            cursor: textDrag.current ? 'grabbing' : 'grab',
+            textAlign,
+            font: `${textBold ? 700 : 500} ${FONT_SIZE}px/1.2 ${FONT_FAMILY}`, 
+            boxShadow: '0 0 0 2px rgba(255,255,255,0.85), 0 0 0 4px #1976ff',
           }}
         />
+      )}
+
+      {tool === 'text' && (
+        <Box
+          role="toolbar"
+          aria-label="Text annotation tools"
+          sx={{ position: 'absolute', left: 12, right: 12, bottom: 12, display: 'flex', alignItems: 'center', gap: 0.5, p: 0.75, borderRadius: '16px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', backdropFilter: 'blur(8px)', overflowX: 'auto' }}
+        >
+          <Tooltip title="Text style"><IconButton aria-label="Text style" aria-pressed={textBold} onClick={() => setTextBold((value) => !value)} sx={{ ...barButtonSx, bgcolor: textBold ? 'rgba(255,255,255,0.16)' : 'transparent' }}><FormatBoldRoundedIcon /></IconButton></Tooltip>
+          <Tooltip title="Text size"><IconButton aria-label="Text size" sx={barButtonSx}><FormatSizeRoundedIcon /></IconButton></Tooltip>
+          <Tooltip title="Align text"><IconButton aria-label="Align text" onClick={() => setTextAlign((value) => value === 'left' ? 'center' : value === 'center' ? 'right' : 'left')} sx={barButtonSx}><FormatAlignLeftRoundedIcon /></IconButton></Tooltip>
+          <Tooltip title="List"><IconButton aria-label="List" sx={barButtonSx}><FormatListBulletedRoundedIcon /></IconButton></Tooltip>
+          <Button aria-label="Text color" onClick={(e) => setColorAnchor(e.currentTarget)} sx={{ minWidth: 48, height: 40, color: '#fff' }}><Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: color, border: '2px solid #fff' }} /><KeyboardArrowDownRoundedIcon fontSize="small" /></Button>
+          <Tooltip title="Erase text"><IconButton aria-label="Erase text" onClick={() => setTextDraft(null)} sx={barButtonSx}><DeleteOutlineRoundedIcon /></IconButton></Tooltip>
+          <Box sx={{ flex: 1, minWidth: 8 }} />
+          <Tooltip title="Undo"><span><IconButton aria-label="Undo" disabled={!canUndo} onClick={() => setHistory((h) => ({ ...h, index: h.index - 1 }))} sx={barButtonSx}><UndoRoundedIcon /></IconButton></span></Tooltip>
+          <Tooltip title="Redo"><span><IconButton aria-label="Redo" disabled={!canRedo} onClick={() => setHistory((h) => ({ ...h, index: h.index + 1 }))} sx={barButtonSx}><RedoRoundedIcon /></IconButton></span></Tooltip>
+          <Button onClick={onCancel} sx={{ height: 40, px: 1.5, color: '#fff', fontWeight: 700 }}>Cancel</Button>
+          <Button variant="contained" onClick={finish} disabled={saving} sx={{ height: 40, px: 2, borderRadius: '10px', fontWeight: 700 }}>Save</Button>
+        </Box>
       )}
 
       <Box
@@ -378,9 +432,9 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone }:
           position: 'absolute',
           left: 12,
           bottom: 12,
+          display: tool === 'text' ? 'none' : 'flex',
           maxWidth: 'calc(100% - 24px)',
           transform: `translate(${toolbarOffset.x}px, ${toolbarOffset.y}px)`,
-          display: 'flex',
           alignItems: 'center',
           flexWrap: 'wrap',
           rowGap: 0.5,

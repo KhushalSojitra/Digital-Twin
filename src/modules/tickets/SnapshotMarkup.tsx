@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Box, Button, IconButton, Popover, SvgIcon, Tooltip, type SvgIconProps } from '@mui/material'
 import EditRoundedIcon from '@mui/icons-material/EditRounded'
 import TitleRoundedIcon from '@mui/icons-material/TitleRounded'
@@ -12,12 +12,14 @@ import FormatAlignLeftRoundedIcon from '@mui/icons-material/FormatAlignLeftRound
 import FormatListBulletedRoundedIcon from '@mui/icons-material/FormatListBulletedRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import MicRoundedIcon from '@mui/icons-material/MicRounded'
+import DragIndicatorRoundedIcon from '@mui/icons-material/DragIndicatorRounded'
 
 interface Point {
   x: number
   y: number
 }
 
+/** Shape coordinates are normalised (0–1) to the snapshot image itself, so they line up in every view size. */
 export type MarkupShape =
   | { kind: 'pen'; color: string; points: Point[] }
   | { kind: 'ellipse'; color: string; a: Point; b: Point }
@@ -31,6 +33,8 @@ const STROKE = 3.5
 const FONT_SIZE = 20
 const FONT_FAMILY = 'Inter, system-ui, sans-serif'
 const ERASE_RADIUS = 10
+const REFERENCE_WIDTH = 720
+const MOVE_THRESHOLD = 3
 
 function EraserIcon(props: SvgIconProps) {
   return (
@@ -101,7 +105,8 @@ function distanceToSegment(p: Point, a: Point, b: Point) {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
 }
 
-function hitsShape(shape: MarkupShape, p: Point, w: number, h: number) {
+/** `w`/`h` are the displayed image size in px; `solid` also grabs the inside of circles and rectangles. */
+function hitsShape(shape: MarkupShape, p: Point, w: number, h: number, unit: number, solid = false) {
   const px = (pt: Point): Point => ({ x: pt.x * w, y: pt.y * h })
   const at = px(p)
   if (shape.kind === 'pen') {
@@ -111,7 +116,7 @@ function hitsShape(shape: MarkupShape, p: Point, w: number, h: number) {
   }
   if (shape.kind === 'text') {
     const q = px(shape.at)
-    const fontSize = shape.fontSize ?? FONT_SIZE
+    const fontSize = (shape.fontSize ?? FONT_SIZE) * unit
     const width = Math.max(shape.text.length * fontSize * 0.6, 44)
     const padding = 12
     return at.x >= q.x - padding - ERASE_RADIUS && at.x <= q.x + width + padding + ERASE_RADIUS && at.y >= q.y - padding - ERASE_RADIUS && at.y <= q.y + fontSize * 1.6 + padding + ERASE_RADIUS
@@ -124,24 +129,46 @@ function hitsShape(shape: MarkupShape, p: Point, w: number, h: number) {
   const ry = Math.max(Math.abs(b.y - a.y) / 2, 1)
   if (shape.kind === 'ellipse') {
     const r = Math.hypot((at.x - cx) / rx, (at.y - cy) / ry)
+    if (solid) return r * Math.min(rx, ry) <= Math.min(rx, ry) + ERASE_RADIUS
     return Math.abs(r - 1) * Math.min(rx, ry) <= ERASE_RADIUS
   }
   const outside = Math.abs(at.x - cx) <= rx + ERASE_RADIUS && Math.abs(at.y - cy) <= ry + ERASE_RADIUS
+  if (solid) return outside
   const inside = Math.abs(at.x - cx) < rx - ERASE_RADIUS && Math.abs(at.y - cy) < ry - ERASE_RADIUS
   return outside && !inside
+}
+
+function boundsOf(shape: MarkupShape) {
+  if (shape.kind === 'text') return { minX: shape.at.x, maxX: shape.at.x, minY: shape.at.y, maxY: shape.at.y }
+  const pts = shape.kind === 'pen' ? shape.points : [shape.a, shape.b]
+  const xs = pts.map((pt) => pt.x)
+  const ys = pts.map((pt) => pt.y)
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
+}
+
+/** Returns a copy of the shape shifted by (dx, dy) in image-normalised units, kept inside the image. */
+function moveShape(shape: MarkupShape, dx: number, dy: number): MarkupShape {
+  const b = boundsOf(shape)
+  const x = Math.max(-b.minX, Math.min(1 - b.maxX, dx))
+  const y = Math.max(-b.minY, Math.min(1 - b.maxY, dy))
+  const shift = (pt: Point): Point => ({ x: pt.x + x, y: pt.y + y })
+  if (shape.kind === 'pen') return { ...shape, points: shape.points.map(shift) }
+  if (shape.kind === 'text') return { ...shape, at: shift(shape.at) }
+  return { ...shape, a: shift(shape.a), b: shift(shape.b) }
 }
 
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image()
+    img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
     img.onerror = reject
     img.src = src
   })
 }
 
-/** Burns the markup into the snapshot at its natural size, mapping from the panel's cover-fit framing. */
-async function composeSnapshot(src: string, shapes: MarkupShape[], panel: { w: number; h: number }) {
+/** Burns the markup into the snapshot at its natural size. */
+async function composeSnapshot(src: string, shapes: MarkupShape[]) {
   const img = await loadImage(src)
   const canvas = document.createElement('canvas')
   canvas.width = img.naturalWidth
@@ -149,11 +176,64 @@ async function composeSnapshot(src: string, shapes: MarkupShape[], panel: { w: n
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
   ctx.drawImage(img, 0, 0)
-  const scale = Math.max(panel.w / img.naturalWidth, panel.h / img.naturalHeight)
-  const offsetX = (panel.w - img.naturalWidth * scale) / 2
-  const offsetY = (panel.h - img.naturalHeight * scale) / 2
-  drawShapes(ctx, shapes, (p) => ({ x: (p.x * panel.w - offsetX) / scale, y: (p.y * panel.h - offsetY) / scale }), 1 / scale)
+  drawShapes(ctx, shapes, (p) => ({ x: p.x * img.naturalWidth, y: p.y * img.naturalHeight }), img.naturalWidth / REFERENCE_WIDTH)
   return canvas.toDataURL('image/jpeg', 0.85)
+}
+
+/** Click-hold → drag → release repositioning of a toolbar, constrained to its positioned parent. */
+function useDraggable() {
+  const ref = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ pointerId: number; startX: number; startY: number; origin: Point; minX: number; maxX: number; minY: number; maxY: number } | null>(null)
+  const [offset, setOffset] = useState<Point>({ x: 0, y: 0 })
+  const [dragging, setDragging] = useState(false)
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    if ((e.target as HTMLElement).closest('button, input, a, [role="button"]')) return
+    const el = ref.current
+    const parent = (el?.offsetParent as HTMLElement | null) ?? el?.parentElement
+    if (!el || !parent) return
+    const rect = el.getBoundingClientRect()
+    const bounds = parent.getBoundingClientRect()
+    drag.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      origin: offset,
+      minX: bounds.left - rect.left,
+      maxX: bounds.right - rect.right,
+      minY: bounds.top - rect.top,
+      maxY: bounds.bottom - rect.bottom,
+    }
+    el.setPointerCapture(e.pointerId)
+    setDragging(true)
+  }
+
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = drag.current
+    if (!d || d.pointerId !== e.pointerId) return
+    setOffset({
+      x: d.origin.x + Math.max(d.minX, Math.min(d.maxX, e.clientX - d.startX)),
+      y: d.origin.y + Math.max(d.minY, Math.min(d.maxY, e.clientY - d.startY)),
+    })
+  }
+
+  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (drag.current?.pointerId !== e.pointerId) return
+    drag.current = null
+    setDragging(false)
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+  }
+
+  return { ref, offset, dragging, handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp } }
+}
+
+function DragGrip({ vertical = false }: { vertical?: boolean }) {
+  return (
+    <Box aria-hidden sx={{ display: 'grid', placeItems: 'center', width: vertical ? 34 : 18, height: vertical ? 18 : 34, flexShrink: 0, color: 'rgba(255,255,255,0.5)' }}>
+      <DragIndicatorRoundedIcon sx={{ fontSize: 18, transform: vertical ? 'rotate(90deg)' : 'none' }} />
+    </Box>
+  )
 }
 
 interface TextDraft {
@@ -165,6 +245,18 @@ interface TextDraft {
   fontSize?: number
   bold?: boolean
   align?: 'left' | 'center' | 'right'
+}
+
+interface MoveState {
+  index: number
+  pointerId: number
+  clientX: number
+  clientY: number
+  start: Point
+  original: MarkupShape
+  latest: MarkupShape
+  moved: boolean
+  clickToEdit: boolean
 }
 
 interface Props {
@@ -180,10 +272,14 @@ const groupSx = { display: 'flex', alignItems: 'center', gap: 0.5 }
 
 export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, defaultCollapsed = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const imageRef = useRef<HTMLImageElement>(null)
   const draftRef = useRef<MarkupShape | null>(null)
+  const moveRef = useRef<MoveState | null>(null)
   const erasing = useRef(false)
   const [history, setHistory] = useState({ stack: [initialShapes], index: 0 })
   const [draft, setDraft] = useState<MarkupShape | null>(null)
+  const [moving, setMoving] = useState<{ index: number; shape: MarkupShape } | null>(null)
+  const [hoverMove, setHoverMove] = useState(false)
   const [tool, setTool] = useState<Tool | null>(null)
   const [expanded, setExpanded] = useState(!defaultCollapsed)
   const [color, setColor] = useState(COLORS[0])
@@ -207,17 +303,30 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
   const [textSize, setTextSize] = useState(FONT_SIZE)
   const [boxColor, setBoxColor] = useState('#ffe56b')
   const [size, setSize] = useState({ w: 0, h: 0 })
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
   const textDrag = useRef<{ pointerId: number; startX: number; startY: number; origin: Point } | null>(null)
   const [saving, setSaving] = useState(false)
-  const textToolbarRef = useRef<HTMLDivElement>(null)
-  const actionToolbarRef = useRef<HTMLDivElement>(null)
-  const [textToolbarOffset, setTextToolbarOffset] = useState({ x: 0, y: 0 })
-  const [actionToolbarOffset, setActionToolbarOffset] = useState({ x: 0, y: 0 })
-  const textToolbarDragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null)
+  const mainToolbar = useDraggable()
+  const textToolbar = useDraggable()
+  const actionToolbar = useDraggable()
 
   const shapes = history.stack[history.index]
   const canUndo = history.index > 0
   const canRedo = history.index < history.stack.length - 1
+  const displayShapes = useMemo(
+    () => (moving ? shapes.map((shape, index) => (index === moving.index ? moving.shape : shape)) : shapes),
+    [shapes, moving],
+  )
+
+  /** Where the (contain-fitted) image sits inside the canvas, in px. */
+  const frame = useMemo(() => {
+    if (!natural || !size.w || !size.h) return { ox: 0, oy: 0, iw: size.w, ih: size.h }
+    const scale = Math.min(size.w / natural.w, size.h / natural.h)
+    const iw = natural.w * scale
+    const ih = natural.h * scale
+    return { ox: (size.w - iw) / 2, oy: (size.h - ih) / 2, iw, ih }
+  }, [natural, size])
+  const unit = frame.iw > 0 ? frame.iw / REFERENCE_WIDTH : 1
 
   const pushShapes = (next: MarkupShape[] | ((current: MarkupShape[]) => MarkupShape[])) =>
     setHistory((h) => {
@@ -236,6 +345,11 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
     return () => observer.disconnect()
   }, [])
 
+  useLayoutEffect(() => {
+    const img = imageRef.current
+    if (img?.complete && img.naturalWidth) setNatural({ w: img.naturalWidth, h: img.naturalHeight })
+  }, [src])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !size.w || !size.h) return
@@ -246,8 +360,8 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
     if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, size.w, size.h)
-    drawShapes(ctx, draft ? [...shapes, draft] : shapes, (p) => ({ x: p.x * size.w, y: p.y * size.h }), 1)
-  }, [shapes, draft, size])
+    drawShapes(ctx, draft ? [...displayShapes, draft] : displayShapes, (p) => ({ x: frame.ox + p.x * frame.iw, y: frame.oy + p.y * frame.ih }), unit)
+  }, [displayShapes, draft, size, frame, unit])
 
   const setDraftShape = (shape: MarkupShape | null) => {
     draftRef.current = shape
@@ -257,44 +371,62 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
   const pointFrom = (e: ReactPointerEvent<HTMLCanvasElement>): Point => {
     const rect = e.currentTarget.getBoundingClientRect()
     return {
-      x: Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)),
-      y: Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)),
+      x: Math.min(1, Math.max(0, (e.clientX - rect.left - frame.ox) / (frame.iw || 1))),
+      y: Math.min(1, Math.max(0, (e.clientY - rect.top - frame.oy) / (frame.ih || 1))),
     }
   }
 
-  const eraseAt = (p: Point) => {
+  const findShapeAt = (p: Point, solid: boolean) => {
     for (let i = shapes.length - 1; i >= 0; i -= 1) {
-      if (hitsShape(shapes[i], p, size.w, size.h)) {
-        pushShapes((current) => current.filter((_, index) => index !== i))
-        return
+      if (hitsShape(shapes[i], p, frame.iw, frame.ih, unit, solid)) return i
+    }
+    return -1
+  }
+
+  const eraseAt = (p: Point) => {
+    const i = findShapeAt(p, false)
+    if (i >= 0) pushShapes((current) => current.filter((_, index) => index !== i))
+  }
+
+  const openTextAt = (p: Point) => {
+    const existingIndex = shapes.findIndex((shape) => {
+      try {
+        return shape.kind === 'text' && hitsShape(shape, p, frame.iw, frame.ih, unit)
+      } catch {
+        return false
       }
+    })
+    const existing = existingIndex >= 0 ? shapes[existingIndex] : null
+    if (existing?.kind === 'text') {
+      setEditingTextIndex(existingIndex)
+      setTextBold(existing.bold !== false)
+      setTextAlign(existing.align ?? 'left')
+      setTextSize(existing.fontSize ?? FONT_SIZE)
+      setBoxColor(existing.boxColor ?? '#ffe56b')
+      setColor(existing.color)
+      setTextDraft({ at: { ...existing.at }, value: existing.text, index: existingIndex, color: existing.color, boxColor: existing.boxColor, fontSize: existing.fontSize, bold: existing.bold, align: existing.align })
+    } else {
+      setEditingTextIndex(null)
+      setTextDraft({ at: p, value: '' })
     }
   }
 
   const handleDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!tool || (e.pointerType === 'mouse' && e.button !== 0)) return
+    if (e.pointerType === 'mouse' && e.button !== 0) return
     const p = pointFrom(e)
-    if (tool === 'text') {
-      const existingIndex = shapes.findIndex((shape) => {
-        try {
-          return shape.kind === 'text' && hitsShape(shape, p, size.w, size.h)
-        } catch {
-          return false
-        }
-      })
-      const existing = existingIndex >= 0 ? shapes[existingIndex] : null
-      if (existing?.kind === 'text') {
-        setEditingTextIndex(existingIndex)
-        setTextBold(existing.bold !== false)
-        setTextAlign(existing.align ?? 'left')
-        setTextSize(existing.fontSize ?? FONT_SIZE)
-        setBoxColor(existing.boxColor ?? '#ffe56b')
-        setColor(existing.color)
-        setTextDraft({ at: { ...existing.at }, value: existing.text, index: existingIndex, color: existing.color, boxColor: existing.boxColor, fontSize: existing.fontSize, bold: existing.bold, align: existing.align })
-      } else {
-        setEditingTextIndex(null)
-        setTextDraft({ at: p, value: '' })
+
+    if (tool !== 'pen' && tool !== 'eraser') {
+      const hit = findShapeAt(p, tool === null)
+      if (hit >= 0) {
+        moveRef.current = { index: hit, pointerId: e.pointerId, clientX: e.clientX, clientY: e.clientY, start: p, original: shapes[hit], latest: shapes[hit], moved: false, clickToEdit: tool === 'text' }
+        e.currentTarget.setPointerCapture(e.pointerId)
+        return
       }
+    }
+
+    if (!tool) return
+    if (tool === 'text') {
+      openTextAt(p)
       return
     }
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -307,15 +439,29 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
   }
 
   const handleMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    const move = moveRef.current
+    if (move) {
+      const dx = e.clientX - move.clientX
+      const dy = e.clientY - move.clientY
+      if (!move.moved && Math.hypot(dx, dy) < MOVE_THRESHOLD) return
+      move.moved = true
+      move.latest = moveShape(move.original, dx / (frame.iw || 1), dy / (frame.ih || 1))
+      setMoving({ index: move.index, shape: move.latest })
+      return
+    }
     const p = pointFrom(e)
     if (erasing.current) {
       eraseAt(p)
       return
     }
     const current = draftRef.current
-    if (!current) return
-    if (current.kind === 'pen') setDraftShape({ ...current, points: [...current.points, p] })
-    else if (current.kind === 'rect' || current.kind === 'ellipse') setDraftShape({ ...current, b: p })
+    if (current) {
+      if (current.kind === 'pen') setDraftShape({ ...current, points: [...current.points, p] })
+      else if (current.kind === 'rect' || current.kind === 'ellipse') setDraftShape({ ...current, b: p })
+      return
+    }
+    if (tool !== 'pen' && tool !== 'eraser') setHoverMove(findShapeAt(p, tool === null) >= 0)
+    else setHoverMove(false)
   }
 
   const handleUp = (e?: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -327,15 +473,41 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
       }
     }
     erasing.current = false
+
+    const move = moveRef.current
+    if (move) {
+      moveRef.current = null
+      setMoving(null)
+      if (move.moved) {
+        const finalShape = move.latest
+        pushShapes((current) => current.map((shape, index) => (index === move.index ? finalShape : shape)))
+      } else if (move.clickToEdit) {
+        openTextAt(move.start)
+      }
+      return
+    }
+
     const current = draftRef.current
     if (!current) return
     setDraftShape(null)
     if (current.kind === 'rect' || current.kind === 'ellipse') {
-      const moved = Math.hypot((current.b.x - current.a.x) * size.w, (current.b.y - current.a.y) * size.h)
+      const moved = Math.hypot((current.b.x - current.a.x) * frame.iw, (current.b.y - current.a.y) * frame.ih)
       if (moved < 4) return
     }
     pushShapes((existing) => [...existing, current])
   }
+
+  const handleUpRef = useRef(handleUp)
+  handleUpRef.current = handleUp
+  useEffect(() => {
+    const release = () => handleUpRef.current()
+    window.addEventListener('pointerup', release)
+    window.addEventListener('pointercancel', release)
+    return () => {
+      window.removeEventListener('pointerup', release)
+      window.removeEventListener('pointercancel', release)
+    }
+  }, [])
 
   const commitText = (value: TextDraft) => {
     if (!value.value.trim()) return
@@ -357,76 +529,14 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
 
   const handleTextPointerMove = (e: ReactPointerEvent<HTMLInputElement>) => {
     const drag = textDrag.current
-    if (!drag || !textDraft || !size.w || !size.h) return
-    setTextDraft({ ...textDraft, at: { x: Math.max(0, Math.min(1, drag.origin.x + (e.clientX - drag.startX) / size.w)), y: Math.max(0, Math.min(1, drag.origin.y + (e.clientY - drag.startY) / size.h)) } })
+    if (!drag || !textDraft || !frame.iw || !frame.ih) return
+    setTextDraft({ ...textDraft, at: { x: Math.max(0, Math.min(1, drag.origin.x + (e.clientX - drag.startX) / frame.iw)), y: Math.max(0, Math.min(1, drag.origin.y + (e.clientY - drag.startY) / frame.ih)) } })
   }
 
   const handleTextPointerUp = (e: ReactPointerEvent<HTMLInputElement>) => {
     if (textDrag.current?.pointerId === e.pointerId) {
       textDrag.current = null
       e.currentTarget.releasePointerCapture(e.pointerId)
-    }
-  }
-
-  const actionToolbarDragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null)
-
-  const handleActionToolbarPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest('button, input, [role="button"]')) return
-    actionToolbarDragRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, originX: actionToolbarOffset.x, originY: actionToolbarOffset.y }
-    e.currentTarget.setPointerCapture(e.pointerId)
-  }
-
-  const handleActionToolbarPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = actionToolbarDragRef.current
-    const toolbar = actionToolbarRef.current
-    const parent = toolbar?.parentElement
-    if (!drag || !toolbar || !parent) return
-    const parentRect = parent.getBoundingClientRect()
-    const toolbarRect = toolbar.getBoundingClientRect()
-    const deltaX = e.clientX - drag.startX
-    const deltaY = e.clientY - drag.startY
-    const currentX = toolbarRect.left - parentRect.left
-    const currentY = toolbarRect.top - parentRect.top
-    setActionToolbarOffset({
-      x: drag.originX + Math.max(-currentX, Math.min(parent.clientWidth - toolbar.offsetWidth - currentX, deltaX)),
-      y: drag.originY + Math.max(-currentY, Math.min(parent.clientHeight - toolbar.offsetHeight - currentY, deltaY)),
-    })
-  }
-
-  const handleActionToolbarPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (actionToolbarDragRef.current?.pointerId === e.pointerId) {
-      actionToolbarDragRef.current = null
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
-    }
-  }
-
-  const handleTextToolbarPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest('button, input, [role="button"]')) return
-    textToolbarDragRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, originX: textToolbarOffset.x, originY: textToolbarOffset.y }
-    e.currentTarget.setPointerCapture(e.pointerId)
-  }
-
-  const handleTextToolbarPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = textToolbarDragRef.current
-    const toolbar = textToolbarRef.current
-    const parent = toolbar?.parentElement
-    if (!drag || !toolbar || !parent) return
-    const parentRect = parent.getBoundingClientRect()
-    const toolbarRect = toolbar.getBoundingClientRect()
-    const deltaX = e.clientX - drag.startX
-    const deltaY = e.clientY - drag.startY
-    const currentX = toolbarRect.left - parentRect.left
-    const currentY = toolbarRect.top - parentRect.top
-    setTextToolbarOffset({
-      x: drag.originX + Math.max(-currentX, Math.min(parent.clientWidth - toolbar.offsetWidth - currentX, deltaX)),
-      y: drag.originY + Math.max(-currentY, Math.min(parent.clientHeight - toolbar.offsetHeight - currentY, deltaY)),
-    })
-  }
-
-  const handleTextToolbarPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (textToolbarDragRef.current?.pointerId === e.pointerId) {
-      textToolbarDragRef.current = null
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     }
   }
 
@@ -441,9 +551,9 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
     }
     setSaving(true)
     try {
-      onDone(pending, await composeSnapshot(src, pending, size))
+      onDone(pending, await composeSnapshot(src, pending))
     } catch {
-      onDone(shapes, null)
+      onDone(pending, null)
     }
   }
 
@@ -454,12 +564,16 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
     { id: 'rect', label: 'Rectangle', icon: <CheckBoxOutlineBlankRoundedIcon /> },
   ]
 
+  const canvasCursor = moving ? 'grabbing' : hoverMove ? 'move' : !tool ? 'default' : tool === 'text' ? 'text' : 'crosshair'
+
   return (
     <>
       <Box
+        ref={imageRef}
         component="img"
         src={src}
         alt="Snapshot of the current camera view"
+        onLoad={(e: React.SyntheticEvent<HTMLImageElement>) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
         sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', userSelect: 'none', zIndex: 0 }}
       />
       <canvas
@@ -468,9 +582,9 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
         onPointerMove={handleMove}
         onPointerUp={handleUp}
         onPointerCancel={handleUp}
-        onPointerLeave={(e) => { if (e.buttons === 0) handleUp(e) }}
-        onLostPointerCapture={() => { erasing.current = false; draftRef.current = null }}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', zIndex: 1, pointerEvents: tool ? 'auto' : 'none', cursor: !tool ? 'default' : tool === 'text' ? 'text' : 'crosshair' }}
+        onPointerLeave={(e) => { if (e.buttons === 0) { handleUp(e); setHoverMove(false) } }}
+        onLostPointerCapture={() => handleUp()}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', zIndex: 1, pointerEvents: tool || shapes.length > 0 ? 'auto' : 'none', cursor: canvasCursor }}
       />
 
       {!expanded && (
@@ -502,8 +616,8 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
           onBlur={() => undefined}
           sx={{
             position: 'absolute',
-            left: `${textDraft.at.x * 100}%`,
-            top: `${textDraft.at.y * 100}%`,
+            left: `${frame.ox + textDraft.at.x * frame.iw}px`,
+            top: `${frame.oy + textDraft.at.y * frame.ih}px`,
             width: `${Math.max(8, textDraft.value.length + 1)}ch`,
             maxWidth: '80%',
             m: 0,
@@ -515,7 +629,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
             p: '8px 12px',
             cursor: textDrag.current ? 'grabbing' : 'grab',
             textAlign,
-            font: `${textBold ? 700 : 500} ${textSize}px/1.2 ${FONT_FAMILY}`,  
+            font: `${textBold ? 700 : 500} ${textSize * unit}px/1.2 ${FONT_FAMILY}`,
             boxShadow: '0 0 0 2px rgba(255,255,255,0.85), 0 0 0 4px #1976ff',
             zIndex: 2,
             pointerEvents: 'auto',
@@ -526,16 +640,14 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
       {tool === 'text' && (
         <>
           <Box
-            ref={textToolbarRef}
+            ref={textToolbar.ref}
             role="toolbar"
             aria-label="Text annotation options"
-            onPointerDown={handleTextToolbarPointerDown}
-            onPointerMove={handleTextToolbarPointerMove}
-            onPointerUp={handleTextToolbarPointerUp}
-            onPointerCancel={handleTextToolbarPointerUp}
-            sx={{ position: 'absolute', right: 10, bottom: 58, display: 'flex', flexDirection: 'column', gap: 0, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', backdropFilter: 'blur(8px)', transform: `translate(${textToolbarOffset.x}px, ${textToolbarOffset.y}px)`, cursor: textToolbarDragRef.current ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', pointerEvents: 'auto', zIndex: 10 }}
+            {...textToolbar.handlers}
+            sx={{ position: 'absolute', right: 10, bottom: 58, display: 'flex', flexDirection: 'column', gap: 0, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', backdropFilter: 'blur(8px)', transform: `translate(${textToolbar.offset.x}px, ${textToolbar.offset.y}px)`, cursor: textToolbar.dragging ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', pointerEvents: 'auto', zIndex: 10 }}
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+              <DragGrip vertical />
               <Tooltip title="Voice to text"><IconButton aria-label="Voice to text" onClick={() => document.querySelector<HTMLInputElement>('[aria-label=\"Markup text\"]')?.focus()} sx={barButtonSx}><MicRoundedIcon /></IconButton></Tooltip>
               <Tooltip title="Bold"><IconButton aria-label="Bold" aria-pressed={textBold} onClick={() => setTextBold((value) => !value)} sx={{ ...barButtonSx, bgcolor: textBold ? 'rgba(255,255,255,0.16)' : 'transparent' }}><FormatBoldRoundedIcon /></IconButton></Tooltip>
               <Tooltip title={`Increase text size (${textSize}px)`}><IconButton aria-label="Increase text size" onClick={() => setTextSize((value) => Math.min(40, value + 4))} sx={barButtonSx}><Box component="span" sx={{ fontSize: 23, fontWeight: 800, lineHeight: 1 }}>A+</Box></IconButton></Tooltip>
@@ -546,7 +658,8 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
               <Tooltip title="Box color"><IconButton aria-label="Box color" onClick={(e) => { setColorTarget('box'); setColorAnchor(e.currentTarget) }} sx={barButtonSx}><Box sx={{ width: 20, height: 15, borderRadius: '3px', bgcolor: boxColor, border: '2px solid #fff' }} /></IconButton></Tooltip>
             </Box>
           </Box>
-          <Box ref={actionToolbarRef} onPointerDown={handleActionToolbarPointerDown} onPointerMove={handleActionToolbarPointerMove} onPointerUp={handleActionToolbarPointerUp} onPointerCancel={handleActionToolbarPointerUp} sx={{ position: 'absolute', right: 10, bottom: 10, display: 'flex', alignItems: 'center', gap: 0.25, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', transform: `translate(${actionToolbarOffset.x}px, ${actionToolbarOffset.y}px)`, cursor: actionToolbarDragRef.current ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', pointerEvents: 'auto', zIndex: 10 }}>
+          <Box ref={actionToolbar.ref} {...actionToolbar.handlers} sx={{ position: 'absolute', right: 10, bottom: 10, display: 'flex', alignItems: 'center', gap: 0.25, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', transform: `translate(${actionToolbar.offset.x}px, ${actionToolbar.offset.y}px)`, cursor: actionToolbar.dragging ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', pointerEvents: 'auto', zIndex: 10 }}>
+            <DragGrip />
             <Tooltip title="Delete selected text"><IconButton aria-label="Delete selected text" onClick={() => { if (editingTextIndex !== null) pushShapes(shapes.filter((_, index) => index !== editingTextIndex)); setEditingTextIndex(null); setTextDraft(null) }} sx={barButtonSx}><DeleteOutlineRoundedIcon /></IconButton></Tooltip>
             <Tooltip title="Undo"><span><IconButton aria-label="Undo" disabled={!canUndo} onClick={() => setHistory((h) => ({ ...h, index: h.index - 1 }))} sx={barButtonSx}><UndoRoundedIcon /></IconButton></span></Tooltip>
             <Tooltip title="Redo"><span><IconButton aria-label="Redo" disabled={!canRedo} onClick={() => setHistory((h) => ({ ...h, index: h.index + 1 }))} sx={barButtonSx}><RedoRoundedIcon /></IconButton></span></Tooltip>
@@ -557,13 +670,17 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
       )}
 
       <Box
+        ref={mainToolbar.ref}
         role="toolbar"
         aria-label="Markup tools"
+        {...mainToolbar.handlers}
         sx={{
           position: 'absolute',
-          left: 12,
-          right: 12,
+          left: '50%',
           bottom: 12,
+          width: 'max-content',
+          maxWidth: 'calc(100% - 24px)',
+          transform: `translateX(-50%) translate(${mainToolbar.offset.x}px, ${mainToolbar.offset.y}px)`,
           display: !expanded || tool === 'text' ? 'none' : 'flex',
           alignItems: 'center',
           flexWrap: 'wrap',
@@ -574,11 +691,15 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
           color: '#fff',
           bgcolor: 'rgba(14, 17, 23, 0.94)',
           backdropFilter: 'blur(8px)',
+          cursor: mainToolbar.dragging ? 'grabbing' : 'grab',
+          userSelect: 'none',
+          touchAction: 'none',
           pointerEvents: 'auto',
           zIndex: 10,
         }}
       >
         <Box sx={groupSx}>
+        <DragGrip />
         {tools.map((item) => (
           <Tooltip key={item.id} title={item.label}>
             <IconButton

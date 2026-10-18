@@ -219,8 +219,12 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
   const canUndo = history.index > 0
   const canRedo = history.index < history.stack.length - 1
 
-  const pushShapes = (next: MarkupShape[]) =>
-    setHistory((h) => ({ stack: [...h.stack.slice(0, h.index + 1), next], index: h.index + 1 }))
+  const pushShapes = (next: MarkupShape[] | ((current: MarkupShape[]) => MarkupShape[])) =>
+    setHistory((h) => {
+      const current = h.stack[h.index]
+      const resolved = typeof next === 'function' ? next(current) : next
+      return { stack: [...h.stack.slice(0, h.index + 1), resolved], index: h.index + 1 }
+    })
 
   useLayoutEffect(() => {
     const parent = canvasRef.current?.parentElement
@@ -261,7 +265,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
   const eraseAt = (p: Point) => {
     for (let i = shapes.length - 1; i >= 0; i -= 1) {
       if (hitsShape(shapes[i], p, size.w, size.h)) {
-        pushShapes(shapes.filter((_, index) => index !== i))
+        pushShapes((current) => current.filter((_, index) => index !== i))
         return
       }
     }
@@ -330,16 +334,16 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
       const moved = Math.hypot((current.b.x - current.a.x) * size.w, (current.b.y - current.a.y) * size.h)
       if (moved < 4) return
     }
-    pushShapes([...shapes, current])
+    pushShapes((existing) => [...existing, current])
   }
 
   const commitText = (value: TextDraft) => {
     if (!value.value.trim()) return
     const nextText: MarkupShape = { kind: 'text', color, at: value.at, text: value.value.trim(), boxColor, fontSize: textSize, bold: textBold, align: textAlign }
     if (editingTextIndex !== null) {
-      pushShapes(shapes.map((shape, index) => index === editingTextIndex ? nextText : shape))
+      pushShapes((current) => current.map((shape, index) => index === editingTextIndex ? nextText : shape))
     } else {
-      pushShapes([...shapes, nextText])
+      pushShapes((current) => [...current, nextText])
     }
     setEditingTextIndex(null)
     setTextDraft(null)
@@ -392,7 +396,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
   const handleActionToolbarPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (actionToolbarDragRef.current?.pointerId === e.pointerId) {
       actionToolbarDragRef.current = null
-      e.currentTarget.releasePointerCapture(e.pointerId)
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     }
   }
 
@@ -422,7 +426,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
   const handleTextToolbarPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (textToolbarDragRef.current?.pointerId === e.pointerId) {
       textToolbarDragRef.current = null
-      e.currentTarget.releasePointerCapture(e.pointerId)
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     }
   }
 
@@ -513,6 +517,8 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
             textAlign,
             font: `${textBold ? 700 : 500} ${textSize}px/1.2 ${FONT_FAMILY}`,  
             boxShadow: '0 0 0 2px rgba(255,255,255,0.85), 0 0 0 4px #1976ff',
+            zIndex: 2,
+            pointerEvents: 'auto',
           }}
         />
       )}

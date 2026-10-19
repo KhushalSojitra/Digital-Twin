@@ -34,11 +34,13 @@ import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded'
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded'
 import EditRoundedIcon from '@mui/icons-material/EditRounded'
+import CropRoundedIcon from '@mui/icons-material/CropRounded'
 import { ASSIGNEES, PRIORITY_COLOR, PRIORITY_LABEL, type TicketPriority } from '../../data/tickets'
 import { useAttachments, type Attachment } from './attachments'
 import AttachmentPopover from './AttachmentPopover'
 import DocumentPreview from './DocumentPreview'
 import SnapshotMarkup, { type MarkupShape } from './SnapshotMarkup'
+import SnapshotCrop from './SnapshotCrop'
 
 type TicketTab = 'general' | 'additional' | 'activity'
 type VoiceState = 'idle' | 'listening' | 'transcribing'
@@ -160,6 +162,7 @@ function SnapshotPanel({
   onStartEdit,
   onCancelEdit,
   onFinishEdit,
+  onStartCrop,
   onExpand,
   onSnapshotClick,
 }: {
@@ -173,6 +176,7 @@ function SnapshotPanel({
   onStartEdit: () => void
   onCancelEdit: () => void
   onFinishEdit: (shapes: MarkupShape[], image: string | null) => void
+  onStartCrop: () => void
   onExpand: () => void
   onSnapshotClick?: () => void
 }) {
@@ -267,6 +271,11 @@ function SnapshotPanel({
             </Typography>
           </Box>
           <Box sx={{ position: 'absolute', right: 12, bottom: 12, display: 'flex', gap: 1 }}>
+            <Tooltip title="Crop snapshot">
+              <IconButton onClick={onStartCrop} aria-label="Crop snapshot" sx={overlayButtonSx}>
+                <CropRoundedIcon sx={{ fontSize: 22 }} />
+              </IconButton>
+            </Tooltip>
             {Boolean(originalSrc) && (
               <Tooltip title="Mark up snapshot">
                 <IconButton onClick={onStartEdit} aria-label="Mark up snapshot" sx={overlayButtonSx}>
@@ -353,8 +362,26 @@ export default function TicketCreateLayout({
   const titleInvalid = touched && !title.trim()
   const menuProps = { sx: { zIndex: (t: Theme) => t.zIndex.modal + 10 } }
   const snapshotOn = snapshot.mode === 'toggle' ? snapshot.checked : snapshot.mode === 'locked-on'
-  const displaySrc = markedImage ?? snapshotPreview
+  const [croppedImage, setCroppedImage] = useState<string | null>(null)
+  const [cropVersion, setCropVersion] = useState(0)
+  const [cropMode, setCropMode] = useState<'panel' | 'fullscreen' | null>(null)
+  const baseSrc = croppedImage ?? snapshotPreview
+  const displaySrc = markedImage ?? baseSrc
   const canExpand = snapshotOn && Boolean(displaySrc)
+
+  const saveCrop = (image: string) => {
+    setCroppedImage(image)
+    setCropVersion((v) => v + 1)
+    setShapes([])
+    setMarkedImage(null)
+    onMarkupChange?.(image)
+    setCropMode(null)
+  }
+
+  const closeFullscreen = () => {
+    setFullscreen(false)
+    setCropMode((mode) => (mode === 'fullscreen' ? null : mode))
+  }
 
   const finishMarkup = (next: MarkupShape[], image: string | null) => {
     const marked = next.length > 0 ? image : null
@@ -558,20 +585,25 @@ export default function TicketCreateLayout({
               </Box>
             </Stack>
 
-            <SnapshotPanel
-              snapshot={snapshot}
-              originalSrc={snapshotPreview}
-              displaySrc={displaySrc}
-              cameraName={context.name}
-              stamp={stamp}
-              editing={editing}
-              shapes={shapes}
-              onStartEdit={() => setEditing(true)}
-              onCancelEdit={() => setEditing(false)}
-              onFinishEdit={finishMarkup}
-              onExpand={() => setFullscreen(true)}
-              onSnapshotClick={onSnapshotClick}
-            />
+            {cropMode === 'panel' && snapshotOn && displaySrc ? (
+              <SnapshotCrop src={displaySrc} onCancel={() => setCropMode(null)} onSave={saveCrop} />
+            ) : (
+              <SnapshotPanel
+                snapshot={snapshot}
+                originalSrc={baseSrc}
+                displaySrc={displaySrc}
+                cameraName={context.name}
+                stamp={stamp}
+                editing={editing}
+                shapes={shapes}
+                onStartEdit={() => setEditing(true)}
+                onCancelEdit={() => setEditing(false)}
+                onFinishEdit={finishMarkup}
+                onStartCrop={() => setCropMode('panel')}
+                onExpand={() => setFullscreen(true)}
+                onSnapshotClick={onSnapshotClick}
+              />
+            )}
           </Box>
         )}
 
@@ -633,7 +665,7 @@ export default function TicketCreateLayout({
 
       <Dialog
         open={fullscreen && canExpand}
-        onClose={() => setFullscreen(false)}
+        onClose={closeFullscreen}
         maxWidth="xl"
         fullWidth
         sx={{ zIndex: (t: Theme) => t.zIndex.modal + 20 }}
@@ -644,21 +676,36 @@ export default function TicketCreateLayout({
       >
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 0.75, minHeight: 48, color: '#fff', bgcolor: 'rgba(14, 20, 32, 0.96)', borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
           <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Snapshot preview</Typography>
-          <IconButton onClick={() => setFullscreen(false)} aria-label="Close fullscreen snapshot" sx={{ color: '#fff' }}>
-            <CloseRoundedIcon />
-          </IconButton>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Tooltip title="Crop snapshot">
+              <span>
+                <IconButton onClick={() => setCropMode('fullscreen')} disabled={cropMode === 'fullscreen'} aria-label="Crop snapshot" sx={{ color: '#fff' }}>
+                  <CropRoundedIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <IconButton onClick={closeFullscreen} aria-label="Close fullscreen snapshot" sx={{ color: '#fff' }}>
+              <CloseRoundedIcon />
+            </IconButton>
+          </Box>
         </Box>
         <Box sx={{ position: 'relative', flex: 1, minHeight: 0, p: { xs: 0.75, sm: 1.5 }, bgcolor: '#000' }}>
           {snapshotOn && displaySrc ? (
             <SnapshotMarkup
-              src={snapshotPreview ?? displaySrc}
+              key={cropVersion}
+              src={baseSrc ?? displaySrc}
               initialShapes={shapes}
               defaultCollapsed
-              onCancel={() => setFullscreen(false)}
+              onCancel={closeFullscreen}
               onDone={(next, image) => { finishMarkup(next, image); setFullscreen(false) }}
             />
           ) : (
             <Box component="img" src={displaySrc ?? undefined} alt="Snapshot of the current camera view" sx={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          )}
+          {cropMode === 'fullscreen' && snapshotOn && displaySrc && (
+            <Box sx={{ position: 'absolute', inset: { xs: 6, sm: 12 }, zIndex: 20, display: 'flex', flexDirection: 'column', color: 'text.primary', bgcolor: 'background.paper', borderRadius: '16px', overflow: 'hidden' }}>
+              <SnapshotCrop src={displaySrc} onCancel={() => setCropMode(null)} onSave={saveCrop} />
+            </Box>
           )}
         </Box>
       </Dialog>

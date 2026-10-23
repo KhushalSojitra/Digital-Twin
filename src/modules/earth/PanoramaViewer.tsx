@@ -442,9 +442,6 @@ export default function PanoramaViewer({
     let downAt = 0
     let holdTimer: number | null = null
     let holdOpened = false
-    let lastTapAt = 0
-    let lastTapX = 0
-    let lastTapY = 0
 
     const commit = (next: Partial<View>) => {
       const { fovRange: fr, pitchRange: pr } = rangesRef.current
@@ -483,9 +480,19 @@ export default function PanoramaViewer({
       }
     }
 
+    // Several gestures (dblclick, tap pair, contextmenu, force click) can fire for one physical
+    // action; only the first within this window opens the menu.
+    let lastMenuAt = -Infinity
     const openTicketMenu = (clientX: number, clientY: number) => {
+      const now = performance.now()
+      if (now - lastMenuAt < 400) return
+      lastMenuAt = now
       callbacksRef.current.onPointContextMenu?.(pickAt(clientX, clientY), { clientX, clientY })
     }
+
+    let lastTapAt = -Infinity
+    let lastTapX = 0
+    let lastTapY = 0
 
     // Long-press is only for real touch screens. Trackpads often report pointerType
     // "touch" but remain pointer:fine — those must pan/aim, not open Create Ticket.
@@ -552,11 +559,12 @@ export default function PanoramaViewer({
       const isClick = moved < 6 && performance.now() - downAt < 500
       if (isClick) {
         const now = performance.now()
-        const doubled = now - lastTapAt < 320 && Math.hypot(startX - lastTapX, startY - lastTapY) < 12
+        const isSecondTap = now - lastTapAt < 450 && Math.hypot(startX - lastTapX, startY - lastTapY) < 30
         lastTapAt = now
         lastTapX = startX
         lastTapY = startY
-        if (doubled || e.detail >= 2) {
+        if (isSecondTap && callbacksRef.current.onPointContextMenu) {
+          lastTapAt = -Infinity
           openTicketMenu(startX, startY)
           return
         }
@@ -564,20 +572,16 @@ export default function PanoramaViewer({
       }
     }
 
-    const onClick = (e: MouseEvent) => {
-      if (e.detail < 2) return
-      e.preventDefault()
-      openTicketMenu(e.clientX, e.clientY)
-    }
-
     const onDblClick = (e: MouseEvent) => {
       e.preventDefault()
+      e.stopPropagation()
       if (!callbacksRef.current.onPointContextMenu) return
       openTicketMenu(e.clientX, e.clientY)
     }
 
     const onContextMenu = (e: MouseEvent) => {
       e.preventDefault()
+      e.stopPropagation()
       if (!callbacksRef.current.onPointContextMenu) return
       if (holdOpened) return
       if (pointerId !== null && moved >= 8) return
@@ -604,7 +608,6 @@ export default function PanoramaViewer({
     el.addEventListener('pointermove', onPointerMove)
     el.addEventListener('pointerup', onPointerUp)
     el.addEventListener('pointercancel', onPointerUp)
-    el.addEventListener('click', onClick)
     el.addEventListener('dblclick', onDblClick)
     el.addEventListener('contextmenu', onContextMenu)
     el.addEventListener('webkitmouseforcewillbegin', onForceWillBegin)
@@ -622,7 +625,6 @@ export default function PanoramaViewer({
       el.removeEventListener('pointermove', onPointerMove)
       el.removeEventListener('pointerup', onPointerUp)
       el.removeEventListener('pointercancel', onPointerUp)
-      el.removeEventListener('click', onClick)
       el.removeEventListener('dblclick', onDblClick)
       el.removeEventListener('contextmenu', onContextMenu)
       el.removeEventListener('webkitmouseforcewillbegin', onForceWillBegin)

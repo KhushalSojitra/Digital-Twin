@@ -5,6 +5,7 @@ import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import ConfirmationNumberOutlinedIcon from '@mui/icons-material/ConfirmationNumberOutlined'
+import HelpOutlineRoundedIcon from '@mui/icons-material/HelpOutlineRounded'
 import { getDevice, type CameraDevice, type CameraSite, type LiveDeviceKind, type SelectionKind } from '../../data/cameras'
 import CctvLayer from './CctvLayer'
 import CctvPopup from './CctvPopup'
@@ -480,6 +481,10 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
           >
             <ConfirmationNumberOutlinedIcon fontSize="small" sx={{ mr: 1 }} />
             Create Ticket
+          </MenuItem>
+          <MenuItem onClick={() => setContext(null)}>
+            <HelpOutlineRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+            Help
           </MenuItem>
         </Menu>
 

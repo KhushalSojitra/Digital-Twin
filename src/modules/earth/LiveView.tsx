@@ -432,8 +432,8 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
             elevation={0}
             sx={(t) => ({
               position: 'absolute',
-              right: 12,
-              bottom: 12,
+              left: 12,
+              top: 58,
               width: pipWidth,
               aspectRatio: '16 / 9',
               borderRadius: '12px',

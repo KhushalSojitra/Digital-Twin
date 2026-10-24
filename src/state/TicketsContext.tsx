@@ -422,18 +422,11 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      setTickets((previous) => {
-        const merged = new Map(previous.map((ticket) => [ticket.id, ticket]))
-        for (const ticket of fetchedTickets) {
-          const current = merged.get(ticket.id)
-          if (!current || Date.parse(ticket.updatedAt) > Date.parse(current.updatedAt)) {
-            merged.set(ticket.id, ticket)
-          }
-        }
-        const next = [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        ticketsRef.current = next
-        return next
-      })
+      // Supabase is the source of truth on every refresh. Replacing the collection here
+      // removes rows deleted elsewhere instead of merging stale client-only tickets back in.
+      const next = fetchedTickets.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      ticketsRef.current = next
+      setTickets(next)
     }
 
     const channel = supabase

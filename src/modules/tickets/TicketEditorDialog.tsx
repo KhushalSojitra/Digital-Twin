@@ -1,57 +1,22 @@
-import { Component, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import {
-  Box,
-  Button,
-  Chip,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  IconButton,
-  InputLabel,
-  MenuItem,
-  Select,
-  Stack,
-  Tab,
-  Tabs,
-  TextField,
-  Typography,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material'
+import { Component, useState, type FormEvent, type ReactNode } from 'react'
+import { Dialog, DialogContent, DialogTitle, IconButton, Typography, useMediaQuery, useTheme } from '@mui/material'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
-import TitleRoundedIcon from '@mui/icons-material/TitleRounded'
-import NotesRoundedIcon from '@mui/icons-material/NotesRounded'
 import { dialogPaperSx } from '../../theme/hud'
 import {
   ASSIGNEES,
-  LIFECYCLE_LABEL,
-  NEXT_STATES,
-  PRIORITY_COLOR,
-  PRIORITY_LABEL,
-  STATUS_COLOR,
-  STATUS_LABEL,
-  STATUS_NEEDS_DARK_TEXT,
   TICKETING_SYSTEM,
-  ticketContextLabel,
   siteName,
-  isCompleted,
   snapshotFromProof,
-  snapshotIsProof,
   type NewTicketInput,
   type PinView,
   type Ticket,
   type TicketPriority,
 } from '../../data/tickets'
 import type { CameraDevice } from '../../data/cameras'
-import { formatDateTime } from '../../utils/format'
-import { useTickets } from '../../state/TicketsContext'
 import { useAuth } from '../../auth/AuthContext'
 import { useIntegrations } from '../../state/IntegrationsContext'
 import { useCapture } from './captureContext'
-import TicketAssignment from './TicketAssignment'
-import TicketActivity from './TicketActivity'
-import ImprovementVerification from './ImprovementVerification'
+import TicketDetailView from './TicketDetailView'
 import TicketCreateLayout, { type SnapshotControl, type TicketCreateContext } from './TicketCreateLayout'
 
 const DEVICE_KIND_LABEL: Record<CameraDevice['kind'], string> = {
@@ -94,7 +59,7 @@ export default function TicketEditorDialog({ open, mode, ticket, draft, initialT
       onClose={onClose}
       fullWidth
       fullScreen={isXs}
-      maxWidth={creating ? 'md' : 'sm'}
+      maxWidth="md"
       sx={{ zIndex: (t) => t.zIndex.modal + 4 }}
       slotProps={{ paper: { sx: dialogPaperSx } }}
     >
@@ -296,149 +261,15 @@ function Existing({
   initialTab: 'details' | 'activity'
   onClose: () => void
 }) {
-  const { transition, assign, updateDetails } = useTickets()
-  const [tab, setTab] = useState<'details' | 'activity'>(initialTab)
-  const [title, setTitle] = useState(ticket.title)
-  const [description, setDescription] = useState(ticket.description)
-  const [priority, setPriority] = useState(ticket.priority)
-  const editing = mode === 'edit' && canEdit
-
-  const saveDetails = () => {
-    if (!title.trim()) return
-    updateDetails(ticket.id, { title: title.trim(), description: description.trim(), priority }, me)
-  }
-
-  const next = useMemo(() => NEXT_STATES[ticket.status] ?? [], [ticket.status])
-
   return (
-    <>
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 0.75, py: 1.5, flexWrap: 'wrap' }}>
-        <NotesRoundedIcon sx={{ color: 'primary.main', fontSize: 20 }} />
-        <Typography variant="h6" sx={{ fontFamily: '"SF Mono", ui-monospace, Menlo, monospace' }}>
-          {ticket.id}
-        </Typography>
-        <Chip
-          size="small"
-          label={STATUS_LABEL[ticket.status]}
-          sx={{
-            height: 24,
-            fontSize: 12,
-            color: STATUS_NEEDS_DARK_TEXT.includes(ticket.status) ? '#1C1C1E' : '#fff',
-            bgcolor: STATUS_COLOR[ticket.status],
-          }}
-        />
-        <Chip size="small" variant="outlined" label={PRIORITY_LABEL[priority]} sx={{ borderColor: PRIORITY_COLOR[priority], color: PRIORITY_COLOR[priority] }} />
-        <Box sx={{ flex: 1 }} />
-        <IconButton size="small" onClick={onClose} aria-label="Close">
-          <CloseRoundedIcon fontSize="small" />
-        </IconButton>
-      </DialogTitle>
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ minHeight: 36, px: 1, '& .MuiTab-root': { minHeight: 36, textTransform: 'none' } }}>
-        <Tab value="details" label={<Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}><TitleRoundedIcon sx={{ fontSize: 17 }} />Details</Box>} />
-        <Tab value="activity" label={<Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}><NotesRoundedIcon sx={{ fontSize: 17 }} />Activity</Box>} />
-      </Tabs>
-      <DialogContent sx={{ pt: 1.5 }}>
-        {tab === 'details' && (
-          <Stack spacing={1.25}>
-            {editing ? (
-              <>
-                <TextField size="small" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
-                <TextField size="small" label="Description" value={description} onChange={(e) => setDescription(e.target.value)} multiline minRows={2} />
-                <FormControl size="small">
-                  <InputLabel>Priority</InputLabel>
-                  <Select label="Priority" value={priority} onChange={(e) => setPriority(e.target.value as TicketPriority)}>
-                    {(Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => (
-                      <MenuItem key={p} value={p}>
-                        {PRIORITY_LABEL[p]}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <Button size="small" variant="contained" onClick={saveDetails} sx={{ alignSelf: 'flex-start' }}>
-                  Save details
-                </Button>
-              </>
-            ) : (
-              <>
-                <Typography variant="subtitle1">{ticket.title}</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {ticket.description}
-                </Typography>
-              </>
-            )}
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
-              <Field label="Creator" value={ticket.creator} />
-              <Field label="Assignee" value={ticket.assignee} />
-              {ticket.cameraId && <Field label="Camera Name" value={ticketContextLabel(ticket)} />}
-              <Field
-            label="Coordinates"
-            value={
-              ticket.cameraId
-                ? `P ${ticket.yaw.toFixed(1)}° · T ${ticket.pitch.toFixed(1)}° · Z ${ticket.zoom.toFixed(1)}×`
-                : `${ticket.lat.toFixed(5)}, ${ticket.lng.toFixed(5)}`
-            }
-          />
-              <Field label="Created" value={formatDateTime(ticket.createdAt)} />
-              <Field label="Completed" value={ticket.completedAt ? formatDateTime(ticket.completedAt) : '—'} />
-            </Box>
-            {canChangeState && (
-              <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap' }}>
-                {next.map((state) => (
-                  <Button key={state} size="small" variant="outlined" onClick={() => transition(ticket.id, state, { by: me })}>
-                    {LIFECYCLE_LABEL[state]}
-                  </Button>
-                ))}
-              </Stack>
-            )}
-            {canEdit && (
-              <FormControl size="small" sx={{ maxWidth: 260 }}>
-                <InputLabel>Reassign</InputLabel>
-                <Select
-                  label="Reassign"
-                  value={ticket.assignee}
-                  onChange={(e) => assign(ticket.id, e.target.value, me)}
-                  MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}
-                >
-                  {ASSIGNEES.map((p) => (
-                    <MenuItem key={p} value={p}>
-                      {p}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            )}
-            <TicketAssignment ticket={ticket} me={me} />
-            {isCompleted(ticket) && <ImprovementVerification ticket={ticket} />}
-            {!isCompleted(ticket) && ticket.snapshots.before && (
-              <Box>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                  Creation snapshot
-                </Typography>
-                <Box component="img" src={ticket.snapshots.before.src} alt="Creation snapshot" sx={{ width: '100%', borderRadius: '10px', mt: 0.5 }} />
-              </Box>
-            )}
-            {ticket.snapshotConfig && snapshotIsProof(ticket.snapshotConfig) && (
-              <Typography variant="caption" color="text.secondary">
-                Snapshot proof is on
-              </Typography>
-            )}
-          </Stack>
-        )}
-        {tab === 'activity' && <TicketActivity ticket={ticket} />}
-      </DialogContent>
-    </>
-  )
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <Box sx={{ minWidth: 0 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-        {label}
-      </Typography>
-      <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-word' }}>
-        {value}
-      </Typography>
-    </Box>
+    <TicketDetailView
+      ticket={ticket}
+      me={me}
+      canEdit={canEdit}
+      canChangeState={canChangeState}
+      editing={mode === 'edit' && canEdit}
+      initialTab={initialTab === 'activity' ? 'activity' : 'snapshot'}
+      onClose={onClose}
+    />
   )
 }

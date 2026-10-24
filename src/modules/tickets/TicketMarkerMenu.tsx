@@ -37,22 +37,27 @@ export const TicketMarkerActionsProvider = TicketMarkerActionsContext.Provider
 export function TicketDeleteDialog({ ticket, onClose }: { ticket: Ticket | null; onClose: () => void }) {
   const { deleteTicket } = useTickets()
   const [busy, setBusy] = useState(false)
-  const [failed, setFailed] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
 
   const close = () => {
     if (busy) return
-    setFailed(false)
+    setFailure(null)
     onClose()
   }
 
   const confirm = async () => {
     if (!ticket) return
     setBusy(true)
-    setFailed(false)
-    const deleted = await deleteTicket(ticket.id)
-    setBusy(false)
-    if (deleted) onClose()
-    else setFailed(true)
+    setFailure(null)
+    try {
+      await deleteTicket(ticket.id)
+      onClose()
+    } catch (error) {
+      console.error(`Unable to delete ticket ${ticket.id}:`, error)
+      setFailure(error instanceof Error ? error.message : String(error))
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -68,9 +73,9 @@ export function TicketDeleteDialog({ ticket, onClose }: { ticket: Ticket | null;
         <DialogContentText>
           {ticket ? `Delete ticket ${ticket.id}? This cannot be undone.` : ''}
         </DialogContentText>
-        {failed && (
-          <Typography role="alert" variant="body2" color="error" sx={{ mt: 1.5 }}>
-            The ticket could not be deleted. It may already be removed, or you may not have permission.
+        {failure && (
+          <Typography role="alert" variant="body2" color="error" sx={{ mt: 1.5, wordBreak: 'break-word' }}>
+            {failure}
           </Typography>
         )}
       </DialogContent>

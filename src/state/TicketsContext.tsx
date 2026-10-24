@@ -27,7 +27,7 @@ export interface TransitionInput {
 interface TicketsValue {
   tickets: Ticket[]
   addTicket: (input: TicketCreateInput) => Promise<Ticket>
-  deleteTicket: (id: string) => Promise<boolean>
+  deleteTicket: (id: string) => Promise<void>
   assign: (id: string, assignee: string, by: string) => void
   toggleFollow: (id: string, person: string) => void
   addFollowers: (id: string, people: string[], by: string) => void
@@ -375,42 +375,48 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     return savedTicket
   }, [])
 
-  const deleteTicket = useCallback(async (id: string): Promise<boolean> => {
-    try {
-      let result = await supabase.from('tickets').delete().eq('id', id)
-      if (!result.error) {
-        const { data: remaining, error: refreshError } = await supabase
-          .from('tickets')
-          .select('*')
-          .order('created_at', { ascending: false })
-        if (refreshError) throw refreshError
-        const next = (remaining ?? []).map(ticketFromDatabase)
-        ticketsRef.current = next
-        setTickets(next)
-        return true
-      }
-
-      console.error(`Supabase ticket delete error for ${id}:`, result.error.message)
-      if (result.error.code !== '42703') return false
-
-      result = await supabase.from('tickets').delete().eq('ticket_id', id)
-      if (result.error) {
-        console.error(`Supabase ticket delete fallback error for ${id}:`, result.error.message)
-        return false
-      }
-      const { data: remaining, error: refreshError } = await supabase
-        .from('tickets')
-        .select('*')
-        .order('created_at', { ascending: false })
-      if (refreshError) throw refreshError
-      const next = (remaining ?? []).map(ticketFromDatabase)
-      ticketsRef.current = next
-      setTickets(next)
-      return true
-    } catch (error) {
-      console.error(`Unable to delete ticket ${id}:`, error)
-      return false
+  // Throws with the exact Supabase message on failure. A DELETE that matches zero rows is never success:
+  // under RLS a blocked delete returns no error and no rows, so we confirm the row is really gone.
+  const deleteTicket = useCallback(async (id: string): Promise<void> => {
+    let result = await supabase.from('tickets').delete().eq('id', id).select('id')
+    if (result.error?.code === '42703') {
+      result = await supabase.from('tickets').delete().eq('ticket_id', id).select('ticket_id')
     }
+    const { data, error } = result
+    console.log('[v0] delete ticket result', { id, data, error })
+    if (error) {
+      throw new Error(`Supabase delete failed (${error.code ?? 'no code'}): ${error.message}`)
+    }
+
+    if (!data || data.length === 0) {
+      const { data: stillThere, error: checkError } = await supabase
+        .from('tickets')
+        .select('id')
+        .or(`id.eq.${id},ticket_id.eq.${id}`)
+        .limit(1)
+      if (checkError) throw new Error(`Supabase delete check failed (${checkError.code ?? 'no code'}): ${checkError.message}`)
+      if (stillThere && stillThere.length > 0) {
+        throw new Error(
+          `Supabase deleted 0 rows for ${id}: the ticket still exists, so the delete was blocked by Row Level Security. public.tickets needs a DELETE policy for this role.`,
+        )
+      }
+    }
+
+    const withoutDeleted = ticketsRef.current.filter((ticket) => ticket.id !== id)
+    ticketsRef.current = withoutDeleted
+    setTickets(withoutDeleted)
+
+    const { data: remaining, error: refreshError } = await supabase
+      .from('tickets')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (refreshError) {
+      console.error('Unable to refresh tickets after delete:', refreshError.message)
+      return
+    }
+    const next = (remaining ?? []).map(ticketFromDatabase)
+    ticketsRef.current = next
+    setTickets(next)
   }, [])
   // 3. READ AND REALTIME SYNC
   useEffect(() => {

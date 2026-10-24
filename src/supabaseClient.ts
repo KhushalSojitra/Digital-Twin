@@ -3,5 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-// Initializes the single shared real-time database connection
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Supabase runtime configuration is missing.')
+}
+
+// Initializes the single shared real-time database connection used by every ticket surface.
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);

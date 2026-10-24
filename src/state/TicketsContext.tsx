@@ -377,19 +377,33 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
 
   const deleteTicket = useCallback(async (id: string): Promise<boolean> => {
     try {
-      let result = await supabase.from('tickets').delete().eq('id', id).select('id')
-      if (!result.error && !result.data?.length) {
-        result = await supabase.from('tickets').delete().eq('ticket_id', id).select('id')
+      let result = await supabase.from('tickets').delete().eq('id', id)
+      if (!result.error) {
+        const { data: remaining, error: refreshError } = await supabase
+          .from('tickets')
+          .select('*')
+          .order('created_at', { ascending: false })
+        if (refreshError) throw refreshError
+        const next = (remaining ?? []).map(ticketFromDatabase)
+        ticketsRef.current = next
+        setTickets(next)
+        return true
       }
+
+      console.error(`Supabase ticket delete error for ${id}:`, result.error.message)
+      if (result.error.code !== '42703') return false
+
+      result = await supabase.from('tickets').delete().eq('ticket_id', id)
       if (result.error) {
-        console.error(`Supabase ticket delete error for ${id}:`, result.error.message)
+        console.error(`Supabase ticket delete fallback error for ${id}:`, result.error.message)
         return false
       }
-      if (!result.data?.length) {
-        console.error(`Supabase ticket delete matched no row for ${id}`)
-        return false
-      }
-      const next = ticketsRef.current.filter((ticket) => ticket.id !== id)
+      const { data: remaining, error: refreshError } = await supabase
+        .from('tickets')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (refreshError) throw refreshError
+      const next = (remaining ?? []).map(ticketFromDatabase)
       ticketsRef.current = next
       setTickets(next)
       return true

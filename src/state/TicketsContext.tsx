@@ -27,7 +27,7 @@ export interface TransitionInput {
 interface TicketsValue {
   tickets: Ticket[]
   addTicket: (input: TicketCreateInput) => Promise<Ticket>
-  deleteTicket: (id: string) => void
+  deleteTicket: (id: string) => Promise<boolean>
   assign: (id: string, assignee: string, by: string) => void
   toggleFollow: (id: string, person: string) => void
   addFollowers: (id: string, people: string[], by: string) => void
@@ -375,28 +375,28 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     return savedTicket
   }, [])
 
-  const deleteTicket = useCallback((id: string) => {
-    void (async () => {
-      try {
-        let result = await supabase.from('tickets').delete().eq('id', id).select('id')
-        if (!result.error && !result.data?.length) {
-          result = await supabase.from('tickets').delete().eq('ticket_id', id).select('id')
-        }
-        if (result.error) {
-          console.error(`Supabase ticket delete error for ${id}:`, result.error.message)
-          return
-        }
-        if (!result.data?.length) {
-          console.error(`Supabase ticket delete matched no row for ${id}`)
-          return
-        }
-        const next = ticketsRef.current.filter((ticket) => ticket.id !== id)
-        ticketsRef.current = next
-        setTickets(next)
-      } catch (error) {
-        console.error(`Unable to delete ticket ${id}:`, error)
+  const deleteTicket = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      let result = await supabase.from('tickets').delete().eq('id', id).select('id')
+      if (!result.error && !result.data?.length) {
+        result = await supabase.from('tickets').delete().eq('ticket_id', id).select('id')
       }
-    })()
+      if (result.error) {
+        console.error(`Supabase ticket delete error for ${id}:`, result.error.message)
+        return false
+      }
+      if (!result.data?.length) {
+        console.error(`Supabase ticket delete matched no row for ${id}`)
+        return false
+      }
+      const next = ticketsRef.current.filter((ticket) => ticket.id !== id)
+      ticketsRef.current = next
+      setTickets(next)
+      return true
+    } catch (error) {
+      console.error(`Unable to delete ticket ${id}:`, error)
+      return false
+    }
   }, [])
   // 3. READ AND REALTIME SYNC
   useEffect(() => {

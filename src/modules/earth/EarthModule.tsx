@@ -15,6 +15,7 @@ import LiveView, { type TicketFocus } from './LiveView'
 import TicketMenu from '../tickets/TicketMenu'
 import TicketManageDialog from '../tickets/TicketManageDialog'
 import TicketEditorDialog from '../tickets/TicketEditorDialog'
+import { TicketMarkerActionsProvider } from '../tickets/TicketMarkerMenu'
 import { applyTicketQuery } from '../tickets/ticketFilters'
 import { useTicketQuery } from '../../state/TicketQueryContext'
 
@@ -114,7 +115,29 @@ export default function EarthModule() {
 
   const glass = hudSurface(theme)
 
+  const markerActions = {
+    onView: (t: Ticket) => {
+      setSelectedTicketId(t.id)
+      setEditorMode('view')
+      setEditorTab('details')
+      setEditorOpen(true)
+    },
+    onEdit: (t: Ticket) => {
+      setSelectedTicketId(t.id)
+      setEditorMode('edit')
+      setEditorTab('details')
+      setEditorOpen(true)
+    },
+    onInfo: (t: Ticket) => {
+      setSelectedTicketId(t.id)
+      setEditorMode('view')
+      setEditorTab('activity')
+      setEditorOpen(true)
+    },
+  }
+
   return (
+    <TicketMarkerActionsProvider value={markerActions}>
     <Box sx={{ position: 'absolute', inset: 0 }}>
       <Box
         sx={{
@@ -311,5 +334,6 @@ export default function EarthModule() {
         </Box>
       )}
     </Box>
+    </TicketMarkerActionsProvider>
   )
 }

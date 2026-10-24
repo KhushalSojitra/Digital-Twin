@@ -27,6 +27,7 @@ import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import TicketGlyph from '../../components/TicketGlyph'
 import TicketFilters from './TicketFilters'
+import { TicketDeleteDialog } from './TicketMarkerMenu'
 import { applyTicketQuery, type TicketFilterState } from './ticketFilters'
 import {
   LIFECYCLE_LABEL,
@@ -78,7 +79,8 @@ export default function TicketManageDialog({
 }: Props) {
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
-  const { transition, deleteTicket } = useTickets()
+  const { transition } = useTickets()
+  const [deleting, setDeleting] = useState<Ticket | null>(null)
   const [search, setSearch] = useState('')
   const [filterEl, setFilterEl] = useState<HTMLElement | null>(null)
   const visible = useMemo(
@@ -206,9 +208,7 @@ export default function TicketManageDialog({
                           size="small"
                           color="error"
                           aria-label={`Delete ${t.id}`}
-                          onClick={() => {
-                            if (window.confirm(`Delete ticket ${t.id}? This cannot be undone.`)) deleteTicket(t.id)
-                          }}
+                          onClick={() => setDeleting(t)}
                         >
                           <DeleteOutlineRoundedIcon fontSize="small" />
                         </IconButton>
@@ -240,6 +240,7 @@ export default function TicketManageDialog({
         </Box>
 
       </DialogContent>
+      <TicketDeleteDialog ticket={deleting} onClose={() => setDeleting(null)} />
     </Dialog>
   )
 }

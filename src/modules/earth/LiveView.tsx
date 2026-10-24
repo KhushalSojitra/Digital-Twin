@@ -26,6 +26,7 @@ import { useTicketQuery } from '../../state/TicketQueryContext'
 import { applyTicketQuery } from '../tickets/ticketFilters'
 import TicketMenu from '../tickets/TicketMenu'
 import TicketManageDialog from '../tickets/TicketManageDialog'
+import { TicketMarkerActionsProvider } from '../tickets/TicketMarkerMenu'
 import TicketEditorDialog, { type CreateDraft } from '../tickets/TicketEditorDialog'
 import { hudSurface } from '../../theme/hud'
 
@@ -231,6 +232,15 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
     setEditor({ mode, ticket, tab })
   }, [])
 
+  const markerActions = useMemo(
+    () => ({
+      onView: (t: Ticket) => selectTicket(t, 'view'),
+      onEdit: (t: Ticket) => selectTicket(t, 'edit'),
+      onInfo: (t: Ticket) => selectTicket(t, 'view', 'activity'),
+    }),
+    [selectTicket],
+  )
+
   const ready = status360 === 'ready' && statusPtz === 'ready'
   const handledFocus = useRef<number | null>(null)
   useEffect(() => {
@@ -333,6 +343,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   const liveTicket = editor?.ticket ? (tickets.find((t) => t.id === editor.ticket?.id) ?? editor.ticket) : null
 
   return (
+    <TicketMarkerActionsProvider value={markerActions}>
     <CaptureContext.Provider value={capture}>
       <Box
         component="section"
@@ -538,5 +549,6 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
         />
       </Box>
     </CaptureContext.Provider>
+    </TicketMarkerActionsProvider>
   )
 }

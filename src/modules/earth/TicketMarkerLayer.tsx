@@ -6,6 +6,7 @@ import TicketGlyph from '../../components/TicketGlyph'
 import { useViewerFrame, type Projector } from './viewerProjection'
 import { TICKET_SIZE_PX } from '../tickets/ticketFilters'
 import { useTicketQuery } from '../../state/TicketQueryContext'
+import { useTicketMarkerMenu } from '../tickets/TicketMarkerMenu'
 
 export interface DraftMarker {
   yaw: number
@@ -27,6 +28,7 @@ const TARGET_KEY = '__target'
 
 export default function TicketMarkerLayer({ tickets, selectedId, targetId = null, draft = null, compact = false, onSelect }: Props) {
   const { ticketSize } = useTicketQuery()
+  const { onContextMenu, menu } = useTicketMarkerMenu()
   const nodes = useRef(new Map<string, HTMLElement>())
   const ticketsRef = useRef(tickets)
   const draftRef = useRef(draft)
@@ -121,6 +123,7 @@ export default function TicketMarkerLayer({ tickets, selectedId, targetId = null
                 e.stopPropagation()
                 onSelect(t)
               }}
+              onContextMenu={(e) => onContextMenu(e, t)}
               sx={{
                 position: 'absolute',
                 top: 0,
@@ -158,6 +161,7 @@ export default function TicketMarkerLayer({ tickets, selectedId, targetId = null
           <LocationOnRoundedIcon sx={{ fontSize: 38, stroke: '#fff', strokeWidth: 0.8 }} />
         </Box>
       )}
+      {menu}
     </Box>
   )
 }

@@ -3,6 +3,7 @@ import { PRIORITY_LABEL, STATUS_COLOR, STATUS_LABEL, ticketContextLabel, type Ti
 import TicketGlyph from '../../components/TicketGlyph'
 import { TICKET_SIZE_PX } from '../tickets/ticketFilters'
 import { useTicketQuery } from '../../state/TicketQueryContext'
+import { useTicketMarkerMenu } from '../tickets/TicketMarkerMenu'
 
 interface Props {
   ticket: Ticket
@@ -31,6 +32,7 @@ function PreviewCopy({ ticket, color }: { ticket: Ticket; color: string }) {
 
 export default function TicketPin({ ticket, selected, onClick }: Props) {
   const { ticketSize, earthTicketPreview } = useTicketQuery()
+  const { onContextMenu, menu } = useTicketMarkerMenu()
   const color = STATUS_COLOR[ticket.status]
   const px = TICKET_SIZE_PX[ticketSize]
   const pin = (
@@ -42,6 +44,7 @@ export default function TicketPin({ ticket, selected, onClick }: Props) {
         e.stopPropagation()
         onClick()
       }}
+      onContextMenu={(e) => onContextMenu(e, ticket)}
       sx={{
         position: 'relative',
         width: px + 8,
@@ -83,20 +86,30 @@ export default function TicketPin({ ticket, selected, onClick }: Props) {
     </Box>
   )
 
-  if (earthTicketPreview) return pin
+  if (earthTicketPreview) {
+    return (
+      <>
+        {pin}
+        {menu}
+      </>
+    )
+  }
 
   return (
-    <Tooltip
-      arrow
-      placement="top"
-      enterDelay={120}
-      title={
-        <Box sx={{ p: 0.25 }}>
-          <PreviewCopy ticket={ticket} color={color} />
-        </Box>
-      }
-    >
-      {pin}
-    </Tooltip>
+    <>
+      <Tooltip
+        arrow
+        placement="top"
+        enterDelay={120}
+        title={
+          <Box sx={{ p: 0.25 }}>
+            <PreviewCopy ticket={ticket} color={color} />
+          </Box>
+        }
+      >
+        {pin}
+      </Tooltip>
+      {menu}
+    </>
   )
 }

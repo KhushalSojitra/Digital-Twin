@@ -28,7 +28,7 @@ import TicketMenu from '../tickets/TicketMenu'
 import TicketManageDialog from '../tickets/TicketManageDialog'
 import { TicketMarkerActionsProvider } from '../tickets/TicketMarkerMenu'
 import TicketEditorDialog, { type CreateDraft } from '../tickets/TicketEditorDialog'
-import { hudSurface } from '../../theme/hud'
+import { hudOverlaySurface } from '../../theme/hud'
 
 export interface TicketFocus {
   ticketId: string
@@ -50,7 +50,7 @@ const PITCH_PTZ: [number, number] = [-90, 45]
 const TOP_INSET = 44
 const HIGHLIGHT_MS = 3000
 
-const glass = (t: Theme) => hudSurface(t)
+const glass = (t: Theme) => hudOverlaySurface(t)
 
 export default function LiveView({ site, selectionKind, focus = null, onClose }: Props) {
   const theme = useTheme()
@@ -464,10 +464,10 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
                   position: 'absolute',
                   right: 6,
                   bottom: 6,
-                  bgcolor: 'rgba(0,0,0,0.55)',
+                  bgcolor: 'rgba(0,0,0,0.5)',
                   color: '#fff',
                   backdropFilter: 'blur(8px)',
-                  '&:hover': { bgcolor: 'rgba(0,0,0,0.75)' },
+                  '&:hover': { bgcolor: 'rgba(0,0,0,0.65)' },
                 }}
               >
                 <SwapHorizRoundedIcon fontSize="small" />

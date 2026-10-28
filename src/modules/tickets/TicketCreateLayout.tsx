@@ -120,7 +120,7 @@ const overlayControlSx = {
   height: 32,
   borderRadius: 999,
   color: '#fff',
-  bgcolor: 'rgba(8, 12, 20, 0.62)',
+  bgcolor: 'rgba(8, 12, 20, 0.5)',
   backdropFilter: 'blur(6px)',
 }
 
@@ -129,8 +129,9 @@ const overlayButtonSx = {
   height: 40,
   borderRadius: '10px',
   color: '#fff',
-  bgcolor: 'rgba(8, 12, 20, 0.78)',
-  '&:hover': { bgcolor: 'rgba(8, 12, 20, 0.92)' },
+  bgcolor: 'rgba(8, 12, 20, 0.5)',
+  backdropFilter: 'blur(6px)',
+  '&:hover': { bgcolor: 'rgba(8, 12, 20, 0.65)' },
 }
 
 const smallSwitchSx = {

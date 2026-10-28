@@ -1,6 +1,6 @@
 import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import { Box, Chip, IconButton, Paper, Stack, Tooltip, type Theme } from '@mui/material'
-import { hudSurface } from '../../theme/hud'
+import { hudOverlaySurface } from '../../theme/hud'
 import KeyboardArrowUpRoundedIcon from '@mui/icons-material/KeyboardArrowUpRounded'
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
 import KeyboardArrowLeftRoundedIcon from '@mui/icons-material/KeyboardArrowLeftRounded'
@@ -48,7 +48,7 @@ function useHold(fn: () => void) {
 }
 
 const glass = (t: Theme) => ({
-  ...hudSurface(t),
+  ...hudOverlaySurface(t),
   boxShadow: t.palette.mode === 'dark' ? '0 10px 30px rgba(0,0,0,0.35)' : '0 10px 30px rgba(28,28,30,0.12)',
 })
 

@@ -592,7 +592,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
           <IconButton
             aria-label="Mark up snapshot"
             onClick={() => setExpanded(true)}
-            sx={{ ...barButtonSx, position: 'absolute', right: 12, bottom: 12, zIndex: 3, width: 40, height: 40, bgcolor: 'rgba(14, 17, 23, 0.94)', '&:hover': { bgcolor: 'rgba(14, 17, 23, 1)' } }}
+            sx={{ ...barButtonSx, position: 'absolute', right: 12, bottom: 12, zIndex: 3, width: 40, height: 40, bgcolor: 'rgba(14, 17, 23, 0.5)', '&:hover': { bgcolor: 'rgba(14, 17, 23, 0.65)' } }}
           >
             <EditRoundedIcon />
           </IconButton>
@@ -644,7 +644,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
             role="toolbar"
             aria-label="Text annotation options"
             {...textToolbar.handlers}
-            sx={{ position: 'absolute', right: 10, bottom: 58, display: 'flex', flexDirection: 'column', gap: 0, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', backdropFilter: 'blur(8px)', transform: `translate(${textToolbar.offset.x}px, ${textToolbar.offset.y}px)`, cursor: textToolbar.dragging ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', pointerEvents: 'auto', zIndex: 10 }}
+            sx={{ position: 'absolute', right: 10, bottom: 58, display: 'flex', flexDirection: 'column', gap: 0, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.5)', backdropFilter: 'blur(8px)', transform: `translate(${textToolbar.offset.x}px, ${textToolbar.offset.y}px)`, cursor: textToolbar.dragging ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', pointerEvents: 'auto', zIndex: 10 }}
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
               <DragGrip vertical />
@@ -658,7 +658,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
               <Tooltip title="Box color"><IconButton aria-label="Box color" onClick={(e) => { setColorTarget('box'); setColorAnchor(e.currentTarget) }} sx={barButtonSx}><Box sx={{ width: 20, height: 15, borderRadius: '3px', bgcolor: boxColor, border: '2px solid #fff' }} /></IconButton></Tooltip>
             </Box>
           </Box>
-          <Box ref={actionToolbar.ref} {...actionToolbar.handlers} sx={{ position: 'absolute', right: 10, bottom: 10, display: 'flex', alignItems: 'center', gap: 0.25, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.94)', transform: `translate(${actionToolbar.offset.x}px, ${actionToolbar.offset.y}px)`, cursor: actionToolbar.dragging ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', pointerEvents: 'auto', zIndex: 10 }}>
+          <Box ref={actionToolbar.ref} {...actionToolbar.handlers} sx={{ position: 'absolute', right: 10, bottom: 10, display: 'flex', alignItems: 'center', gap: 0.25, p: 0.35, borderRadius: '10px', color: '#fff', bgcolor: 'rgba(14, 17, 23, 0.5)', backdropFilter: 'blur(8px)', transform: `translate(${actionToolbar.offset.x}px, ${actionToolbar.offset.y}px)`, cursor: actionToolbar.dragging ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none', pointerEvents: 'auto', zIndex: 10 }}>
             <DragGrip />
             <Tooltip title="Delete selected text"><IconButton aria-label="Delete selected text" onClick={() => { if (editingTextIndex !== null) pushShapes(shapes.filter((_, index) => index !== editingTextIndex)); setEditingTextIndex(null); setTextDraft(null) }} sx={barButtonSx}><DeleteOutlineRoundedIcon /></IconButton></Tooltip>
             <Tooltip title="Undo"><span><IconButton aria-label="Undo" disabled={!canUndo} onClick={() => setHistory((h) => ({ ...h, index: h.index - 1 }))} sx={barButtonSx}><UndoRoundedIcon /></IconButton></span></Tooltip>
@@ -689,7 +689,7 @@ export default function SnapshotMarkup({ src, initialShapes, onCancel, onDone, d
           p: 0.75,
           borderRadius: '16px',
           color: '#fff',
-          bgcolor: 'rgba(14, 17, 23, 0.94)',
+          bgcolor: 'rgba(14, 17, 23, 0.5)',
           backdropFilter: 'blur(8px)',
           cursor: mainToolbar.dragging ? 'grabbing' : 'grab',
           userSelect: 'none',

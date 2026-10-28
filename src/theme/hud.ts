@@ -21,6 +21,20 @@ export function hudSurface(t: Theme) {
   }
 }
 
+/** 50% translucent variant for controls floating over live video and snapshots. */
+export function hudOverlaySurface(t: Theme) {
+  const dark = t.palette.mode === 'dark'
+  const base = hudSurface(t)
+  return {
+    ...base,
+    bgcolor: dark ? 'rgba(16,19,26,0.5)' : 'rgba(255,255,255,0.5)',
+    '&:hover': {
+      ...base['&:hover'],
+      bgcolor: dark ? 'rgba(34,38,48,0.6)' : 'rgba(255,255,255,0.65)',
+    },
+  }
+}
+
 export const dialogPaperSx = {
   borderRadius: { xs: 0, sm: '16px' },
   m: { xs: 0, sm: 2 },

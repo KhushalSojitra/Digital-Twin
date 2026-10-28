@@ -35,7 +35,7 @@ import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded'
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded'
 import EditRoundedIcon from '@mui/icons-material/EditRounded'
 import CropRoundedIcon from '@mui/icons-material/CropRounded'
-import { ASSIGNEES, PRIORITY_COLOR, PRIORITY_LABEL, type TicketPriority } from '../../data/tickets'
+import { ASSIGNEES, PRIORITY_COLOR, PRIORITY_LABEL, UNASSIGNED, type TicketPriority } from '../../data/tickets'
 import { useAttachments, type Attachment } from './attachments'
 import AttachmentPopover from './AttachmentPopover'
 import DocumentPreview from './DocumentPreview'
@@ -576,6 +576,9 @@ export default function TicketCreateLayout({
                     inputProps={{ 'aria-label': 'Assignee' }}
                     renderValue={(value) => <AssigneeOption name={value} />}
                   >
+                    <MenuItem value={UNASSIGNED}>
+                      <AssigneeOption name={UNASSIGNED} />
+                    </MenuItem>
                     {ASSIGNEES.map((person) => (
                       <MenuItem key={person} value={person}>
                         <AssigneeOption name={person} />

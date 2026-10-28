@@ -252,7 +252,7 @@ export function createEarthTicket(input: NewEarthTicketInput, id = `OE-${crypto.
   const timeline: TicketEvent[] = [
     { at: now, by: input.creator, text: `Ticket raised on Earth at ${lat.toFixed(5)}, ${lng.toFixed(5)}`, state: 'open' },
   ]
-  if (input.assignee) timeline.push({ at: now, by: input.creator, text: `Assigned to ${input.assignee}` })
+  if (input.assignee && input.assignee !== 'Unassigned') timeline.push({ at: now, by: input.creator, text: `Assigned to ${input.assignee}` })
 
   return {
     id,
@@ -300,7 +300,7 @@ export function createTicket(input: NewTicketInput, id = `OE-${crypto.randomUUID
   const followers = [...new Set([input.creator, ...(input.followers ?? [])])]
   const timeline: TicketEvent[] = [{ at: now, by: input.creator, text: `Ticket raised from Live View on ${device.name}`, state: 'open' }]
   if (input.creationSnapshot) timeline.push({ at: now, by: input.creator, text: 'Creation snapshot captured from the live camera' })
-  if (input.assignee) timeline.push({ at: now, by: input.creator, text: `Assigned to ${input.assignee}` })
+  if (input.assignee && input.assignee !== 'Unassigned') timeline.push({ at: now, by: input.creator, text: `Assigned to ${input.assignee}` })
 
   return {
     id,
@@ -396,6 +396,21 @@ export const ZONES = [
 
 const PEOPLE = ['Ava Sharma', 'Michael Reed', 'Sarah Wilson']
 export const ASSIGNEES = PEOPLE
+
+/** Same value the database stores when a ticket has no owner. */
+export const UNASSIGNED = 'Unassigned'
+
+export function isUnassigned(assignee: string | null | undefined) {
+  return !assignee || assignee === UNASSIGNED
+}
+
+/** When the ticket last moved through its lifecycle, falling back to creation time. */
+export function lastStateChangeAt(t: Pick<Ticket, 'timeline' | 'createdAt'>) {
+  for (let i = (t.timeline?.length ?? 0) - 1; i >= 0; i -= 1) {
+    if (t.timeline[i].state) return t.timeline[i].at
+  }
+  return t.createdAt
+}
 export const CREATORS = PEOPLE
 export const DEMO_PEOPLE = PEOPLE
 

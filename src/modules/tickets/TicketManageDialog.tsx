@@ -21,6 +21,8 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import MyLocationRoundedIcon from '@mui/icons-material/MyLocationRounded'
 import EditRoundedIcon from '@mui/icons-material/EditRounded'
 import VideocamRoundedIcon from '@mui/icons-material/VideocamRounded'
+import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined'
+import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded'
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
 import FilterListRoundedIcon from '@mui/icons-material/FilterListRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
@@ -28,20 +30,23 @@ import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import TicketGlyph from '../../components/TicketGlyph'
 import TicketFilters from './TicketFilters'
 import { TicketDeleteDialog } from './TicketMarkerMenu'
-import { applyTicketQuery, type TicketFilterState } from './ticketFilters'
+import { SCOPES, applyTicketQuery, matchesScope, type TicketFilterState, type TicketScope } from './ticketFilters'
 import {
   LIFECYCLE_LABEL,
   NEXT_STATES,
+  PRIORITY_COLOR,
   PRIORITY_LABEL,
   STATUS_COLOR,
   STATUS_LABEL,
   STATUS_NEEDS_DARK_TEXT,
-  TICKET_SOURCE_LABEL,
+  UNASSIGNED,
+  isUnassigned,
+  lastStateChangeAt,
   ticketContextLabel,
   type LifecycleState,
   type Ticket,
 } from '../../data/tickets'
-import { formatRelative } from '../../utils/format'
+import { formatDateTime, formatRelative } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
 import { dialogPaperSx } from '../../theme/hud'
 
@@ -83,10 +88,16 @@ export default function TicketManageDialog({
   const [deleting, setDeleting] = useState<Ticket | null>(null)
   const [search, setSearch] = useState('')
   const [filterEl, setFilterEl] = useState<HTMLElement | null>(null)
-  const visible = useMemo(
+  const [scope, setScope] = useState<TicketScope>('all')
+  const queried = useMemo(
     () => applyTicketQuery(tickets, { tab: 'all', search, filters, me, assignedToMe: false }),
     [tickets, search, filters, me],
   )
+  const scopeCounts = useMemo(
+    () => Object.fromEntries(SCOPES.map((s) => [s.id, queried.filter((t) => matchesScope(t, s.id, me)).length])) as Record<TicketScope, number>,
+    [queried, me],
+  )
+  const visible = useMemo(() => queried.filter((t) => matchesScope(t, scope, me)), [queried, scope, me])
 
   return (
     <Dialog
@@ -123,6 +134,30 @@ export default function TicketManageDialog({
           onChange={(e) => setSearch(e.target.value)}
           slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRoundedIcon fontSize="small" /></InputAdornment> } }}
         />
+        <Stack
+          direction="row"
+          spacing={0.75}
+          role="tablist"
+          aria-label="Ticket views"
+          sx={{ overflowX: 'auto', flexShrink: 0, pb: 0.25, '&::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none' }}
+        >
+          {SCOPES.map((s) => {
+            const active = scope === s.id
+            return (
+              <Chip
+                key={s.id}
+                role="tab"
+                aria-selected={active}
+                clickable
+                onClick={() => setScope(s.id)}
+                color={active ? 'primary' : 'default'}
+                variant={active ? 'filled' : 'outlined'}
+                label={`${s.label} · ${scopeCounts[s.id]}`}
+                sx={{ height: 30, fontSize: 13, flexShrink: 0 }}
+              />
+            )
+          })}
+        </Stack>
         <Popover
           open={Boolean(filterEl)}
           anchorEl={filterEl}
@@ -158,8 +193,10 @@ export default function TicketManageDialog({
                   <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0, flex: 1 }}>
                     <TicketGlyph color={STATUS_COLOR[t.status]} size={20} critical={t.priority === 'critical'} />
                     <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                        <Typography sx={{ fontFamily: '"SF Mono", ui-monospace, Menlo, monospace', fontSize: 13, fontWeight: 700 }}>{t.id}</Typography>
+                      <Typography sx={{ fontSize: 15, fontWeight: 700, lineHeight: 1.3 }} noWrap title={t.title}>
+                        {t.title}
+                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5, mt: 0.5 }}>
                         <Chip
                           size="small"
                           label={STATUS_LABEL[t.status]}
@@ -170,16 +207,51 @@ export default function TicketManageDialog({
                             bgcolor: STATUS_COLOR[t.status],
                           }}
                         />
-                        <Typography variant="caption" color="text.secondary" noWrap>
-                          {PRIORITY_LABEL[t.priority]} · {TICKET_SOURCE_LABEL[t.source]} · {ticketContextLabel(t)}
+                        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                          <Box aria-hidden sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: PRIORITY_COLOR[t.priority] }} />
+                          <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                            {PRIORITY_LABEL[t.priority]}
+                          </Typography>
+                        </Stack>
+                        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', minWidth: 0 }}>
+                          <VideocamOutlinedIcon sx={{ fontSize: 15, color: 'text.secondary' }} />
+                          <Typography variant="caption" color="text.secondary" noWrap>
+                            {ticketContextLabel(t)}
+                          </Typography>
+                        </Stack>
+                      </Stack>
+                      {t.description && (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ mt: 0.5, fontSize: 13, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                        >
+                          {t.description}
+                        </Typography>
+                      )}
+                      <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.25, mt: 0.5 }}>
+                        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                          <PersonOutlineRoundedIcon sx={{ fontSize: 15, color: isUnassigned(t.assignee) ? 'warning.main' : 'text.secondary' }} />
+                          <Typography
+                            variant="caption"
+                            sx={{ fontWeight: 600, color: isUnassigned(t.assignee) ? 'warning.main' : 'text.primary' }}
+                          >
+                            {isUnassigned(t.assignee) ? UNASSIGNED : t.assignee}
+                          </Typography>
+                        </Stack>
+                        <Tooltip title={formatDateTime(lastStateChangeAt(t))}>
+                          <Typography variant="caption" color="text.secondary">
+                            State changed {formatRelative(lastStateChangeAt(t))}
+                          </Typography>
+                        </Tooltip>
+                        <Typography
+                          variant="caption"
+                          color="text.disabled"
+                          sx={{ fontFamily: '"SF Mono", ui-monospace, Menlo, monospace', fontSize: 11 }}
+                        >
+                          {t.id}
                         </Typography>
                       </Stack>
-                      <Typography variant="subtitle2" noWrap>
-                        {t.title}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {t.assignee} · {formatRelative(t.createdAt)}
-                      </Typography>
                     </Box>
                   </Stack>
                   <Stack direction="row" spacing={0.25} sx={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>

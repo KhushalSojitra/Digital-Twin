@@ -201,6 +201,7 @@ function NewTicketForm({ draft, creator, onSubmit, onCancel }: Props & { draft: 
           <FormControl size="small">
             <InputLabel id="new-ticket-assignee">Assignee</InputLabel>
             <Select labelId="new-ticket-assignee" label="Assignee" value={assignee} onChange={(e) => setAssignee(e.target.value as string)}>
+              <MenuItem value="Unassigned">Unassigned</MenuItem>
               {ASSIGNEES.map((a) => (
                 <MenuItem key={a} value={a}>
                   {a}

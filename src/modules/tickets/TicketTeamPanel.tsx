@@ -7,6 +7,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   IconButton,
   Menu,
   MenuItem,
@@ -18,7 +19,7 @@ import {
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded'
 import PersonAddAlt1RoundedIcon from '@mui/icons-material/PersonAddAlt1Rounded'
-import { ASSIGNEES, type Ticket } from '../../data/tickets'
+import { ASSIGNEES, UNASSIGNED, isUnassigned, type Ticket } from '../../data/tickets'
 import { initials } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
 
@@ -50,6 +51,7 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
   const [pending, setPending] = useState<{ action: 'add' | 'remove'; name: string } | null>(null)
   const [note, setNote] = useState<string | null>(null)
 
+  const unassigned = isUnassigned(ticket.assignee)
   const followers = ticket.followers ?? []
   const candidates = ASSIGNEES.filter((p) => !followers.includes(p))
   const menuZ = (t: { zIndex: { modal: number } }) => t.zIndex.modal + 10
@@ -86,14 +88,14 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
             variant="rounded"
             sx={{ width: 72, height: 72, fontSize: 24, fontWeight: 700, borderRadius: '14px', bgcolor: 'primary.main' }}
           >
-            {initials(ticket.assignee)}
+            {unassigned ? <PersonOutlineRoundedIcon sx={{ fontSize: 34 }} /> : initials(ticket.assignee)}
           </Avatar>
           <Box sx={{ minWidth: 0 }}>
             <Typography sx={{ fontSize: 19, fontWeight: 700, lineHeight: 1.2 }} noWrap>
-              {ticket.assignee}
+              {unassigned ? UNASSIGNED : ticket.assignee}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {ticket.assignee === me ? 'Assigned to you' : 'Assignee'}
+              {unassigned ? 'No one is assigned' : ticket.assignee === me ? 'Assigned to you' : 'Assignee'}
             </Typography>
           </Box>
         </Stack>
@@ -103,6 +105,17 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
           onClose={() => setAssignAnchor(null)}
           sx={{ zIndex: menuZ }}
         >
+          <MenuItem
+            dense
+            selected={unassigned}
+            onClick={() => {
+              setAssignAnchor(null)
+              if (!unassigned) assign(ticket.id, UNASSIGNED, me)
+            }}
+          >
+            Unassigned
+          </MenuItem>
+          <Divider component="li" />
           {ASSIGNEES.map((p) => (
             <MenuItem
               key={p}

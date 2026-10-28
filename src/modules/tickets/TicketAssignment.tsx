@@ -21,7 +21,7 @@ import {
   Typography,
 } from '@mui/material'
 import PersonAddAlt1RoundedIcon from '@mui/icons-material/PersonAddAlt1Rounded'
-import { ASSIGNEES, type Ticket } from '../../data/tickets'
+import { ASSIGNEES, UNASSIGNED, type Ticket } from '../../data/tickets'
 import { initials } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
 
@@ -65,6 +65,9 @@ export default function TicketAssignment({ ticket, me }: Props) {
             sx={{ '& .MuiSelect-select': { py: 0.85, fontSize: 13.5 } }}
             MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}
           >
+            <MenuItem value={UNASSIGNED} sx={{ fontSize: 13.5 }}>
+              Unassigned
+            </MenuItem>
             {ASSIGNEES.map((p) => (
               <MenuItem key={p} value={p} sx={{ fontSize: 13.5 }}>
                 {p}

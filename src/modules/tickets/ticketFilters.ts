@@ -1,4 +1,4 @@
-import type { Ticket, TicketPriority, TicketStatus } from '../../data/tickets'
+import { isUnassigned, type Ticket, type TicketPriority, type TicketStatus } from '../../data/tickets'
 
 export type TicketTab = TicketStatus | 'following' | 'all'
 
@@ -62,6 +62,31 @@ export function applyTicketQuery(tickets: Ticket[], { tab, search, filters: f, m
       return (from === null || created >= from) && (to === null || created <= to)
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority])
+}
+
+export type TicketScope = 'all' | 'assigned_me' | 'reported_me' | 'unassigned' | 'unassigned_reported_me'
+
+export const SCOPES: { id: TicketScope; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'assigned_me', label: 'Assigned to Me' },
+  { id: 'reported_me', label: 'Reported by Me' },
+  { id: 'unassigned', label: 'Unassigned' },
+  { id: 'unassigned_reported_me', label: 'Unassigned & Reported by Me' },
+]
+
+export function matchesScope(t: Ticket, scope: TicketScope, me: string) {
+  switch (scope) {
+    case 'assigned_me':
+      return t.assignee === me
+    case 'reported_me':
+      return t.creator === me
+    case 'unassigned':
+      return isUnassigned(t.assignee)
+    case 'unassigned_reported_me':
+      return isUnassigned(t.assignee) && t.creator === me
+    default:
+      return true
+  }
 }
 
 export type TicketPinSize = 'small' | 'medium' | 'large'

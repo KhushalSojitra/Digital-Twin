@@ -515,7 +515,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // UI STATE MUTATION PIPELINES WITH ACTIVE PARAMETER REFACTORING FOR COMPILER SANITY
-  const assign = useCallback((id: string, assignee: string, by: string) => patch(id, (ticket) => log({ ...ticket, assignee }, by, `Assigned to ${assignee}`)), [patch])
+  const assign = useCallback((id: string, assignee: string, by: string) => patch(id, (ticket) => log({ ...ticket, assignee }, by, assignee === 'Unassigned' ? 'Ticket unassigned' : `Assigned to ${assignee}`)), [patch])
   const toggleFollow = useCallback((id: string, person: string) => patch(id, (ticket) => {
     const followers = ticket.followers.includes(person)
       ? ticket.followers.filter((follower) => follower !== person)

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { Box, Tooltip } from '@mui/material'
 import TicketHoverCopy from '../tickets/TicketHoverCopy'
+import TicketUpdateDot from '../tickets/TicketUpdateDot'
 import LocationOnRoundedIcon from '@mui/icons-material/LocationOnRounded'
 import { PRIORITY_LABEL, STATUS_COLOR, STATUS_LABEL, type Ticket } from '../../data/tickets'
 import TicketGlyph from '../../components/TicketGlyph'
@@ -129,6 +130,11 @@ export default function TicketMarkerLayer({ tickets, selectedId, targetId = null
               }}
             >
               <TicketGlyph color={color} size={size} selected={selected} critical={t.priority === 'critical'} />
+              <TicketUpdateDot
+                ticket={t}
+                size={compact ? 8 : 10}
+                sx={{ position: 'absolute', top: compact ? 0 : 1, right: compact ? 2 : 4 }}
+              />
             </Box>
           </Tooltip>
         )

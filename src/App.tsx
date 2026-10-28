@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './auth/AuthContext'
 import { ThemeModeProvider } from './theme/ThemeModeContext'
 import { CameraSelectionProvider } from './state/CameraSelectionContext'
 import { TicketsProvider } from './state/TicketsContext'
+import { TicketReadsProvider } from './state/TicketReadsContext'
 import { TicketQueryProvider } from './state/TicketQueryContext'
 import { IntegrationsProvider } from './state/IntegrationsContext'
 import AppShell from './layout/AppShell'
@@ -24,6 +25,7 @@ export default function App() {
       <AuthProvider>
         <CameraSelectionProvider>
           <TicketsProvider>
+            <TicketReadsProvider>
             <IntegrationsProvider>
               <TicketQueryProvider>
                 <BrowserRouter>
@@ -43,6 +45,7 @@ export default function App() {
                 </BrowserRouter>
               </TicketQueryProvider>
             </IntegrationsProvider>
+            </TicketReadsProvider>
           </TicketsProvider>
         </CameraSelectionProvider>
       </AuthProvider>

@@ -13,6 +13,7 @@ import { CCTV_STATUS_COLOR } from './CctvLayer'
 import { zoomFactor, type Direction } from './panoramaMath'
 import { wrapDeg } from '../../utils/format'
 import type { CreateDraft } from '../tickets/TicketEditorDialog'
+import TicketUpdateDot from '../tickets/TicketUpdateDot'
 
 interface Props {
   device: CameraDevice
@@ -279,6 +280,7 @@ export default function CctvPopup({ device, site, anchor, tickets, canEdit, live
                 secondary={STATUS_LABEL[ticket.status]}
                 slotProps={{ primary: { noWrap: true, sx: { fontSize: 13, fontWeight: 600 } }, secondary: { sx: { fontSize: 11.5 } } }}
               />
+              <TicketUpdateDot ticket={ticket} size={9} sx={{ ml: 1 }} />
             </ListItemButton>
           ))}
         </List>

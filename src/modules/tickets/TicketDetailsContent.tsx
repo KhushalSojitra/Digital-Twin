@@ -47,6 +47,7 @@ import TicketAssignment from './TicketAssignment'
 import TicketActivity from './TicketActivity'
 import TicketComments from './TicketComments'
 import ImprovementVerification from './ImprovementVerification'
+import { useMarkTicketSeen } from '../../state/TicketReadsContext'
 import TicketShare from './TicketShare'
 
 interface Props {
@@ -86,6 +87,7 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
   const { currentUser } = useAuth()
   const capture = useCapture()
   const me = currentUser?.displayName ?? 'Operator'
+  useMarkTicketSeen(ticket)
 
   const [panel, setPanel] = useState<Panel>('details')
   const verificationRef = useRef<HTMLDivElement>(null)

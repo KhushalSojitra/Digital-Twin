@@ -29,6 +29,7 @@ import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import TicketGlyph from '../../components/TicketGlyph'
 import TicketFilters from './TicketFilters'
+import TicketUpdateDot from './TicketUpdateDot'
 import { TicketDeleteDialog } from './TicketMarkerMenu'
 import { SCOPES, applyTicketQuery, matchesScope, type TicketFilterState, type TicketScope } from './ticketFilters'
 import {
@@ -193,9 +194,12 @@ export default function TicketManageDialog({
                   <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0, flex: 1 }}>
                     <TicketGlyph color={STATUS_COLOR[t.status]} size={20} critical={t.priority === 'critical'} />
                     <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Typography sx={{ fontSize: 15, fontWeight: 700, lineHeight: 1.3 }} noWrap title={t.title}>
-                        {t.title}
-                      </Typography>
+                      <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
+                        <Typography sx={{ fontSize: 15, fontWeight: 700, lineHeight: 1.3, minWidth: 0 }} noWrap title={t.title}>
+                          {t.title}
+                        </Typography>
+                        <TicketUpdateDot ticket={t} />
+                      </Stack>
                       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5, mt: 0.5 }}>
                         <Chip
                           size="small"

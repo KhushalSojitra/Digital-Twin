@@ -1,6 +1,7 @@
 import { Box, Tooltip, Typography } from '@mui/material'
 import { STATUS_COLOR, STATUS_LABEL, type Ticket, type TicketStatus } from '../../data/tickets'
 import { TICKET_SIZE_PX } from '../tickets/ticketFilters'
+import TicketUpdateDot from '../tickets/TicketUpdateDot'
 import { useTicketQuery } from '../../state/TicketQueryContext'
 
 const ORDER: TicketStatus[] = ['open', 'in_progress', 'done', 'accepted', 'failed']
@@ -111,6 +112,7 @@ export default function TicketCluster({ siteName, tickets, onClick }: Props) {
           {tickets.length}
         </text>
       </Box>
+      <TicketUpdateDot tickets={tickets} sx={{ position: 'absolute', top: -2, right: -2, zIndex: 3 }} />
     </Box>
   )
 

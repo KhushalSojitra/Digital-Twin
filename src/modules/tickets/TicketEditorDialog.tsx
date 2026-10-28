@@ -16,6 +16,7 @@ import type { CameraDevice } from '../../data/cameras'
 import { useAuth } from '../../auth/AuthContext'
 import { useIntegrations } from '../../state/IntegrationsContext'
 import { useCapture } from './captureContext'
+import { useMarkTicketSeen } from '../../state/TicketReadsContext'
 import TicketDetailView from './TicketDetailView'
 import TicketCreateLayout, { type SnapshotControl, type TicketCreateContext } from './TicketCreateLayout'
 
@@ -52,6 +53,7 @@ export default function TicketEditorDialog({ open, mode, ticket, draft, initialT
   const canEdit = currentUser?.role !== 'Viewer' && mode !== 'view'
   const canChangeState = Boolean(ticket && (ticket.assignee === me || currentUser?.role !== 'Viewer'))
   const creating = mode === 'create' && Boolean(draft)
+  useMarkTicketSeen(ticket, open && !creating)
 
   return (
     <Dialog

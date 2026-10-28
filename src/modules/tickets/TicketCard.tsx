@@ -3,6 +3,7 @@ import MyLocationRoundedIcon from '@mui/icons-material/MyLocationRounded'
 import { PRIORITY_COLOR, PRIORITY_LABEL, STATUS_COLOR, STATUS_LABEL, STATUS_NEEDS_DARK_TEXT, type Ticket } from '../../data/tickets'
 import { formatRelative, initials } from '../../utils/format'
 import TicketGlyph from '../../components/TicketGlyph'
+import TicketUpdateDot from './TicketUpdateDot'
 
 interface Props {
   /** Signed-in operator, used to flag tickets they watch. */
@@ -52,6 +53,7 @@ export default function TicketCard({ ticket, selected = false, onOpen, onGoToLoc
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
         <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
           <TicketGlyph color={STATUS_COLOR[ticket.status]} size={18} critical={ticket.priority === 'critical'} />
+          <TicketUpdateDot ticket={ticket} size={9} sx={{ order: 2 }} />
           <Typography sx={{ fontFamily: '"SF Mono", ui-monospace, Menlo, monospace', fontSize: 12.5, fontWeight: 700 }}>
             {ticket.id}
           </Typography>

@@ -1,6 +1,7 @@
 import { Box, Tooltip } from '@mui/material'
 import { STATUS_COLOR, STATUS_LABEL, type Ticket } from '../../data/tickets'
 import TicketHoverCopy from '../tickets/TicketHoverCopy'
+import TicketUpdateDot from '../tickets/TicketUpdateDot'
 import TicketGlyph from '../../components/TicketGlyph'
 import { TICKET_SIZE_PX } from '../tickets/ticketFilters'
 import { useTicketQuery } from '../../state/TicketQueryContext'
@@ -65,6 +66,7 @@ export default function TicketPin({ ticket, selected, onClick }: Props) {
         </Box>
       )}
       <TicketGlyph color={color} size={px} selected={selected} critical={ticket.priority === 'critical'} />
+      <TicketUpdateDot ticket={ticket} sx={{ position: 'absolute', top: -2, right: -2, zIndex: 3 }} />
     </Box>
   )
 

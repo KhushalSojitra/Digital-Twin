@@ -1,5 +1,6 @@
-import { Box, Tooltip, Typography } from '@mui/material'
-import { PRIORITY_LABEL, STATUS_COLOR, STATUS_LABEL, ticketContextLabel, type Ticket } from '../../data/tickets'
+import { Box, Tooltip } from '@mui/material'
+import { STATUS_COLOR, STATUS_LABEL, type Ticket } from '../../data/tickets'
+import TicketHoverCopy from '../tickets/TicketHoverCopy'
 import TicketGlyph from '../../components/TicketGlyph'
 import { TICKET_SIZE_PX } from '../tickets/ticketFilters'
 import { useTicketQuery } from '../../state/TicketQueryContext'
@@ -11,25 +12,6 @@ interface Props {
   onClick: () => void
 }
 
-function PreviewCopy({ ticket, color }: { ticket: Ticket; color: string }) {
-  return (
-    <>
-      <Typography sx={{ fontSize: 12.5, fontWeight: 700, fontFamily: '"SF Mono", ui-monospace, Menlo, monospace' }}>
-        {ticket.id}
-      </Typography>
-      <Typography sx={{ fontSize: 11.5 }}>
-        <Box component="span" sx={{ color, fontWeight: 700 }}>
-          {STATUS_LABEL[ticket.status]}
-        </Box>
-        {' · '}
-        {PRIORITY_LABEL[ticket.priority]} priority
-      </Typography>
-      <Typography sx={{ fontSize: 11, opacity: 0.85, mt: 0.25 }}>{ticket.title}</Typography>
-      <Typography sx={{ fontSize: 10.5, opacity: 0.7 }}>{ticketContextLabel(ticket)}</Typography>
-    </>
-  )
-}
-
 export default function TicketPin({ ticket, selected, onClick }: Props) {
   const { ticketSize, earthTicketPreview } = useTicketQuery()
   const { onContextMenu, menu } = useTicketMarkerMenu()
@@ -38,7 +20,7 @@ export default function TicketPin({ ticket, selected, onClick }: Props) {
   const pin = (
     <Box
       role="button"
-      aria-label={`Ticket ${ticket.id}: ${STATUS_LABEL[ticket.status]}`}
+      aria-label={`${ticket.title}: ${STATUS_LABEL[ticket.status]}`}
       data-ticket-preview={earthTicketPreview ? 'open' : 'hover'}
       onClick={(e) => {
         e.stopPropagation()
@@ -79,7 +61,7 @@ export default function TicketPin({ ticket, selected, onClick }: Props) {
             zIndex: 2,
           }}
         >
-          <PreviewCopy ticket={ticket} color={color} />
+          <TicketHoverCopy ticket={ticket} />
         </Box>
       )}
       <TicketGlyph color={color} size={px} selected={selected} critical={ticket.priority === 'critical'} />
@@ -103,7 +85,7 @@ export default function TicketPin({ ticket, selected, onClick }: Props) {
         enterDelay={120}
         title={
           <Box sx={{ p: 0.25 }}>
-            <PreviewCopy ticket={ticket} color={color} />
+            <TicketHoverCopy ticket={ticket} />
           </Box>
         }
       >

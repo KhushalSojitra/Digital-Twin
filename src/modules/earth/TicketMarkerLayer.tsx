@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { Box, Tooltip, Typography } from '@mui/material'
+import { Box, Tooltip } from '@mui/material'
+import TicketHoverCopy from '../tickets/TicketHoverCopy'
 import LocationOnRoundedIcon from '@mui/icons-material/LocationOnRounded'
 import { PRIORITY_LABEL, STATUS_COLOR, STATUS_LABEL, type Ticket } from '../../data/tickets'
 import TicketGlyph from '../../components/TicketGlyph'
@@ -101,24 +102,14 @@ export default function TicketMarkerLayer({ tickets, selectedId, targetId = null
             enterDelay={100}
             title={
               <Box sx={{ p: 0.25 }}>
-                <Typography sx={{ fontSize: 12.5, fontWeight: 700, fontFamily: '"SF Mono", ui-monospace, Menlo, monospace' }}>
-                  {t.id}
-                </Typography>
-                <Typography sx={{ fontSize: 11.5 }}>
-                  <Box component="span" sx={{ color, fontWeight: 700 }}>
-                    {STATUS_LABEL[t.status]}
-                  </Box>
-                  {' · '}
-                  {PRIORITY_LABEL[t.priority]} priority
-                </Typography>
-                <Typography sx={{ fontSize: 11, opacity: 0.8, mt: 0.25 }}>{t.title}</Typography>
+                <TicketHoverCopy ticket={t} />
               </Box>
             }
           >
             <Box
               ref={register(t.id)}
               role="button"
-              aria-label={`Ticket ${t.id}: ${STATUS_LABEL[t.status]}, ${PRIORITY_LABEL[t.priority]} priority`}
+              aria-label={`${t.title}: ${STATUS_LABEL[t.status]}, ${PRIORITY_LABEL[t.priority]} priority`}
               onClick={(e) => {
                 e.stopPropagation()
                 onSelect(t)

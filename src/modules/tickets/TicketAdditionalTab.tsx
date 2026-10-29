@@ -460,12 +460,12 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps, coordin
 
   return (
     <Stack spacing={1.5}>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: 1.5, alignItems: 'start' }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 5fr) minmax(0, 7fr)' }, gap: 1.5, alignItems: 'start' }}>
       <Box component="section" aria-labelledby={`${uid}-deadline-heading`} sx={cardSx}>
         <Box id={`${uid}-deadline-heading`}>
           <SectionHeading icon={<ScheduleRoundedIcon />}>Deadline &amp; Action</SectionHeading>
         </Box>
-        <Stack spacing={1.75} sx={{ mt: 1.5 }}>
+        <Stack spacing={2.75} sx={{ mt: 2 }}>
           <DeadlineField state={state} labelId={`${uid}-due-label`} />
           <Box>
             <FormControl fullWidth sx={fieldSx} error={Boolean(state.breachError)}>

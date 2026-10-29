@@ -79,9 +79,6 @@ interface Props {
   snapshotPreview?: string | null
   onMarkupChange?: (image: string | null) => void
   onSnapshotClick?: () => void
-  coordinates: { label: string; value: string; hint?: string }
-  reporter: string
-  system: string
   activity: TicketCreateActivity[]
   error?: string
   isSubmitting: boolean
@@ -340,9 +337,6 @@ export default function TicketCreateLayout({
   snapshotPreview,
   onMarkupChange,
   onSnapshotClick,
-  coordinates,
-  reporter,
-  system,
   activity,
   error,
   isSubmitting,
@@ -364,7 +358,6 @@ export default function TicketCreateLayout({
   const [stamp] = useState(() => snapshotStamp(new Date()))
   const titleInvalid = touched && !title.trim()
   const menuProps = { sx: { zIndex: (t: Theme) => t.zIndex.modal + 10 } }
-  const compact = tab === 'additional'
   const snapshotOn = snapshot.mode === 'toggle' ? snapshot.checked : snapshot.mode === 'locked-on'
   const [croppedImage, setCroppedImage] = useState<string | null>(null)
   const [cropVersion, setCropVersion] = useState(0)
@@ -485,7 +478,7 @@ export default function TicketCreateLayout({
         <Tab value="activity" id={tabId('activity')} aria-controls={`${uid}-panel`} icon={<HistoryRoundedIcon />} iconPosition="start" label="Activity" />
       </Tabs>
 
-      <DialogContent id={`${uid}-panel`} role="tabpanel" aria-labelledby={tabId(tab)} sx={tab === 'additional' ? { px: { xs: 2, sm: 3.5 }, py: 2 } : { p: { xs: 2, sm: 3.5 } }}>
+      <DialogContent id={`${uid}-panel`} role="tabpanel" aria-labelledby={tabId(tab)} sx={{ p: { xs: 2, sm: 3.5 } }}>
         {tab === 'general' && (
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: { xs: 3, md: 4 }, alignItems: 'stretch', pt: 0.5 }}>
             <Stack spacing={3}>
@@ -624,14 +617,7 @@ export default function TicketCreateLayout({
         )}
 
         {tab === 'additional' && (
-          <TicketAdditionalTab
-            state={additional}
-            fieldSx={fieldSx}
-            menuProps={menuProps}
-            coordinates={coordinates}
-            reporter={reporter}
-            system={system}
-          />
+          <TicketAdditionalTab state={additional} fieldSx={fieldSx} menuProps={menuProps} />
         )}
 
         {tab === 'activity' && (
@@ -647,11 +633,11 @@ export default function TicketCreateLayout({
         )}
       </DialogContent>
 
-      <DialogActions sx={{ px: { xs: 2, sm: 3.5 }, py: compact ? 1.25 : 2.25, gap: 1.5, borderTop: 1, borderColor: 'divider' }}>
-        <Button type="button" variant="outlined" color="inherit" onClick={onClose} disabled={isSubmitting} sx={{ borderRadius: 999, minWidth: 120, py: compact ? 0.6 : 1.1, fontWeight: 700, fontSize: 16, borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.34) }}>
+      <DialogActions sx={{ px: { xs: 2, sm: 3.5 }, py: 2.25, gap: 1.5, borderTop: 1, borderColor: 'divider' }}>
+        <Button type="button" variant="outlined" color="inherit" onClick={onClose} disabled={isSubmitting} sx={{ borderRadius: 999, minWidth: 120, py: 1.1, fontWeight: 700, fontSize: 16, borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.34) }}>
           Cancel
         </Button>
-        <Button type="submit" variant="contained" disabled={isSubmitting} sx={{ borderRadius: 999, minWidth: 170, py: compact ? 0.6 : 1.1, fontWeight: 700, fontSize: 16 }}>
+        <Button type="submit" variant="contained" disabled={isSubmitting} sx={{ borderRadius: 999, minWidth: 170, py: 1.1, fontWeight: 700, fontSize: 16 }}>
           {isSubmitting ? 'Creating…' : 'Create Ticket'}
         </Button>
       </DialogActions>

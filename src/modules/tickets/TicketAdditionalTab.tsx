@@ -445,12 +445,9 @@ interface Props {
   state: TicketAdditionalState
   fieldSx: SxProps<Theme>
   menuProps: { sx: SxProps<Theme> }
-  coordinates: { label: string; value: string }
-  reporter: string
-  system: string
 }
 
-export default function TicketAdditionalTab({ state, fieldSx, menuProps, coordinates, reporter, system }: Props) {
+export default function TicketAdditionalTab({ state, fieldSx, menuProps }: Props) {
   const uid = useId()
   const { tickets } = useTickets()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
@@ -588,34 +585,6 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps, coordin
       >
         <LinkPanelBody candidates={candidates} isSelf={state.selfLinked} onLink={state.addLinks} onClose={() => setAnchor(null)} />
       </Popover>
-
-      <Box
-        component="dl"
-        sx={{
-          m: 0,
-          pt: 1,
-          display: 'grid',
-          gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(3, minmax(0, 1fr))' },
-          gap: 1,
-          borderTop: 1,
-          borderColor: 'divider',
-        }}
-      >
-        {[
-          [coordinates.label, coordinates.value],
-          ['Reporter', reporter],
-          ['Inspection Management System', system],
-        ].map(([label, value]) => (
-          <Box key={label} sx={{ minWidth: 0 }}>
-            <Typography component="dt" variant="caption" color="text.secondary">
-              {label}
-            </Typography>
-            <Typography component="dd" title={value} noWrap sx={{ m: 0, fontSize: 14, fontWeight: 600 }}>
-              {value}
-            </Typography>
-          </Box>
-        ))}
-      </Box>
     </Stack>
   )
 }

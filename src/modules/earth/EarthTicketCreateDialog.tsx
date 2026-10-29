@@ -32,7 +32,7 @@ export default function EarthTicketCreateDialog({ location, creator, onClose, on
       fullScreen={isXs}
       maxWidth="md"
       sx={{ zIndex: (t) => t.zIndex.modal + 4 }}
-      slotProps={{ paper: { sx: dialogPaperSx } }}
+      slotProps={{ paper: { sx: { ...dialogPaperSx, height: { xs: '100%', sm: 'min(860px, 92dvh)' } } } }}
     >
       {location && <CreateForm key={`${location.lat}:${location.lng}`} location={location} creator={creator} onClose={onClose} onCreated={onCreated} onPreviewClick={onPreviewClick} />}
     </Dialog>
@@ -97,9 +97,6 @@ function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: O
       snapshot={{ mode: 'unavailable' }}
       snapshotPreview={location.preview}
       onSnapshotClick={location.view ? () => onPreviewClick?.(location) : undefined}
-      coordinates={{ label: 'Coordinates', value: coordinates, hint: 'Latitude, Longitude' }}
-      reporter={creator}
-      system={TICKETING_SYSTEM}
       activity={[
         { label: 'Ticket Created', detail: `Reported by ${creator}`, meta: `Opened ${formatDateTime(openedAt)} · Ticket ID assigned on submit` },
         { label: 'Assigned', detail: assignee, meta: 'Assigned on creation' },

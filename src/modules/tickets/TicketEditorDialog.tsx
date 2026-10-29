@@ -63,7 +63,7 @@ export default function TicketEditorDialog({ open, mode, ticket, draft, initialT
       fullScreen={isXs}
       maxWidth="md"
       sx={{ zIndex: (t) => t.zIndex.modal + 4 }}
-      slotProps={{ paper: { sx: dialogPaperSx } }}
+      slotProps={{ paper: { sx: creating ? { ...dialogPaperSx, height: { xs: '100%', sm: 'min(860px, 92dvh)' } } : dialogPaperSx } }}
     >
       <DialogGuard key={ticket?.id ?? (creating ? 'create' : 'empty')} onClose={onClose}>
         {creating && draft && onCreate ? (
@@ -226,13 +226,6 @@ function CreateForm({
       touched={touched}
       snapshot={snapshot}
       snapshotPreview={snapshotPreview}
-      coordinates={{
-        label: 'Pin Orientation',
-        value: `P ${draft.yaw.toFixed(1)}° · T ${draft.pitch.toFixed(1)}° · Z ${draft.zoom.toFixed(1)}×`,
-        hint: 'Pan · Tilt · Zoom of the pinned location',
-      }}
-      reporter={creator}
-      system={TICKETING_SYSTEM}
       activity={[
         { label: 'Ticket Created', detail: `Reported by ${creator}`, meta: 'Recorded when you create the ticket' },
         { label: 'Assigned', detail: `${assignee} on ${camera.name}`, meta: 'Assigned on creation' },

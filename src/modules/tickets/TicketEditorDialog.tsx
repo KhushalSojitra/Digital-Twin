@@ -63,7 +63,7 @@ export default function TicketEditorDialog({ open, mode, ticket, draft, initialT
       fullScreen={isXs}
       maxWidth="md"
       sx={{ zIndex: (t) => t.zIndex.modal + 4 }}
-      slotProps={{ paper: { sx: creating ? { ...dialogPaperSx, height: { xs: '100%', sm: 'min(860px, 92dvh)' } } : dialogPaperSx } }}
+      slotProps={{ paper: { sx: creating ? { ...dialogPaperSx, height: { xs: '100%', sm: 'min(698px, 92dvh)' } } : dialogPaperSx } }}
     >
       <DialogGuard key={ticket?.id ?? (creating ? 'create' : 'empty')} onClose={onClose}>
         {creating && draft && onCreate ? (

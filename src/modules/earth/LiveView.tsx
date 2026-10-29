@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Box, Button, Chip, IconButton, Menu, MenuItem, Paper, Stack, Tooltip, useMediaQuery, useTheme, type Theme } from '@mui/material'
-import ArrowBackIosNewRoundedIcon from '@mui/icons-material/ArrowBackIosNewRounded'
+import { Badge, Box, IconButton, Menu, MenuItem, Paper, Stack, Tooltip, useMediaQuery, useTheme, type Theme } from '@mui/material'
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
@@ -352,42 +351,6 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
       >
         <Box sx={{ position: 'relative', flex: 1, minWidth: 0, height: '100%' }}>
           {primary === '360' ? render360(false) : renderPtz(false)}
-
-          <Stack
-            direction="row"
-            spacing={0.75}
-            sx={{ position: 'absolute', top: 10, left: 10, alignItems: 'center', maxWidth: { xs: 'calc(100% - 148px)', sm: 'calc(100% - 168px)' }, zIndex: 3 }}
-          >
-            <Button
-              size="small"
-              startIcon={<ArrowBackIosNewRoundedIcon sx={{ fontSize: '13px !important' }} />}
-              onClick={onClose}
-              sx={(t) => ({
-                ...glass(t),
-                height: 36,
-                px: 1.25,
-                borderRadius: '999px',
-                fontWeight: 700,
-                flexShrink: 0,
-                '& .MuiButton-startIcon': { mr: 0.5 },
-              })}
-            >
-              Earth
-            </Button>
-            <Chip
-              size="small"
-              label={cameraName}
-              sx={(t) => ({
-                ...glass(t),
-                height: 36,
-                fontSize: { xs: 13.5, sm: 15 },
-                fontWeight: 800,
-                borderRadius: '999px',
-                maxWidth: '100%',
-                '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' },
-              })}
-            />
-          </Stack>
 
           <Stack direction="row" spacing={0.75} sx={{ position: 'absolute', top: 10, right: 10, alignItems: 'center', zIndex: 3 }}>
             <Tooltip title={!liveTicketView ? 'Enable ticket view to show history' : completedCount === 0 ? 'No historical events for this camera' : 'Improvements'}>

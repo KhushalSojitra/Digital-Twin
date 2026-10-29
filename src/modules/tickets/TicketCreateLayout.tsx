@@ -29,7 +29,7 @@ import StopRoundedIcon from '@mui/icons-material/StopRounded'
 import FullscreenRoundedIcon from '@mui/icons-material/FullscreenRounded'
 import ConfirmationNumberRoundedIcon from '@mui/icons-material/ConfirmationNumberRounded'
 import DescriptionRoundedIcon from '@mui/icons-material/DescriptionRounded'
-import PlaceRoundedIcon from '@mui/icons-material/PlaceRounded'
+import TuneRoundedIcon from '@mui/icons-material/TuneRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded'
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded'
@@ -41,6 +41,7 @@ import AttachmentPopover from './AttachmentPopover'
 import DocumentPreview from './DocumentPreview'
 import SnapshotMarkup, { type MarkupShape } from './SnapshotMarkup'
 import SnapshotCrop from './SnapshotCrop'
+import TicketAdditionalTab, { useTicketAdditional } from './TicketAdditionalTab'
 
 type TicketTab = 'general' | 'additional' | 'activity'
 type VoiceState = 'idle' | 'listening' | 'transcribing'
@@ -350,6 +351,7 @@ export default function TicketCreateLayout({
 }: Props) {
   const uid = useId()
   const [tab, setTab] = useState<TicketTab>('general')
+  const additional = useTicketAdditional(title)
   const [fullscreen, setFullscreen] = useState(false)
   const [voice, setVoice] = useState<VoiceState>('idle')
   const timers = useRef<number[]>([])
@@ -398,7 +400,16 @@ export default function TicketCreateLayout({
   }, [])
 
   const handleSubmit = (e: FormEvent) => {
-    if (!title.trim()) setTab('general')
+    if (!title.trim()) {
+      setTab('general')
+      onSubmit(e)
+      return
+    }
+    if (!additional.validate()) {
+      e.preventDefault()
+      setTab('additional')
+      return
+    }
     onSubmit(e)
   }
 
@@ -469,7 +480,7 @@ export default function TicketCreateLayout({
         }}
       >
         <Tab value="general" id={tabId('general')} aria-controls={`${uid}-panel`} icon={<DescriptionRoundedIcon />} iconPosition="start" label="General" />
-        <Tab value="additional" id={tabId('additional')} aria-controls={`${uid}-panel`} icon={<PlaceRoundedIcon />} iconPosition="start" label="Additional" />
+        <Tab value="additional" id={tabId('additional')} aria-controls={`${uid}-panel`} icon={<TuneRoundedIcon />} iconPosition="start" label="Additional" />
         <Tab value="activity" id={tabId('activity')} aria-controls={`${uid}-panel`} icon={<HistoryRoundedIcon />} iconPosition="start" label="Activity" />
       </Tabs>
 
@@ -612,29 +623,14 @@ export default function TicketCreateLayout({
         )}
 
         {tab === 'additional' && (
-          <Stack spacing={2.5} sx={{ maxWidth: 560, pt: 0.5 }}>
-            <TextField
-              variant="outlined"
-              id={`${uid}-coordinates`}
-              label={coordinates.label}
-             
-              fullWidth
-              value={coordinates.value}
-              slotProps={{ htmlInput: { readOnly: true } }}
-              sx={fieldSx}
-            />
-            <TextField variant="outlined" id={`${uid}-reporter`} label="Reporter" fullWidth value={reporter} slotProps={{ htmlInput: { readOnly: true } }} sx={fieldSx} />
-            <TextField
-              variant="outlined"
-              id={`${uid}-system`}
-              label="Inspection Management System"
-             
-              fullWidth
-              value={system}
-              slotProps={{ htmlInput: { readOnly: true } }}
-              sx={fieldSx}
-            />
-          </Stack>
+          <TicketAdditionalTab
+            state={additional}
+            fieldSx={fieldSx}
+            menuProps={menuProps}
+            coordinates={coordinates}
+            reporter={reporter}
+            system={system}
+          />
         )}
 
         {tab === 'activity' && (

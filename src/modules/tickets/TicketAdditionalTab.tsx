@@ -129,10 +129,18 @@ export type TicketAdditionalState = ReturnType<typeof useTicketAdditional>
 
 const borderColor = (t: Theme) => alpha(t.palette.text.primary, 0.34)
 
+const cardSx: SxProps<Theme> = {
+  minWidth: 0,
+  p: 1.5,
+  borderRadius: '14px',
+  border: 1,
+  borderColor: 'divider',
+}
+
 function SectionHeading({ icon, children, action }: { icon: ReactNode; children: ReactNode; action?: ReactNode }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minHeight: 36 }}>
-      <Box aria-hidden sx={{ display: 'grid', placeItems: 'center', color: 'primary.main', '& .MuiSvgIcon-root': { fontSize: 24 } }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 32 }}>
+      <Box aria-hidden sx={{ display: 'grid', placeItems: 'center', color: 'primary.main', '& .MuiSvgIcon-root': { fontSize: 22 } }}>
         {icon}
       </Box>
       <Typography component="h3" sx={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 800 }}>
@@ -159,7 +167,7 @@ const bareInputSx: SxProps<Theme> = {
   bgcolor: 'transparent',
   color: 'text.primary',
   font: 'inherit',
-  fontSize: 15,
+  fontSize: 14,
   fontWeight: 500,
   colorScheme: (t: Theme) => t.palette.mode,
   '&::-webkit-calendar-picker-indicator': { display: 'none' },
@@ -189,9 +197,9 @@ function DeadlineField({ state, labelId }: { state: TicketAdditionalState; label
         display: 'flex',
         alignItems: 'center',
         gap: 0.75,
-        height: 56,
-        px: 1.5,
-        borderRadius: '14px',
+        height: 44,
+        px: 1.25,
+        borderRadius: '12px',
         border: 1.5,
         borderColor,
         bgcolor: (t: Theme) => alpha(t.palette.text.primary, 0.02),
@@ -375,9 +383,11 @@ function DependencyRow({
           display: 'flex',
           flexDirection: { xs: 'column', sm: 'row' },
           alignItems: { xs: 'stretch', sm: 'center' },
-          gap: { xs: 1.25, sm: 1.5 },
-          p: 1.25,
-          borderRadius: '14px',
+          gap: { xs: 1, sm: 1.25 },
+          py: 0.75,
+          pl: 1.25,
+          pr: { xs: 1.25, sm: 0.5 },
+          borderRadius: '12px',
           border: 1,
           borderColor: self ? 'error.main' : 'divider',
           bgcolor: (t: Theme) => alpha(t.palette.text.primary, 0.03),
@@ -392,7 +402,7 @@ function DependencyRow({
             <CloseRoundedIcon sx={{ fontSize: 18 }} />
           </IconButton>
         </Box>
-        <FormControl size="small" sx={{ ...(fieldSx as object), width: { xs: '100%', sm: 212 }, flexShrink: 0 }}>
+        <FormControl size="small" sx={{ ...(fieldSx as object), width: { xs: '100%', sm: 190 }, flexShrink: 0, mt: { xs: 0.5, sm: 0 } }}>
           <InputLabel shrink id={`${uid}-label`} sx={{ fontSize: 13 }}>
             Relationship
           </InputLabel>
@@ -413,7 +423,7 @@ function DependencyRow({
                 </Typography>
               )
             }
-            sx={{ '& .MuiSelect-select': { fontSize: 14 }, '& .MuiInputBase-root, &.MuiInputBase-root': { fontSize: 14 } }}
+            sx={{ height: 38, '& .MuiSelect-select': { fontSize: 14, py: '8px' }, '& .MuiInputBase-root, &.MuiInputBase-root': { fontSize: 14 } }}
           >
             {RELATION_OPTIONS.map((o) => (
               <MenuItem key={o.value} value={o.value}>
@@ -422,7 +432,7 @@ function DependencyRow({
             ))}
           </Select>
         </FormControl>
-        <IconButton onClick={onRemove} aria-label={`Remove linked ticket ${link.title}`} sx={{ display: { xs: 'none', sm: 'inline-flex' }, color: 'text.secondary' }}>
+        <IconButton size="small" onClick={onRemove} aria-label={`Remove linked ticket ${link.title}`} sx={{ display: { xs: 'none', sm: 'inline-flex' }, color: 'text.secondary' }}>
           <CloseRoundedIcon sx={{ fontSize: 20 }} />
         </IconButton>
       </Box>
@@ -449,12 +459,13 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps, coordin
   const breachId = `${uid}-breach-error`
 
   return (
-    <Stack spacing={2.5} sx={{ maxWidth: 560, pt: 0.5 }}>
-      <Box component="section" aria-labelledby={`${uid}-deadline-heading`}>
+    <Stack spacing={1.5}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: 1.5, alignItems: 'start' }}>
+      <Box component="section" aria-labelledby={`${uid}-deadline-heading`} sx={cardSx}>
         <Box id={`${uid}-deadline-heading`}>
           <SectionHeading icon={<ScheduleRoundedIcon />}>Deadline &amp; Action</SectionHeading>
         </Box>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'minmax(0, 1.25fr) minmax(0, 1fr)' }, gap: 1.5, mt: 1.5, alignItems: 'start' }}>
+        <Stack spacing={1.75} sx={{ mt: 1.5 }}>
           <DeadlineField state={state} labelId={`${uid}-due-label`} />
           <Box>
             <FormControl fullWidth sx={fieldSx} error={Boolean(state.breachError)}>
@@ -490,7 +501,7 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps, coordin
                     </Box>
                   )
                 }}
-                sx={{ height: 56, '& .MuiSelect-select': { display: 'flex', alignItems: 'center' } }}
+                sx={{ height: 44, borderRadius: '12px', '& .MuiSelect-select': { display: 'flex', alignItems: 'center', py: 0 } }}
               >
                 {BREACH_OPTIONS.map((o) => (
                   <MenuItem key={o.value} value={o.value} sx={{ gap: 1.25, '& .MuiSvgIcon-root': { fontSize: 20, color: 'text.secondary' } }}>
@@ -501,11 +512,11 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps, coordin
               </Select>
             </FormControl>
           </Box>
-        </Box>
+        </Stack>
         {state.breachError && <FieldError id={breachId}>{state.breachError}</FieldError>}
       </Box>
 
-      <Box component="section" aria-labelledby={`${uid}-deps-heading`}>
+      <Box component="section" aria-labelledby={`${uid}-deps-heading`} sx={cardSx}>
         <Box id={`${uid}-deps-heading`}>
           <SectionHeading
             icon={<LinkRoundedIcon />}
@@ -516,7 +527,7 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps, coordin
                 startIcon={<AddRoundedIcon />}
                 onClick={(e) => setAnchor(e.currentTarget)}
                 aria-haspopup="dialog"
-                sx={{ borderRadius: 999, px: 1.75, fontWeight: 700, whiteSpace: 'nowrap' }}
+                sx={{ borderRadius: 999, px: 1.5, py: 0.25, fontWeight: 700, whiteSpace: 'nowrap' }}
               >
                 Link Ticket
               </Button>
@@ -531,13 +542,13 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps, coordin
             sx={{
               mt: 1.25,
               px: 2,
-              py: 2.25,
+              py: 1.5,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 0.5,
+              gap: 0.25,
               textAlign: 'center',
-              borderRadius: '14px',
+              borderRadius: '12px',
               border: '1.5px dashed',
               borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.28),
               color: 'text.secondary',
@@ -548,7 +559,7 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps, coordin
             <Typography variant="caption">Link related tickets to show dependencies.</Typography>
           </Box>
         ) : (
-          <Stack spacing={1} sx={{ mt: 1.25 }}>
+          <Stack spacing={0.75} sx={{ mt: 1.25 }}>
             {state.links.map((link) => (
               <DependencyRow
                 key={link.id}
@@ -563,6 +574,7 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps, coordin
           </Stack>
         )}
         {state.relationError && <FieldError>{state.relationError}</FieldError>}
+      </Box>
       </Box>
 
       <Popover
@@ -581,10 +593,10 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps, coordin
         component="dl"
         sx={{
           m: 0,
-          pt: 1.5,
+          pt: 1,
           display: 'grid',
           gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(3, minmax(0, 1fr))' },
-          gap: 1.5,
+          gap: 1,
           borderTop: 1,
           borderColor: 'divider',
         }}

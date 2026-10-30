@@ -11,17 +11,29 @@ import {
   locateOnEarth,
   nearestSiteId,
   sourceForDevice,
+  type CommentAttachment,
   type LifecycleState,
   type PinView,
   type Snapshot,
   type Ticket,
+  type TicketAdditional,
   type TicketCreateInput,
+  type TicketLink,
 } from '../data/tickets'
 
 export interface TransitionInput {
   by: string
   notes?: string
   snapshot?: Snapshot
+}
+
+export interface TicketDetailsPatch {
+  title: string
+  description: string
+  priority: Ticket['priority']
+  additional?: TicketAdditional
+  /** Replaces the creation snapshot with its marked-up version. */
+  creationSnapshot?: Snapshot
 }
 
 interface TicketsValue {
@@ -33,8 +45,8 @@ interface TicketsValue {
   addFollowers: (id: string, people: string[], by: string) => void
   shareWith: (id: string, person: string, by: string) => void
   removeFollower: (id: string, person: string, by: string) => void
-  addComment: (id: string, text: string, by: string) => void
-  updateDetails: (id: string, patch: { title: string; description: string; priority: Ticket['priority'] }, by: string) => void
+  addComment: (id: string, text: string, by: string, attachments?: CommentAttachment[]) => void
+  updateDetails: (id: string, patch: TicketDetailsPatch, by: string) => void
   transition: (id: string, state: LifecycleState, input: TransitionInput) => void
   attachSnapshot: (id: string, slot: 'before' | 'after', snapshot: Snapshot) => void
 }
@@ -105,7 +117,40 @@ function snapshotFromDatabase(value: unknown): Snapshot | undefined {
     pitch: numberValue(snapshot.pitch, 0),
     ...(typeof snapshot.cameraId === 'string' ? { cameraId: snapshot.cameraId } : {}),
     ...(pinViewFromDatabase(snapshot.view) ? { view: pinViewFromDatabase(snapshot.view) } : {}),
+    ...(typeof snapshot.original === 'string' ? { original: snapshot.original } : {}),
+    ...(Array.isArray(snapshot.markup) ? { markup: snapshot.markup } : {}),
   }
+}
+
+function additionalFromDatabase(value: unknown): Ticket['additional'] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const data = value as DatabaseRow
+  const links = Array.isArray(data.links)
+    ? data.links.flatMap((entry) => {
+        if (typeof entry !== 'object' || entry === null) return []
+        const link = entry as DatabaseRow
+        if (typeof link.id !== 'string') return []
+        const relation: TicketLink['relation'] = link.relation === 'blocks' || link.relation === 'blocked_by' ? link.relation : ''
+        return [{ id: link.id, title: stringValue(link.title, ''), relation }]
+      })
+    : []
+  return {
+    dueDate: typeof data.dueDate === 'string' ? data.dueDate : '',
+    dueTime: typeof data.dueTime === 'string' ? data.dueTime : '',
+    onBreach: typeof data.onBreach === 'string' ? data.onBreach : '',
+    links,
+  }
+}
+
+function attachmentsFromDatabase(value: unknown): CommentAttachment[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const files = value.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null) return []
+    const file = entry as DatabaseRow
+    if (typeof file.url !== 'string' || typeof file.name !== 'string') return []
+    return [{ name: file.name, size: numberValue(file.size, 0), type: typeof file.type === 'string' ? file.type : '', url: file.url }]
+  })
+  return files.length ? files : undefined
 }
 
 function databaseStatus(status: Ticket['status']): string {
@@ -146,6 +191,7 @@ function databaseRowForTicket(ticket: Ticket, includeIdentity = false): Database
         snapshotConfig: ticket.snapshotConfig,
         completedAt: ticket.completedAt,
         completion: ticket.completion,
+        additional: ticket.additional,
       },
     },
     history_log: ticket.timeline,
@@ -199,7 +245,8 @@ function ticketFromDatabase(value: unknown): Ticket {
         return {
           at: stringValue(comment.at, createdAt),
           by: stringValue(comment.by, 'System'),
-          text: stringValue(comment.text, ''),
+          text: typeof comment.text === 'string' ? comment.text : '',
+          ...(attachmentsFromDatabase(comment.attachments) ? { attachments: attachmentsFromDatabase(comment.attachments) } : {}),
         }
       })
     : []
@@ -277,6 +324,7 @@ function ticketFromDatabase(value: unknown): Ticket {
       captureCompletion: snapshotConfig.captureCompletion === false ? false : DEFAULT_SNAPSHOT_CONFIG.captureCompletion,
       showInImprovementHistory: true,
     },
+    additional: additionalFromDatabase(metadata.additional),
     timeline,
     yaw,
     pitch,
@@ -535,10 +583,15 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     return log({ ...ticket, followers: ticket.followers.filter((follower) => follower !== person) }, by, 'Removed follower')
   }), [patch])
 
-  const updateDetails = useCallback((id: string, next: { title: string; description: string; priority: Ticket['priority'] }, by: string) => patch(id, (ticket) => log({ ...ticket, ...next }, by, 'Updated details')), [patch])
-  const addComment = useCallback((id: string, text: string, by: string) => patch(id, (ticket) => {
+  const updateDetails = useCallback((id: string, next: TicketDetailsPatch, by: string) => patch(id, (ticket) => {
+    const { creationSnapshot, ...fields } = next
+    const snapshots = creationSnapshot ? { ...ticket.snapshots, before: creationSnapshot } : ticket.snapshots
+    return log({ ...ticket, ...fields, snapshots }, by, 'Updated details')
+  }), [patch])
+  const addComment = useCallback((id: string, text: string, by: string, attachments?: CommentAttachment[]) => patch(id, (ticket) => {
     const at = new Date().toISOString()
-    return log({ ...ticket, comments: [...ticket.comments, { at, by, text }] }, by, 'Added a comment')
+    const comment = { at, by, text, ...(attachments?.length ? { attachments } : {}) }
+    return log({ ...ticket, comments: [...ticket.comments, comment] }, by, 'Added a comment')
   }), [patch])
   const transition = useCallback((id: string, state: LifecycleState, input: TransitionInput) => {
     if (!ticketsRef.current.some((ticket) => ticket.id === id)) return

@@ -1,31 +1,60 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Avatar, Box, IconButton, Stack, TextField, Typography, alpha } from '@mui/material'
+import { Avatar, Badge, Box, Chip, IconButton, Stack, TextField, Tooltip, Typography, alpha } from '@mui/material'
 import SendRoundedIcon from '@mui/icons-material/SendRounded'
 import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded'
-import type { Ticket } from '../../data/tickets'
+import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded'
+import type { CommentAttachment, Ticket } from '../../data/tickets'
 import { formatDateTime, initials } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
+import { loadStoredAttachment, uploadAttachments, useAttachments, type Attachment } from './attachments'
+import AttachmentPopover from './AttachmentPopover'
+import DocumentPreview from './DocumentPreview'
 
 /** Compact chat-style comment thread: others on the left, the current user on the right. */
 export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me: string }) {
   const { addComment } = useTickets()
   const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState('')
+  const [attachAnchor, setAttachAnchor] = useState<HTMLElement | null>(null)
+  const [previewing, setPreviewing] = useState<Attachment | null>(null)
+  const attachments = useAttachments()
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' })
   }, [ticket.comments.length])
 
-  const submit = (e: FormEvent) => {
+  const canSend = (text.trim() !== '' || attachments.items.length > 0) && !sending
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!text.trim()) return
-    addComment(ticket.id, text.trim(), me)
-    setText('')
+    if (!canSend) return
+    setSending(true)
+    setSendError('')
+    try {
+      const uploaded = attachments.items.length ? await uploadAttachments(ticket.id, attachments.items) : undefined
+      addComment(ticket.id, text.trim(), me, uploaded)
+      setText('')
+      attachments.items.forEach((item) => attachments.remove(item.id))
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : 'Attachment could not be uploaded.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const openStored = async (file: CommentAttachment) => {
+    try {
+      setPreviewing(await loadStoredAttachment(file))
+    } catch {
+      window.open(file.url, '_blank', 'noopener,noreferrer')
+    }
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <Box sx={{ maxHeight: { xs: 'none', sm: 340 }, minHeight: 120, overflowY: 'auto', pr: 0.5 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <Box sx={{ flex: 1, minHeight: 120, overflowY: 'auto', pr: 0.5 }}>
         {ticket.comments.length === 0 ? (
           <Box sx={{ py: 4, textAlign: 'center' }}>
             <ChatBubbleOutlineRoundedIcon sx={{ fontSize: 26, color: 'text.disabled' }} />
@@ -56,24 +85,41 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
                         {formatDateTime(c.at)}
                       </Typography>
                     </Stack>
-                    <Typography
-                      sx={(t) => ({
-                        fontSize: 13.5,
-                        mt: 0.25,
-                        px: 1.25,
-                        py: 0.85,
-                        borderRadius: '12px',
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        bgcolor: mine
-                          ? alpha(t.palette.primary.main, t.palette.mode === 'dark' ? 0.2 : 0.12)
-                          : t.palette.mode === 'dark'
-                            ? 'rgba(255,255,255,0.06)'
-                            : 'rgba(0,0,0,0.045)',
-                      })}
-                    >
-                      {c.text}
-                    </Typography>
+                    {c.text && (
+                      <Typography
+                        sx={(t) => ({
+                          fontSize: 13.5,
+                          mt: 0.25,
+                          px: 1.25,
+                          py: 0.85,
+                          borderRadius: '12px',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          bgcolor: mine
+                            ? alpha(t.palette.primary.main, t.palette.mode === 'dark' ? 0.2 : 0.12)
+                            : t.palette.mode === 'dark'
+                              ? 'rgba(255,255,255,0.06)'
+                              : 'rgba(0,0,0,0.045)',
+                        })}
+                      >
+                        {c.text}
+                      </Typography>
+                    )}
+                    {c.attachments && c.attachments.length > 0 && (
+                      <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: 0.75, mt: 0.5, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+                        {c.attachments.map((file) => (
+                          <Chip
+                            key={file.url}
+                            size="small"
+                            clickable
+                            icon={<AttachFileRoundedIcon sx={{ transform: 'rotate(45deg)' }} />}
+                            label={file.name}
+                            onClick={() => void openStored(file)}
+                            sx={{ maxWidth: 220 }}
+                          />
+                        ))}
+                      </Stack>
+                    )}
                   </Box>
                 </Stack>
               )
@@ -99,10 +145,29 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
           onChange={(e) => setText(e.target.value)}
           slotProps={{ htmlInput: { 'aria-label': 'Write a comment' } }}
         />
-        <IconButton type="submit" disabled={!text.trim()} aria-label="Post comment" color="primary" sx={{ borderRadius: '10px' }}>
+        <Tooltip title="Attach files">
+          <IconButton
+            onClick={(e) => setAttachAnchor(e.currentTarget)}
+            aria-label={attachments.items.length > 0 ? `Attachments (${attachments.items.length})` : 'Attach files'}
+            sx={{ color: 'text.secondary' }}
+          >
+            <Badge badgeContent={attachments.items.length} color="error" overlap="circular">
+              <AttachFileRoundedIcon sx={{ transform: 'rotate(45deg)' }} />
+            </Badge>
+          </IconButton>
+        </Tooltip>
+        <IconButton type="submit" disabled={!canSend} aria-label="Post comment" color="primary" sx={{ borderRadius: '10px' }}>
           <SendRoundedIcon fontSize="small" />
         </IconButton>
       </Stack>
+      {sendError && (
+        <Typography role="alert" color="error" variant="caption" sx={{ mt: 0.5 }}>
+          {sendError}
+        </Typography>
+      )}
+
+      <AttachmentPopover anchorEl={attachAnchor} onClose={() => setAttachAnchor(null)} attachments={attachments} onPreview={setPreviewing} />
+      <DocumentPreview attachment={previewing} onClose={() => setPreviewing(null)} />
     </Box>
   )
 }

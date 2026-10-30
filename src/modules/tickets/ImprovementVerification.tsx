@@ -49,7 +49,7 @@ export default function ImprovementVerification({ ticket }: { ticket: Ticket }) 
         <Box
           component="img"
           src={shot.src}
-          alt={`${label} snapshot for ${ticket.id}`}
+          alt={`${label} snapshot`}
           onClick={() => setZoomed(slot)}
           sx={(t) => ({
             width: '100%',

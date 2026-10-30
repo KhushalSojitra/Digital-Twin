@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { supabase } from '../../supabaseClient'
+import type { CommentAttachment } from '../../data/tickets'
 
 export interface Attachment {
   id: string
@@ -80,3 +82,28 @@ export function useAttachments() {
 }
 
 export type AttachmentsState = ReturnType<typeof useAttachments>
+
+const BUCKET = 'ticket-attachments'
+
+/** Uploads picked files to storage so comment attachments survive a reload. */
+export async function uploadAttachments(ticketId: string, items: Attachment[]): Promise<CommentAttachment[]> {
+  return Promise.all(
+    items.map(async ({ file }) => {
+      const safeName = file.name.replace(/[^\w.-]+/g, '_')
+      const path = `${ticketId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`
+      const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || undefined })
+      if (error) throw new Error(`${file.name} could not be uploaded.`)
+      const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
+      return { name: file.name, size: file.size, type: file.type, url: data.publicUrl }
+    }),
+  )
+}
+
+/** Rebuilds a previewable attachment from a stored one. */
+export async function loadStoredAttachment(stored: CommentAttachment): Promise<Attachment> {
+  const response = await fetch(stored.url)
+  if (!response.ok) throw new Error(`${stored.name} could not be loaded.`)
+  const blob = await response.blob()
+  const file = new File([blob], stored.name, { type: stored.type || blob.type })
+  return { id: stored.url, file, url: stored.url }
+}

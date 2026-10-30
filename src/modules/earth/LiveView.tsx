@@ -509,6 +509,10 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
           initialTab={editor?.tab ?? 'details'}
           onClose={() => setEditor(null)}
           onCreate={createTicket}
+          onOpenCamera={(t) => {
+            setEditor(null)
+            goToTicket(t)
+          }}
         />
       </Box>
     </CaptureContext.Provider>

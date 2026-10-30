@@ -43,9 +43,10 @@ interface Props {
   initialTab?: 'details' | 'activity'
   onClose: () => void
   onCreate?: (input: NewTicketInput) => Promise<Ticket>
+  onOpenCamera?: (ticket: Ticket) => void
 }
 
-export default function TicketEditorDialog({ open, mode, ticket, draft, initialTab = 'details', onClose, onCreate }: Props) {
+export default function TicketEditorDialog({ open, mode, ticket, draft, initialTab = 'details', onClose, onCreate, onOpenCamera }: Props) {
   const { currentUser } = useAuth()
   const me = currentUser?.displayName ?? 'Ava Sharma'
   const theme = useTheme()
@@ -63,7 +64,7 @@ export default function TicketEditorDialog({ open, mode, ticket, draft, initialT
       fullScreen={isXs}
       maxWidth="md"
       sx={{ zIndex: (t) => t.zIndex.modal + 4 }}
-      slotProps={{ paper: { sx: creating ? { ...dialogPaperSx, height: { xs: '100%', sm: 'min(698px, 92dvh)' } } : dialogPaperSx } }}
+      slotProps={{ paper: { sx: { ...dialogPaperSx, height: { xs: '100%', sm: 'min(698px, 92dvh)' } } } }}
     >
       <DialogGuard key={ticket?.id ?? (creating ? 'create' : 'empty')} onClose={onClose}>
         {creating && draft && onCreate ? (
@@ -78,6 +79,7 @@ export default function TicketEditorDialog({ open, mode, ticket, draft, initialT
             mode={mode === 'edit' ? 'edit' : 'view'}
             initialTab={initialTab}
             onClose={onClose}
+            onOpenCamera={onOpenCamera}
           />
         ) : (
           <>
@@ -247,6 +249,7 @@ function Existing({
   mode,
   initialTab,
   onClose,
+  onOpenCamera,
 }: {
   ticket: Ticket
   me: string
@@ -255,6 +258,7 @@ function Existing({
   mode: 'view' | 'edit'
   initialTab: 'details' | 'activity'
   onClose: () => void
+  onOpenCamera?: (ticket: Ticket) => void
 }) {
   return (
     <TicketDetailView
@@ -265,6 +269,7 @@ function Existing({
       editing={mode === 'edit' && canEdit}
       initialTab={initialTab === 'activity' ? 'activity' : 'snapshot'}
       onClose={onClose}
+      onOpenCamera={onOpenCamera}
     />
   )
 }

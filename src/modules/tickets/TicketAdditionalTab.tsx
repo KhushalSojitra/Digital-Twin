@@ -40,7 +40,7 @@ export interface LinkedTicket {
   relation: DependencyRelation | ''
 }
 
-const BREACH_OPTIONS: { value: BreachAction; label: string; icon: ReactNode }[] = [
+export const BREACH_OPTIONS: { value: BreachAction; label: string; icon: ReactNode }[] = [
   { value: 'fail', label: 'Mark ticket as Failed', icon: <NotificationsNoneRoundedIcon /> },
   { value: 'escalate_reporter', label: 'Escalate to Reporter', icon: <PersonOutlineRoundedIcon /> },
   { value: 'escalate_assignee', label: 'Escalate to Assignee', icon: <SupervisorAccountRoundedIcon /> },

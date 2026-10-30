@@ -41,10 +41,33 @@ export interface TicketEvent {
   state?: LifecycleState
 }
 
+/** A file stored in the ticket-attachments bucket and referenced from a comment. */
+export interface CommentAttachment {
+  name: string
+  size: number
+  type: string
+  url: string
+}
+
 export interface TicketComment {
   at: string
   by: string
   text: string
+  attachments?: CommentAttachment[]
+}
+
+export interface TicketLink {
+  id: string
+  title: string
+  relation: 'blocks' | 'blocked_by' | ''
+}
+
+/** Deadline, breach action and dependencies captured on the Additional tab. */
+export interface TicketAdditional {
+  dueDate: string
+  dueTime: string
+  onBreach: string
+  links: TicketLink[]
 }
 
 /** The camera view (centre and vertical field of view) an incident was pinned in. */
@@ -66,6 +89,10 @@ export interface Snapshot {
   cameraId?: string
   /** View the frame shows. */
   view?: PinView
+  /** Unmarked frame, kept once markup has been applied so the markup stays editable. */
+  original?: string
+  /** Markup shapes drawn over `original`. */
+  markup?: unknown[]
 }
 
 /** True when a stored frame can be shown for the ticket: untagged legacy frames, or frames from the ticket's own camera. */
@@ -113,6 +140,7 @@ export interface Ticket {
   completion?: TicketCompletion
   snapshots: { before?: Snapshot; after?: Snapshot }
   snapshotConfig: SnapshotConfig
+  additional?: TicketAdditional
   timeline: TicketEvent[]
   /** Where the ticket sits in the camera's field of view (scene-relative pan/tilt, degrees). */
   yaw: number
@@ -137,6 +165,7 @@ export type NewTicketInput = Pick<
   followers?: string[]
   snapshotConfig: SnapshotConfig
   creationSnapshot?: Snapshot
+  additional?: TicketAdditional
 }
 
 /** A ticket raised by picking a coordinate directly on the Earth map. */
@@ -148,6 +177,7 @@ export type NewEarthTicketInput = Pick<
   creator: string
   followers?: string[]
   snapshotConfig: SnapshotConfig
+  additional?: TicketAdditional
 }
 
 export type TicketCreateInput = NewTicketInput | NewEarthTicketInput
@@ -276,6 +306,7 @@ export function createEarthTicket(input: NewEarthTicketInput, id = `OE-${crypto.
     updatedAt: now,
     snapshots: {},
     snapshotConfig: input.snapshotConfig,
+    additional: input.additional,
     timeline,
     yaw: 0,
     pitch: 0,
@@ -324,6 +355,7 @@ export function createTicket(input: NewTicketInput, id = `OE-${crypto.randomUUID
     updatedAt: now,
     snapshots: { before: input.creationSnapshot },
     snapshotConfig: input.snapshotConfig,
+    additional: input.additional,
     timeline,
     yaw,
     pitch,

@@ -320,6 +320,7 @@ export default function EarthModule() {
           mode={editorMode}
           ticket={selectedTicket}
           initialTab={editorTab}
+          onOpenCamera={(t) => openTicketCamera(t, 'goto')}
           onClose={() => {
             setEditorOpen(false)
             setSelectedTicketId(null)

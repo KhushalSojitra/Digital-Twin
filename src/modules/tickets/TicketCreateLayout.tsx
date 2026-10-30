@@ -93,7 +93,7 @@ const VOICE_SAMPLE = {
   priority: 'high' as TicketPriority,
 }
 
-const fieldSx = {
+export const fieldSx = {
   '& .MuiInputBase-root': {
     borderRadius: '14px',
     fontSize: 16,

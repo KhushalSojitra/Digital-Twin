@@ -250,6 +250,7 @@ function SnapshotPanel({
 function ReadField({ label, value, copy, multiline }: { label: string; value: string; copy?: boolean; multiline?: boolean }) {
   return (
     <TextField
+      variant="outlined"
       label={label}
       value={value}
       fullWidth
@@ -357,6 +358,7 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
         <Box sx={{ flex: 1, minWidth: 0 }}>
           {editing ? (
             <TextField
+              variant="outlined"
               label="Title"
               fullWidth
               value={title}
@@ -380,11 +382,13 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
         {editing ? (
           <TextField
             select
+            variant="outlined"
+            fullWidth={false}
             label="Priority"
             value={priority}
             onChange={(e) => setPriority(e.target.value as TicketPriority)}
             slotProps={{ inputLabel: { shrink: true }, select: { MenuProps: menuProps } }}
-            sx={{ ...fieldSx, minWidth: 130 }}
+            sx={{ ...fieldSx, width: 140, flexShrink: 0 }}
           >
             {(Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => (
               <MenuItem key={p} value={p}>
@@ -469,6 +473,7 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
 
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, px: { xs: 2, sm: 3.5 }, pt: 1.25, pb: 0.5, flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
         <TextField
+          variant="outlined"
           label="Description"
           multiline
           minRows={2}
@@ -482,6 +487,7 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
         {editing ? (
           <>
             <TextField
+              variant="outlined"
               label="Due Date"
               type="date"
               value={dueDate}
@@ -490,6 +496,7 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
               sx={{ ...fieldSx, width: 172, flexShrink: 0, '& input': { colorScheme: (t: Theme) => t.palette.mode } }}
             />
             <TextField
+              variant="outlined"
               label="Due Time"
               type="time"
               value={dueTime}
@@ -502,12 +509,14 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
         ) : (
           <>
             <TextField
+              variant="outlined"
               label="Due Date"
               value={dueDate ? formatDueDate(dueDate) : '—'}
               slotProps={{ input: { readOnly: true }, inputLabel: { shrink: true } }}
               sx={{ ...fieldSx, width: 172, flexShrink: 0 }}
             />
             <TextField
+              variant="outlined"
               label="Due Time"
               value={dueDate && dueTime ? dueTime : '—'}
               slotProps={{ input: { readOnly: true }, inputLabel: { shrink: true } }}

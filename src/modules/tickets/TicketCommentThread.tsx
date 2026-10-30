@@ -6,7 +6,7 @@ import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded'
 import type { CommentAttachment, Ticket } from '../../data/tickets'
 import { formatDateTime, initials } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
-import { loadStoredAttachment, uploadAttachments, useAttachments, type Attachment } from './attachments'
+import { loadStoredAttachment, resolveAttachmentUrl, uploadAttachments, useAttachments, type Attachment } from './attachments'
 import AttachmentPopover from './AttachmentPopover'
 import DocumentPreview from './DocumentPreview'
 
@@ -48,7 +48,11 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
     try {
       setPreviewing(await loadStoredAttachment(file))
     } catch {
-      window.open(file.url, '_blank', 'noopener,noreferrer')
+      try {
+        window.open(await resolveAttachmentUrl(file.url), '_blank', 'noopener,noreferrer')
+      } catch (error) {
+        setSendError(error instanceof Error ? error.message : 'Attachment could not be opened.')
+      }
     }
   }
 

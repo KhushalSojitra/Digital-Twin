@@ -99,9 +99,25 @@ export async function uploadAttachments(ticketId: string, items: Attachment[]): 
   )
 }
 
+const SIGNED_URL_TTL_SECONDS = 60 * 60
+
+/**
+ * The bucket is private, so the saved public-style URL returns NoSuchBucket.
+ * The object path is recovered from it and exchanged for a short-lived signed URL.
+ */
+export async function resolveAttachmentUrl(storedUrl: string): Promise<string> {
+  const marker = `/${BUCKET}/`
+  const index = storedUrl.indexOf(marker)
+  if (index === -1) return storedUrl
+  const path = decodeURIComponent(storedUrl.slice(index + marker.length).split('?')[0])
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_TTL_SECONDS)
+  if (error || !data) throw new Error('Attachment could not be accessed.')
+  return data.signedUrl
+}
+
 /** Rebuilds a previewable attachment from a stored one. */
 export async function loadStoredAttachment(stored: CommentAttachment): Promise<Attachment> {
-  const response = await fetch(stored.url)
+  const response = await fetch(await resolveAttachmentUrl(stored.url))
   if (!response.ok) throw new Error(`${stored.name} could not be loaded.`)
   const blob = await response.blob()
   const file = new File([blob], stored.name, { type: stored.type || blob.type })

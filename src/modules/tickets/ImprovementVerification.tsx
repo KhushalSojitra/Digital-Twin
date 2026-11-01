@@ -125,7 +125,7 @@ export default function ImprovementVerification({ ticket }: { ticket: Ticket }) 
             .map((e, i) => (
               <Stack key={`${e.at}-${i}`} direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
                 <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: LIFECYCLE_COLOR[e.state!], flexShrink: 0 }} />
-                <Typography sx={{ fontSize: 12, fontWeight: 600, minWidth: 74 }}>{LIFECYCLE_LABEL[e.state!]}</Typography>
+                <Typography sx={{ fontSize: 12, fontWeight: 600, minWidth: 74 }}>{e.label ?? LIFECYCLE_LABEL[e.state!]}</Typography>
                 <Typography variant="caption" color="text.secondary" noWrap>
                   {formatDateTime(e.at)} · {e.by}
                 </Typography>

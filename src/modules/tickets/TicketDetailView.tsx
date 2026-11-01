@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useId, useState } from 'react'
 import {
   alpha,
   Box,
@@ -28,13 +28,9 @@ import ConfirmationNumberRoundedIcon from '@mui/icons-material/ConfirmationNumbe
 import CameraAltRoundedIcon from '@mui/icons-material/CameraAltRounded'
 import EditRoundedIcon from '@mui/icons-material/EditRounded'
 import {
-  LIFECYCLE_COLOR,
-  LIFECYCLE_LABEL,
-  NEXT_STATES,
   PRIORITY_COLOR,
   PRIORITY_LABEL,
   STATUS_COLOR,
-  STATUS_LABEL,
   TICKETING_SYSTEM,
   TICKET_SOURCE_LABEL,
   isCompleted,
@@ -47,6 +43,8 @@ import {
 } from '../../data/tickets'
 import { formatDateTime } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
+import { useWorkflow } from '../../state/WorkflowContext'
+import { useTicketActions } from './WorkflowActions'
 import TicketActivity from './TicketActivity'
 import TicketCommentThread from './TicketCommentThread'
 import TicketTeamPanel from './TicketTeamPanel'
@@ -309,7 +307,9 @@ function AdditionalPanel({ ticket }: { ticket: Ticket }) {
 
 export default function TicketDetailView({ ticket, me, canEdit, canChangeState, editing, initialTab, onClose, onOpenCamera }: Props) {
   const uid = useId()
-  const { transition, updateDetails } = useTickets()
+  const { updateDetails } = useTickets()
+  const { stateLabel } = useWorkflow()
+  const ticketActions = useTicketActions(me)
   const [tab, setTab] = useState<DetailTab>(initialTab)
   const [title, setTitle] = useState(ticket.title)
   const [description, setDescription] = useState(ticket.description)
@@ -318,8 +318,9 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
   const [dueTime, setDueTime] = useState(ticket.additional?.dueTime ?? '')
   const [snapshotDraft, setSnapshotDraft] = useState<Snapshot | null>(null)
   const [statusAnchor, setStatusAnchor] = useState<HTMLElement | null>(null)
-  const next = useMemo(() => NEXT_STATES[ticket.status] ?? [], [ticket.status])
-  const canTransition = canChangeState && next.length > 0
+  const next = canChangeState ? ticketActions.actionsFor(ticket) : []
+  const canTransition = next.length > 0
+  const currentStateLabel = stateLabel(ticket)
   const canOpenCamera = Boolean(onOpenCamera && (ticket.cameraId || ticket.siteId))
 
   const saveDetails = () => {
@@ -421,7 +422,7 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
           disabled={!canTransition}
           onClick={(e) => setStatusAnchor(e.currentTarget)}
           aria-haspopup="menu"
-          aria-label={`Status ${STATUS_LABEL[ticket.status]}${canTransition ? ', change status' : ''}`}
+          aria-label={`Status ${currentStateLabel}${canTransition ? ', change status' : ''}`}
           endIcon={canTransition ? <KeyboardArrowDownRoundedIcon /> : undefined}
           startIcon={<Dot color={STATUS_COLOR[ticket.status]} ring />}
           sx={(t) => ({
@@ -434,25 +435,23 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
             '&.Mui-disabled': { color: t.palette.text.primary, borderColor: t.palette.divider },
           })}
         >
-          {STATUS_LABEL[ticket.status]}
+          {currentStateLabel}
         </Button>
         <Menu open={Boolean(statusAnchor)} anchorEl={statusAnchor} onClose={() => setStatusAnchor(null)} sx={{ zIndex: menuZ }}>
-          {next.map((state) => (
+          {next.map((action) => (
             <MenuItem
-              key={state}
+              key={action.id}
               dense
               onClick={() => {
                 setStatusAnchor(null)
-                transition(ticket.id, state, { by: me })
+                ticketActions.run(ticket, action)
               }}
             >
-              <Box sx={{ mr: 1 }}>
-                <Dot color={LIFECYCLE_COLOR[state]} />
-              </Box>
-              {LIFECYCLE_LABEL[state]}
+              {action.label}
             </MenuItem>
           ))}
         </Menu>
+        {ticketActions.dialog}
 
         {canOpenCamera && (
           <Tooltip title="Open camera live view" placement="bottom">

@@ -4,14 +4,10 @@ import {
   Button,
   Chip,
   Divider,
-  FormControlLabel,
   IconButton,
-  Paper,
   Stack,
-  Switch,
   Tab,
   Tabs,
-  TextField,
   Tooltip,
   Typography,
 } from '@mui/material'
@@ -23,24 +19,22 @@ import VideocamRoundedIcon from '@mui/icons-material/VideocamRounded'
 import PhotoCameraRoundedIcon from '@mui/icons-material/PhotoCameraRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import {
-  LIFECYCLE_COLOR,
-  LIFECYCLE_LABEL,
-  NEXT_STATES,
   PRIORITY_COLOR,
   PRIORITY_LABEL,
   STATUS_COLOR,
-  STATUS_LABEL,
   STATUS_NEEDS_DARK_TEXT,
   TYPE_LABEL,
   ticketContextLabel,
   isCompleted,
   platformLabel,
   siteName,
-  type LifecycleState,
   type Ticket,
 } from '../../data/tickets'
+import { stateOf, type WorkflowTransition } from '../../data/workflows'
 import { formatDateTime } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
+import { useWorkflow } from '../../state/WorkflowContext'
+import { useTicketActions } from './WorkflowActions'
 import { useAuth } from '../../auth/AuthContext'
 import { useCapture } from './captureContext'
 import TicketAssignment from './TicketAssignment'
@@ -83,7 +77,8 @@ function CountLabel({ label, count }: { label: string; count: number }) {
 }
 
 export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, onOpenCamera }: Props) {
-  const { toggleFollow, transition } = useTickets()
+  const { toggleFollow, attachSnapshot } = useTickets()
+  const { stateLabel, versionFor } = useWorkflow()
   const { currentUser } = useAuth()
   const capture = useCapture()
   const me = currentUser?.displayName ?? 'Operator'
@@ -91,13 +86,10 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
 
   const [panel, setPanel] = useState<Panel>('details')
   const verificationRef = useRef<HTMLDivElement>(null)
-  const [completing, setCompleting] = useState(false)
-  const [notes, setNotes] = useState('')
-  const [withSnapshot, setWithSnapshot] = useState(ticket.snapshotConfig.captureCompletion)
 
   const following = ticket.followers.includes(me)
-  const canCapture = Boolean(capture)
-  const nextStates = NEXT_STATES[ticket.status]
+  const ticketActions = useTicketActions(me)
+  const actions = ticketActions.actionsFor(ticket)
 
   const grabSnapshot = () => {
     const src = ticket.cameraId ? capture?.(ticket.cameraId, { yaw: ticket.yaw, pitch: ticket.pitch }, 'after') : undefined
@@ -105,19 +97,13 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
     return { src, at: new Date().toISOString(), by: me, yaw: ticket.yaw, pitch: ticket.pitch }
   }
 
-  const run = (state: LifecycleState) => {
-    if (state === 'done') {
-      setCompleting(true)
-      setWithSnapshot(ticket.snapshotConfig.captureCompletion && canCapture)
-      return
+  const run = (action: WorkflowTransition) => {
+    const group = stateOf(versionFor(ticket)?.definition, action.to)?.group
+    if ((group === 'done' || group === 'accepted') && ticket.snapshotConfig.captureCompletion && capture) {
+      const snapshot = grabSnapshot()
+      if (snapshot) attachSnapshot(ticket.id, 'after', snapshot)
     }
-    transition(ticket.id, state, { by: me })
-  }
-
-  const complete = () => {
-    transition(ticket.id, 'done', { by: me, notes, snapshot: withSnapshot ? grabSnapshot() : undefined })
-    setCompleting(false)
-    setNotes('')
+    ticketActions.run(ticket, action)
   }
 
   const snapshotFlags = useMemo(
@@ -136,7 +122,7 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
         <Typography sx={{ fontFamily: '"SF Mono", ui-monospace, Menlo, monospace', fontWeight: 700, fontSize: 14 }}>{ticket.id}</Typography>
         <Chip
           size="small"
-          label={STATUS_LABEL[ticket.status]}
+          label={stateLabel(ticket)}
           sx={{
             height: 20,
             fontSize: 10.5,
@@ -210,54 +196,13 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
             </Stack>
 
             <Stack direction="row" spacing={0.75} sx={{ mt: 1.25, flexWrap: 'wrap', gap: 0.75 }}>
-              {nextStates.map((state) => (
-                <Button
-                  key={state}
-                  size="small"
-                  variant="outlined"
-                  onClick={() => run(state)}
-                  sx={{ height: 26, px: 1.25, fontSize: 11.5, borderColor: LIFECYCLE_COLOR[state], color: LIFECYCLE_COLOR[state] }}
-                >
-                  {state === 'done' ? 'Mark done' : state === 'reopened' ? 'Reopen' : LIFECYCLE_LABEL[state]}
+              {actions.map((action) => (
+                <Button key={action.id} size="small" variant="outlined" onClick={() => run(action)} sx={{ height: 26, px: 1.25, fontSize: 11.5 }}>
+                  {action.label}
                 </Button>
               ))}
             </Stack>
-
-            {completing && (
-              <Paper variant="outlined" sx={{ mt: 1.25, p: 1.25, borderRadius: '12px' }}>
-                <Typography sx={{ fontSize: 12.5, fontWeight: 700, mb: 0.75 }}>Complete this ticket</Typography>
-                <TextField
-                  size="small"
-                  fullWidth
-                  multiline
-                  minRows={2}
-                  placeholder="Completion notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  slotProps={{ input: { 'aria-label': 'Completion notes' } }}
-                />
-                <FormControlLabel
-                  sx={{ mt: 0.5, '& .MuiFormControlLabel-label': { fontSize: 12.5, ml: 0.5 } }}
-                  control={
-                    <Switch
-                      size="small"
-                      checked={withSnapshot}
-                      disabled={!canCapture}
-                      onChange={(e) => setWithSnapshot(e.target.checked)}
-                    />
-                  }
-                  label={canCapture ? 'Capture completion snapshot' : 'Snapshot needs the camera open'}
-                />
-                <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
-                  <Button size="small" onClick={() => setCompleting(false)}>
-                    Cancel
-                  </Button>
-                  <Button size="small" variant="contained" onClick={complete}>
-                    Complete
-                  </Button>
-                </Stack>
-              </Paper>
-            )}
+            {ticketActions.dialog}
 
             <Divider sx={{ my: 1.5 }} />
             <TicketAssignment ticket={ticket} me={me} />

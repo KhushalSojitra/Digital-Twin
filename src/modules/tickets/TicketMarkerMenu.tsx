@@ -18,8 +18,9 @@ import EditRoundedIcon from '@mui/icons-material/EditRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
-import { LIFECYCLE_LABEL, NEXT_STATES, type Ticket } from '../../data/tickets'
+import { type Ticket } from '../../data/tickets'
 import { useTickets } from '../../state/TicketsContext'
+import { useTicketActions } from './WorkflowActions'
 import { useAuth } from '../../auth/AuthContext'
 
 export interface TicketMarkerActions {
@@ -107,9 +108,10 @@ export function useTicketMarkerMenu(): {
   menu: ReactNode
 } {
   const actions = useContext(TicketMarkerActionsContext)
-  const { tickets, transition } = useTickets()
+  const { tickets } = useTickets()
   const { currentUser } = useAuth()
   const me = currentUser?.displayName ?? 'Ava Sharma'
+  const ticketActions = useTicketActions(me)
   const canEdit = currentUser?.role !== 'Viewer'
   const [state, setState] = useState<MenuState | null>(null)
   const [deleting, setDeleting] = useState<Ticket | null>(null)
@@ -127,7 +129,7 @@ export function useTicketMarkerMenu(): {
   if (!actions) return { onContextMenu, menu: null }
 
   const ticket = state ? (tickets.find((t) => t.id === state.ticketId) ?? state.fallback) : null
-  const nextState = ticket ? NEXT_STATES[ticket.status]?.[0] : undefined
+  const nextAction = ticket ? ticketActions.actionsFor(ticket)[0] : undefined
   const close = () => setState(null)
   const run = (action: (target: Ticket) => void) => () => {
     if (!ticket) return
@@ -174,16 +176,16 @@ export function useTicketMarkerMenu(): {
         </MenuItem>
         <Divider />
         <MenuItem
-          disabled={!canEdit || !nextState}
+          disabled={!canEdit || !nextAction}
           onClick={run((target) => {
-            const next = NEXT_STATES[target.status]?.[0]
-            if (next) transition(target.id, next, { by: me })
+            const next = ticketActions.actionsFor(target)[0]
+            if (next) ticketActions.run(target, next)
           })}
         >
           <ListItemIcon>
             <ArrowForwardRoundedIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText secondary={nextState ? `to ${LIFECYCLE_LABEL[nextState]}` : undefined}>Next State</ListItemText>
+          <ListItemText secondary={nextAction ? nextAction.label : undefined}>Next State</ListItemText>
         </MenuItem>
         <MenuItem onClick={run(actions.onInfo)}>
           <ListItemIcon>
@@ -193,6 +195,7 @@ export function useTicketMarkerMenu(): {
         </MenuItem>
       </Menu>
       <TicketDeleteDialog ticket={deleting} onClose={() => setDeleting(null)} />
+      {ticketActions.dialog}
     </>
   )
 

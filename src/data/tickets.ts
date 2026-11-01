@@ -39,6 +39,8 @@ export interface TicketEvent {
   text: string
   /** Set on events that moved the ticket through its lifecycle; drives the stepper. */
   state?: LifecycleState
+  /** Name of the workflow state reached, when the workflow's own wording differs from the status group. */
+  label?: string
 }
 
 /** A file stored in the ticket-attachments bucket and referenced from a comment. */
@@ -129,6 +131,10 @@ export interface Ticket {
   zone: string
   assignee: string
   creator: string
+  /** Workflow version the ticket was created under; it keeps following that version. */
+  workflowVersionId?: string
+  /** Key of the ticket's current state inside its workflow version. */
+  workflowState?: string
   platform: TicketPlatform
   /** Name shown for a custom platform, e.g. an analytics engine or partner API. */
   platformName?: string
@@ -209,25 +215,6 @@ export const STATUS_NEEDS_DARK_TEXT: TicketStatus[] = ['in_progress']
 export const LIFECYCLE_LABEL: Record<LifecycleState, string> = { ...STATUS_LABEL, reopened: 'Reopened' }
 
 export const LIFECYCLE_COLOR: Record<LifecycleState, string> = { ...STATUS_COLOR, reopened: '#0A84FF' }
-
-/** Status a ticket lands on once a lifecycle transition is applied. */
-export const STATE_RESULT: Record<LifecycleState, TicketStatus> = {
-  open: 'open',
-  in_progress: 'in_progress',
-  done: 'done',
-  accepted: 'accepted',
-  failed: 'failed',
-  reopened: 'open',
-}
-
-/** Transitions offered for a ticket in each status. */
-export const NEXT_STATES: Record<TicketStatus, LifecycleState[]> = {
-  open: ['in_progress', 'done', 'failed'],
-  in_progress: ['done', 'failed'],
-  done: ['accepted', 'failed', 'reopened'],
-  accepted: ['reopened'],
-  failed: ['reopened', 'in_progress'],
-}
 
 export const COMPLETED_STATUSES: TicketStatus[] = ['done', 'accepted']
 export const TICKET_HISTORY_WINDOW_DAYS = 30

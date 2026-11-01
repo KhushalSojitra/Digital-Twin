@@ -32,7 +32,7 @@ export default function TicketActivity({ ticket }: { ticket: Ticket }) {
                   ),
                 }}
               >
-                <Typography sx={{ fontSize: 13.5, fontWeight: 700, color }}>{LIFECYCLE_LABEL[ev.state!]}</Typography>
+                <Typography sx={{ fontSize: 13.5, fontWeight: 700, color }}>{ev.label ?? LIFECYCLE_LABEL[ev.state!]}</Typography>
               </StepLabel>
               <StepContent sx={{ pb: 1.25 }}>
                 <Typography sx={{ fontSize: 12.5 }}>{ev.text}</Typography>

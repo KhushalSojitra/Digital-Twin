@@ -3,7 +3,6 @@ import { supabase } from '../supabaseClient'
 import { ALL_DEVICES } from '../data/cameras'
 import {
   DEFAULT_SNAPSHOT_CONFIG,
-  STATE_RESULT,
   createEarthTicket,
   createTicket,
   isEarthInput,
@@ -21,10 +20,11 @@ import {
   type TicketLink,
 } from '../data/tickets'
 
-export interface TransitionInput {
+export interface WorkflowActionInput {
   by: string
-  notes?: string
-  snapshot?: Snapshot
+  /** Required by actions that pass the work on to someone else. */
+  assignee?: string
+  note?: string
 }
 
 export interface TicketDetailsPatch {
@@ -47,7 +47,8 @@ interface TicketsValue {
   removeFollower: (id: string, person: string, by: string) => void
   addComment: (id: string, text: string, by: string, attachments?: CommentAttachment[]) => void
   updateDetails: (id: string, patch: TicketDetailsPatch, by: string) => void
-  transition: (id: string, state: LifecycleState, input: TransitionInput) => void
+  /** Runs one action of the ticket's workflow; rejects with the server's reason when it is not allowed. */
+  performAction: (id: string, actionId: string, input: WorkflowActionInput) => Promise<void>
   attachSnapshot: (id: string, slot: 'before' | 'after', snapshot: Snapshot) => void
 }
 
@@ -260,6 +261,7 @@ function ticketFromDatabase(value: unknown): Ticket {
           by: stringValue(event.by, 'System'),
           text: stringValue(event.text, ''),
           ...(state ? { state } : {}),
+          ...(state && typeof event.label === 'string' && event.label ? { label: event.label } : {}),
         }
       })
     : []
@@ -297,6 +299,8 @@ function ticketFromDatabase(value: unknown): Ticket {
     zone: stringValue(row.zone, stringValue(metadata.zone, 'Perimeter')),
     assignee: stringValue(row.assignee, ''),
     creator: stringValue(row.reporter, 'System'),
+    workflowVersionId: typeof row.workflow_version_id === 'string' ? row.workflow_version_id : undefined,
+    workflowState: typeof row.workflow_state === 'string' ? row.workflow_state : undefined,
     platform,
     platformName: typeof row.platform_name === 'string'
       ? row.platform_name
@@ -593,30 +597,29 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     const comment = { at, by, text, ...(attachments?.length ? { attachments } : {}) }
     return log({ ...ticket, comments: [...ticket.comments, comment] }, by, 'Added a comment')
   }), [patch])
-  const transition = useCallback((id: string, state: LifecycleState, input: TransitionInput) => {
-    if (!ticketsRef.current.some((ticket) => ticket.id === id)) return
-    const toState = databaseStatus(STATE_RESULT[state])
+  const performAction = useCallback((id: string, actionId: string, input: WorkflowActionInput): Promise<void> => {
+    if (!ticketsRef.current.some((ticket) => ticket.id === id)) return Promise.reject(new Error('Ticket not found'))
     const previousWrite = writeQueues.current.get(id) ?? Promise.resolve()
-    const write = previousWrite.catch(() => undefined).then(async () => {
-      try {
-        const { data, error } = await supabase.rpc('change_ticket_state', {
-          p_ticket_id: id,
-          p_to_state: toState,
-          p_changed_by: input.by,
-        })
-        if (error) throw new Error(`change_ticket_state failed for ${id}: ${error.message}`)
-        const saved = ticketFromDatabase(Array.isArray(data) ? data[0] : data)
-        const next = ticketsRef.current.map((ticket) => ticket.id === id ? saved : ticket)
-        ticketsRef.current = next
-        setTickets(next)
-      } catch (error) {
-        console.error(`Unable to change state of ticket ${id}:`, error)
-      }
+    const run = previousWrite.catch(() => undefined).then(async () => {
+      const { data, error } = await supabase.rpc('apply_workflow_action', {
+        p_ticket_id: id,
+        p_action_id: actionId,
+        p_changed_by: input.by,
+        p_new_assignee: input.assignee ?? null,
+        p_note: input.note ?? null,
+      })
+      if (error) throw new Error(error.message)
+      const saved = ticketFromDatabase(Array.isArray(data) ? data[0] : data)
+      const next = ticketsRef.current.map((ticket) => ticket.id === id ? saved : ticket)
+      ticketsRef.current = next
+      setTickets(next)
     })
+    const write = run.catch((error) => console.error(`Unable to run action ${actionId} on ticket ${id}:`, error))
     writeQueues.current.set(id, write)
     void write.finally(() => {
       if (writeQueues.current.get(id) === write) writeQueues.current.delete(id)
     })
+    return run
   }, [])
 
   const attachSnapshot = useCallback((id: string, slot: 'before' | 'after', snapshot: Snapshot) => patch(id, (ticket) => {
@@ -625,8 +628,8 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   }), [patch]);
 
   const value = useMemo(
-    () => ({ tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot }),
-    [tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, transition, attachSnapshot],
+    () => ({ tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, attachSnapshot }),
+    [tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, attachSnapshot],
   )
 
   return <TicketsContext.Provider value={value}>{children}</TicketsContext.Provider>

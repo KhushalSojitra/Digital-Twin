@@ -33,22 +33,19 @@ import TicketUpdateDot from './TicketUpdateDot'
 import { TicketDeleteDialog } from './TicketMarkerMenu'
 import { SCOPES, applyTicketQuery, matchesScope, type TicketFilterState, type TicketScope } from './ticketFilters'
 import {
-  LIFECYCLE_LABEL,
-  NEXT_STATES,
   PRIORITY_COLOR,
   PRIORITY_LABEL,
   STATUS_COLOR,
-  STATUS_LABEL,
   STATUS_NEEDS_DARK_TEXT,
   UNASSIGNED,
   isUnassigned,
   lastStateChangeAt,
   ticketContextLabel,
-  type LifecycleState,
   type Ticket,
 } from '../../data/tickets'
 import { formatDateTime, formatRelative } from '../../utils/format'
-import { useTickets } from '../../state/TicketsContext'
+import { useWorkflow } from '../../state/WorkflowContext'
+import { useTicketActions } from './WorkflowActions'
 import { dialogPaperSx } from '../../theme/hud'
 
 interface Props {
@@ -85,7 +82,8 @@ export default function TicketManageDialog({
 }: Props) {
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
-  const { transition } = useTickets()
+  const { stateLabel } = useWorkflow()
+  const ticketActions = useTicketActions(me)
   const [deleting, setDeleting] = useState<Ticket | null>(null)
   const [search, setSearch] = useState('')
   const [filterEl, setFilterEl] = useState<HTMLElement | null>(null)
@@ -203,7 +201,7 @@ export default function TicketManageDialog({
                       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5, mt: 0.5 }}>
                         <Chip
                           size="small"
-                          label={STATUS_LABEL[t.status]}
+                          label={stateLabel(t)}
                           sx={{
                             height: 22,
                             fontSize: 12,
@@ -303,9 +301,9 @@ export default function TicketManageDialog({
                       </IconButton>
                     </Tooltip>
                     {canEdit &&
-                      (NEXT_STATES[t.status] ?? []).slice(0, 2).map((state) => (
-                        <Button key={state} size="small" variant="outlined" onClick={() => transition(t.id, state, { by: me })}>
-                          {LIFECYCLE_LABEL[state as LifecycleState]}
+                      ticketActions.actionsFor(t).slice(0, 2).map((action) => (
+                        <Button key={action.id} size="small" variant="outlined" onClick={() => ticketActions.run(t, action)}>
+                          {action.label}
                         </Button>
                       ))}
                   </Stack>
@@ -317,6 +315,7 @@ export default function TicketManageDialog({
 
       </DialogContent>
       <TicketDeleteDialog ticket={deleting} onClose={() => setDeleting(null)} />
+      {ticketActions.dialog}
     </Dialog>
   )
 }

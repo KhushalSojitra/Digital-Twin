@@ -526,15 +526,38 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
                 : {}
               const hasMetadata = typeof rawCoordinates.metadata === 'object' && rawCoordinates.metadata !== null
               setTickets((previous) => {
-                const next = previous.map((ticket) => ticket.id === updatedTicket.id
-                  ? {
+                const next = previous.map((ticket) => {
+                  if (ticket.id !== updatedTicket.id) return ticket
+                  // Realtime omits unchanged large columns, so a workflow action (which never touches
+                  // ptz_coordinates) arrives without the stored source/location. Keep what the ticket was created with.
+                  if (!hasMetadata) {
+                    return {
                       ...ticket,
                       ...updatedTicket,
-                      followers: hasMetadata ? updatedTicket.followers : ticket.followers,
-                      snapshots: hasMetadata ? updatedTicket.snapshots : ticket.snapshots,
-                      snapshotConfig: hasMetadata ? updatedTicket.snapshotConfig : ticket.snapshotConfig,
+                      source: ticket.source,
+                      cameraId: ticket.cameraId,
+                      cameraName: ticket.cameraName,
+                      siteId: ticket.siteId,
+                      type: ticket.type,
+                      zone: ticket.zone,
+                      platform: ticket.platform,
+                      platformName: ticket.platformName,
+                      followers: ticket.followers,
+                      snapshots: ticket.snapshots,
+                      snapshotConfig: ticket.snapshotConfig,
+                      completion: ticket.completion,
+                      additional: ticket.additional,
+                      pinView: ticket.pinView,
+                      yaw: ticket.yaw,
+                      pitch: ticket.pitch,
+                      zoom: ticket.zoom,
+                      distanceM: ticket.distanceM,
+                      lat: ticket.lat,
+                      lng: ticket.lng,
                     }
-                  : ticket)
+                  }
+                  return { ...ticket, ...updatedTicket }
+                })
                 ticketsRef.current = next
                 return next
               })

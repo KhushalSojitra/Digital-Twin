@@ -119,7 +119,7 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', px: 1.5, py: 1 }}>
-        <Typography sx={{ fontFamily: '"SF Mono", ui-monospace, Menlo, monospace', fontWeight: 700, fontSize: 14 }}>{ticket.id}</Typography>
+
         <Chip
           size="small"
           label={stateLabel(ticket)}

@@ -16,7 +16,7 @@ export default function TicketDetailsDrawer({ ticket, onClose, onGoToLocation }:
         elevation={0}
         square
         role="dialog"
-        aria-label={ticket ? `Ticket ${ticket.id} details` : 'Ticket details'}
+        aria-label={ticket ? `${ticket.title} details` : 'Ticket details'}
         sx={(t) => ({
           position: 'absolute',
           inset: 0,

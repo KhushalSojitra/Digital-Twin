@@ -128,7 +128,7 @@ export default function TicketManageDialog({
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, pb: 2, px: { xs: 1.5, sm: 2 } }}>
         <TextField
           size="small"
-          placeholder="Search ID or title"
+          placeholder="Search tickets"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRoundedIcon fontSize="small" /></InputAdornment> } }}
@@ -246,13 +246,6 @@ export default function TicketManageDialog({
                             State changed {formatRelative(lastStateChangeAt(t))}
                           </Typography>
                         </Tooltip>
-                        <Typography
-                          variant="caption"
-                          color="text.disabled"
-                          sx={{ fontFamily: '"SF Mono", ui-monospace, Menlo, monospace', fontSize: 11 }}
-                        >
-                          {t.id}
-                        </Typography>
                       </Stack>
                     </Box>
                   </Stack>

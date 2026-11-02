@@ -98,7 +98,7 @@ function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: O
       snapshotPreview={location.preview}
       onSnapshotClick={location.view ? () => onPreviewClick?.(location) : undefined}
       activity={[
-        { label: 'Ticket Created', detail: `Reported by ${creator}`, meta: `Opened ${formatDateTime(openedAt)} · Ticket ID assigned on submit` },
+        { label: 'Ticket Created', detail: `Reported by ${creator}`, meta: `Opened ${formatDateTime(openedAt)}` },
         { label: 'Assigned', detail: assignee, meta: 'Assigned on creation' },
         { label: 'Status', detail: 'Open', meta: 'Default status' },
       ]}

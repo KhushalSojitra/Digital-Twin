@@ -77,7 +77,7 @@ export default function TicketShare({ ticket, me }: { ticket: Ticket; me: string
         slotProps={{ paper: { sx: { p: 1.5, width: 300, borderRadius: '14px' } } }}
       >
         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-          Share {ticket.id}
+          Share ticket
         </Typography>
 
         <Select

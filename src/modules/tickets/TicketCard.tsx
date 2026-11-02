@@ -56,8 +56,8 @@ export default function TicketCard({ ticket, selected = false, onOpen, onGoToLoc
         <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
           <TicketGlyph color={STATUS_COLOR[ticket.status]} size={18} critical={ticket.priority === 'critical'} />
           <TicketUpdateDot ticket={ticket} size={9} sx={{ order: 2 }} />
-          <Typography sx={{ fontFamily: '"SF Mono", ui-monospace, Menlo, monospace', fontSize: 12.5, fontWeight: 700 }}>
-            {ticket.id}
+          <Typography sx={{ fontSize: 13, fontWeight: 700 }} noWrap>
+            {ticket.title}
           </Typography>
         </Stack>
         <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>

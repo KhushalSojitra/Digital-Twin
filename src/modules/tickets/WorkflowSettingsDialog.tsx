@@ -104,10 +104,11 @@ export default function WorkflowSettingsDialog({ open, onClose }: { open: boolea
           border: 1,
           borderColor: isActive ? 'primary.main' : 'divider',
           borderRadius: '12px',
-          p: 1.5,
+          px: 1.25,
+          py: 1,
           display: 'flex',
           flexDirection: 'column',
-          gap: 1,
+          gap: 0.5,
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -168,8 +169,8 @@ export default function WorkflowSettingsDialog({ open, onClose }: { open: boolea
         onClose={close}
         fullWidth
         fullScreen={isXs}
-        maxWidth="md"
-        slotProps={{ paper: { sx: { ...dialogPaperSx, height: isXs ? '100%' : 'min(720px, 86dvh)' } } }}
+        maxWidth="lg"
+        slotProps={{ paper: { sx: { ...dialogPaperSx, height: isXs ? '100%' : 'min(640px, 86dvh)' } } }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1.5, pr: 1 }}>
           <Typography variant="h6" component="span" sx={{ flex: 1, minWidth: 0 }}>
@@ -205,31 +206,44 @@ export default function WorkflowSettingsDialog({ open, onClose }: { open: boolea
               </Alert>
             )}
 
-            <Box component="section" aria-labelledby="system-templates-heading">
-              <Typography id="system-templates-heading" variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                System Templates
-              </Typography>
-              <Stack spacing={1}>{systemTemplates.map(renderRow)}</Stack>
-            </Box>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                gap: 2,
+                alignItems: 'start',
+              }}
+            >
+              <Box component="section" aria-labelledby="system-templates-heading">
+                <Box sx={{ display: 'flex', alignItems: 'center', minHeight: 30, mb: 1 }}>
+                  <Typography id="system-templates-heading" variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>
+                    System Templates
+                  </Typography>
+                  <Chip size="small" variant="outlined" label={systemTemplates.length} />
+                </Box>
+                <Stack spacing={1}>{systemTemplates.map(renderRow)}</Stack>
+              </Box>
 
-            <Box component="section" aria-labelledby="customer-templates-heading">
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <Typography id="customer-templates-heading" variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>
-                  Customer Templates
-                </Typography>
-                {canAdminister && (
-                  <Button size="small" startIcon={<AddRoundedIcon />} disabled={busy} onClick={() => setView({ kind: 'editor', template: null })}>
-                    Create
-                  </Button>
+              <Box component="section" aria-labelledby="customer-templates-heading">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 30, mb: 1 }}>
+                  <Typography id="customer-templates-heading" variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>
+                    Customer Templates
+                  </Typography>
+                  <Chip size="small" variant="outlined" label={customerTemplates.length} />
+                  {canAdminister && (
+                    <Button size="small" startIcon={<AddRoundedIcon />} disabled={busy} onClick={() => setView({ kind: 'editor', template: null })}>
+                      Create
+                    </Button>
+                  )}
+                </Box>
+                {customerTemplates.length > 0 ? (
+                  <Stack spacing={1}>{customerTemplates.map(renderRow)}</Stack>
+                ) : (
+                  <Typography variant="body2" color="text.secondary" sx={{ border: 1, borderColor: 'divider', borderStyle: 'dashed', borderRadius: '12px', p: 1.5 }}>
+                    No customer templates yet. Create one, or clone a system template to start from it.
+                  </Typography>
                 )}
               </Box>
-              {customerTemplates.length > 0 ? (
-                <Stack spacing={1}>{customerTemplates.map(renderRow)}</Stack>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  No customer templates yet. Create one, or clone a system template to start from it.
-                </Typography>
-              )}
             </Box>
           </DialogContent>
         ) : (

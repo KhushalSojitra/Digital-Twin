@@ -1,5 +1,6 @@
 import { Box, Tooltip } from '@mui/material'
-import { STATUS_COLOR, STATUS_LABEL, type Ticket } from '../../data/tickets'
+import { STATUS_COLOR, type Ticket } from '../../data/tickets'
+import { useWorkflow } from '../../state/WorkflowContext'
 import TicketHoverCopy from '../tickets/TicketHoverCopy'
 import TicketUpdateDot from '../tickets/TicketUpdateDot'
 import TicketGlyph from '../../components/TicketGlyph'
@@ -16,12 +17,13 @@ interface Props {
 export default function TicketPin({ ticket, selected, onClick }: Props) {
   const { ticketSize, earthTicketPreview } = useTicketQuery()
   const { onContextMenu, menu } = useTicketMarkerMenu()
+  const { stateLabel } = useWorkflow()
   const color = STATUS_COLOR[ticket.status]
   const px = TICKET_SIZE_PX[ticketSize]
   const pin = (
     <Box
       role="button"
-      aria-label={`${ticket.title}: ${STATUS_LABEL[ticket.status]}`}
+      aria-label={`${ticket.title}: ${stateLabel(ticket)}`}
       data-ticket-preview={earthTicketPreview ? 'open' : 'hover'}
       onClick={(e) => {
         e.stopPropagation()

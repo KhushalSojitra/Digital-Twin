@@ -32,7 +32,8 @@ import TicketDetailsDrawer from './TicketDetailsDrawer'
 import NewTicketPanel, { type TicketDraft } from './NewTicketPanel'
 import ImprovementSummary from './ImprovementSummary'
 import { useTicketQuery } from '../../state/TicketQueryContext'
-import { TABS, activeFilterCount, applyTicketQuery, type TicketTab } from './ticketFilters'
+import { activeFilterCount, applyTicketQuery, buildTabs, type TicketTab } from './ticketFilters'
+import { useWorkflow } from '../../state/WorkflowContext'
 
 export const TICKET_RAIL_WIDTH = 44
 
@@ -77,12 +78,15 @@ export default function TicketWorkspace({
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [summaryOpen, setSummaryOpen] = useState(false)
 
+  const { stateOptions, activeVersion } = useWorkflow()
+  const tabs = useMemo(() => buildTabs(stateOptions), [stateOptions])
+  const initialStateKey = activeVersion?.definition.initial
   const openCount = useMemo(() => tickets.filter((t) => t.status === 'open').length, [tickets])
   const query = useMemo(() => ({ tab, search, filters, me: creator, assignedToMe }), [tab, search, filters, creator, assignedToMe])
   const counts = useMemo(
     () =>
-      Object.fromEntries(TABS.map((t) => [t.id, applyTicketQuery(tickets, { ...query, tab: t.id }).length])) as Record<TicketTab, number>,
-    [tickets, query],
+      Object.fromEntries(tabs.map((t) => [t.id, applyTicketQuery(tickets, { ...query, tab: t.id }).length])) as Record<TicketTab, number>,
+    [tickets, query, tabs],
   )
   const visible = useMemo(() => applyTicketQuery(tickets, query), [tickets, query])
   const selected = tickets.find((t) => t.id === selectedId) ?? null
@@ -199,7 +203,7 @@ export default function TicketWorkspace({
               '& .MuiTabs-scrollButtons': { width: 22 },
             }}
           >
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <Tab
                 key={t.id}
                 value={t.id}
@@ -292,9 +296,9 @@ export default function TicketWorkspace({
                 <Typography variant="caption" color="text.secondary">
                   {search || filterCount > 0 || assignedToMe
                     ? 'Try a different search or clear the filters.'
-                    : `No ${TABS.find((t) => t.id === tab)?.label.toLowerCase()} tickets for this camera.`}
+                    : `No ${(tabs.find((t) => t.id === tab)?.label ?? '').toLowerCase()} tickets for this camera.`}
                 </Typography>
-                {!search && filterCount === 0 && tab === 'open' && (
+                {!search && filterCount === 0 && tab === initialStateKey && (
                   <Box sx={{ mt: 1 }}>
                     <Button size="small" startIcon={<AddRoundedIcon />} onClick={onStartPlacing}>
                       New ticket

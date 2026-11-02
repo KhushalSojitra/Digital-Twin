@@ -1,6 +1,7 @@
 import { Box, Button, FormControl, InputLabel, MenuItem, Select, Stack, TextField } from '@mui/material'
 import { ALL_DEVICES } from '../../data/cameras'
-import { ASSIGNEES, CREATORS, STATUS_LABEL, type TicketStatus } from '../../data/tickets'
+import { ASSIGNEES, CREATORS } from '../../data/tickets'
+import { useWorkflow } from '../../state/WorkflowContext'
 import { EMPTY_FILTERS, type TicketFilterState } from './ticketFilters'
 
 interface Props {
@@ -48,6 +49,7 @@ function FilterSelect({
 }
 
 export default function TicketFilters({ value, onChange, hide = [] }: Props) {
+  const { stateOptions } = useWorkflow()
   const show = (k: keyof TicketFilterState) => !hide.includes(k)
   const set = <K extends keyof TicketFilterState>(key: K, v: TicketFilterState[K]) => onChange({ ...value, [key]: v })
 
@@ -78,8 +80,8 @@ export default function TicketFilters({ value, onChange, hide = [] }: Props) {
           <FilterSelect
             label="Status"
             value={value.status}
-            options={(Object.keys(STATUS_LABEL) as TicketStatus[]).map((s) => ({ value: s, label: STATUS_LABEL[s] }))}
-            onChange={(v) => set('status', v as TicketStatus | '')}
+            options={stateOptions.map((state) => ({ value: state.key, label: state.label }))}
+            onChange={(v) => set('status', v)}
           />
         )}
         {show('cameraId') && (

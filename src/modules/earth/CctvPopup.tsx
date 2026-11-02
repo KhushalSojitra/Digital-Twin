@@ -5,7 +5,8 @@ import FullscreenRoundedIcon from '@mui/icons-material/FullscreenRounded'
 import FullscreenExitRoundedIcon from '@mui/icons-material/FullscreenExitRounded'
 import ConfirmationNumberOutlinedIcon from '@mui/icons-material/ConfirmationNumberOutlined'
 import type { CameraDevice, CameraSite } from '../../data/cameras'
-import { isHistoricalTicket, STATUS_COLOR, STATUS_LABEL, type Ticket } from '../../data/tickets'
+import { isHistoricalTicket, STATUS_COLOR, type Ticket } from '../../data/tickets'
+import { useWorkflow } from '../../state/WorkflowContext'
 import PanoramaViewer from './PanoramaViewer'
 import TicketMarkerLayer, { type DraftMarker } from './TicketMarkerLayer'
 import type { ViewerApi } from './viewerProjection'
@@ -136,6 +137,7 @@ function FixedFeed({
 }
 
 export default function CctvPopup({ device, site, anchor, tickets, canEdit, liveTicketView, draft, apiRef, onClose, onCreate, onOpenTicket }: Props) {
+  const { stateLabel } = useWorkflow()
   const [fullscreen, setFullscreen] = useState(false)
   const [pinning, setPinning] = useState(false)
   const openTickets = tickets.filter((t) => !isHistoricalTicket(t))
@@ -277,7 +279,7 @@ export default function CctvPopup({ device, site, anchor, tickets, canEdit, live
               <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: STATUS_COLOR[ticket.status], mr: 1.25, flexShrink: 0 }} />
               <ListItemText
                 primary={ticket.title}
-                secondary={STATUS_LABEL[ticket.status]}
+                secondary={stateLabel(ticket)}
                 slotProps={{ primary: { noWrap: true, sx: { fontSize: 13, fontWeight: 600 } }, secondary: { sx: { fontSize: 11.5 } } }}
               />
               <TicketUpdateDot ticket={ticket} size={9} sx={{ ml: 1 }} />

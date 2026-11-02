@@ -1,6 +1,7 @@
 import { Avatar, Chip, IconButton, Paper, Stack, Tooltip, Typography } from '@mui/material'
 import MyLocationRoundedIcon from '@mui/icons-material/MyLocationRounded'
-import { PRIORITY_COLOR, PRIORITY_LABEL, STATUS_COLOR, STATUS_LABEL, STATUS_NEEDS_DARK_TEXT, type Ticket } from '../../data/tickets'
+import { PRIORITY_COLOR, PRIORITY_LABEL, STATUS_COLOR, STATUS_NEEDS_DARK_TEXT, type Ticket } from '../../data/tickets'
+import { useWorkflow } from '../../state/WorkflowContext'
 import { formatRelative, initials } from '../../utils/format'
 import TicketGlyph from '../../components/TicketGlyph'
 import TicketUpdateDot from './TicketUpdateDot'
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function TicketCard({ ticket, selected = false, onOpen, onGoToLocation }: Props) {
+  const { stateLabel } = useWorkflow()
   return (
     <Paper
       elevation={0}
@@ -61,7 +63,7 @@ export default function TicketCard({ ticket, selected = false, onOpen, onGoToLoc
         <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
           <Chip
             size="small"
-            label={STATUS_LABEL[ticket.status]}
+            label={stateLabel(ticket)}
             sx={{
               height: 20,
               fontSize: 10.5,

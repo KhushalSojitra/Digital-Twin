@@ -3,7 +3,8 @@ import { Box, Tooltip } from '@mui/material'
 import TicketHoverCopy from '../tickets/TicketHoverCopy'
 import TicketUpdateDot from '../tickets/TicketUpdateDot'
 import LocationOnRoundedIcon from '@mui/icons-material/LocationOnRounded'
-import { PRIORITY_LABEL, STATUS_COLOR, STATUS_LABEL, type Ticket } from '../../data/tickets'
+import { PRIORITY_LABEL, STATUS_COLOR, type Ticket } from '../../data/tickets'
+import { useWorkflow } from '../../state/WorkflowContext'
 import TicketGlyph from '../../components/TicketGlyph'
 import { useViewerFrame, type Projector } from './viewerProjection'
 import { TICKET_SIZE_PX } from '../tickets/ticketFilters'
@@ -29,6 +30,7 @@ const DRAFT_KEY = '__draft'
 const TARGET_KEY = '__target'
 
 export default function TicketMarkerLayer({ tickets, selectedId, targetId = null, draft = null, compact = false, onSelect }: Props) {
+  const { stateLabel } = useWorkflow()
   const { ticketSize } = useTicketQuery()
   const { onContextMenu, menu } = useTicketMarkerMenu()
   const nodes = useRef(new Map<string, HTMLElement>())
@@ -110,7 +112,7 @@ export default function TicketMarkerLayer({ tickets, selectedId, targetId = null
             <Box
               ref={register(t.id)}
               role="button"
-              aria-label={`${t.title}: ${STATUS_LABEL[t.status]}, ${PRIORITY_LABEL[t.priority]} priority`}
+              aria-label={`${t.title}: ${stateLabel(t)}, ${PRIORITY_LABEL[t.priority]} priority`}
               onClick={(e) => {
                 e.stopPropagation()
                 onSelect(t)

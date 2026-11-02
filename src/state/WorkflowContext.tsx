@@ -6,6 +6,7 @@ import {
   parseVersion,
   stateOf,
   type WorkflowDefinition,
+  type WorkflowState,
   type WorkflowTemplate,
   type WorkflowTransition,
   type WorkflowVersion,
@@ -21,6 +22,8 @@ interface WorkflowValue {
   saveTemplate: (templateId: string | null, name: string, description: string, definition: WorkflowDefinition) => Promise<void>
   activateTemplate: (templateId: string) => Promise<void>
   deleteTemplate: (templateId: string) => Promise<void>
+  /** Every state defined by any workflow version, active workflow first. Drives tabs and filters. */
+  stateOptions: WorkflowState[]
   versionFor: (ticket: Pick<Ticket, 'workflowVersionId'>) => WorkflowVersion | undefined
   /** The workflow's own name for the ticket's current state. */
   stateLabel: (ticket: Pick<Ticket, 'workflowVersionId' | 'workflowState' | 'status'>) => string
@@ -103,11 +106,25 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
     const activeTemplate = templates.find((template) => template.versions.some((version) => version.isActive)) ?? null
     const activeVersion = activeTemplate?.versions.find((version) => version.isActive) ?? null
     const versionFor: WorkflowValue['versionFor'] = (ticket) => (ticket.workflowVersionId ? versionsById.get(ticket.workflowVersionId) : undefined)
+    const stateOptions: WorkflowState[] = []
+    const seen = new Set<string>()
+    const orderedVersions = [
+      ...(activeVersion ? [activeVersion] : []),
+      ...templates.flatMap((template) => template.versions).filter((version) => version.id !== activeVersion?.id),
+    ]
+    for (const version of orderedVersions) {
+      for (const state of version.definition.states) {
+        if (seen.has(state.key)) continue
+        seen.add(state.key)
+        stateOptions.push(state)
+      }
+    }
     return {
       loading,
       templates,
       activeTemplate,
       activeVersion,
+      stateOptions,
       refresh,
       saveTemplate,
       activateTemplate,

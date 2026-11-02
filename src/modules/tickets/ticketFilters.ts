@@ -1,18 +1,27 @@
-import { isUnassigned, type Ticket, type TicketPriority, type TicketStatus } from '../../data/tickets'
+import { isUnassigned, type Ticket, type TicketPriority } from '../../data/tickets'
+import type { WorkflowState } from '../../data/workflows'
 
-export type TicketTab = TicketStatus | 'following' | 'all'
+/** 'all', 'following', or the key of a workflow state. */
+export type TicketTab = string
 
-export const TABS: { id: TicketTab; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'open', label: 'To Do' },
-  { id: 'in_progress', label: 'In Progress' },
-  { id: 'done', label: 'Done' },
-  { id: 'accepted', label: 'Accepted' },
-  { id: 'failed', label: 'Failed' },
-]
+export interface TicketTabOption {
+  id: TicketTab
+  label: string
+}
+
+/** Tabs come from the workflow definitions, never from a fixed list. */
+export function buildTabs(states: WorkflowState[]): TicketTabOption[] {
+  return [{ id: 'all', label: 'All' }, ...states.map((state) => ({ id: state.key, label: state.label }))]
+}
+
+/** The ticket's workflow state; tickets without a workflow fall back to their status group. */
+export function ticketStateKey(ticket: Pick<Ticket, 'workflowState' | 'status'>) {
+  return ticket.workflowState ?? ticket.status
+}
 
 export interface TicketFilterState {
-  status: TicketStatus | ''
+  /** Workflow state key. */
+  status: string
   cameraId: string
   assignee: string
   creator: string
@@ -50,10 +59,10 @@ export function applyTicketQuery(tickets: Ticket[], { tab, search, filters: f, m
   const to = f.to ? new Date(f.to).getTime() + 86_400_000 - 1 : null
 
   return tickets
-    .filter((t) => tab === 'all' || (tab === 'following' ? (t.followers ?? []).includes(me) : t.status === tab))
+    .filter((t) => tab === 'all' || (tab === 'following' ? (t.followers ?? []).includes(me) : ticketStateKey(t) === tab))
     .filter((t) => !assignedToMe || t.assignee === me)
     .filter((t) => !q || t.id.toLowerCase().includes(q) || t.title.toLowerCase().includes(q))
-    .filter((t) => !f.status || t.status === f.status)
+    .filter((t) => !f.status || ticketStateKey(t) === f.status)
     .filter((t) => !f.cameraId || t.cameraId === f.cameraId)
     .filter((t) => !f.assignee || t.assignee === f.assignee)
     .filter((t) => !f.creator || t.creator === f.creator)

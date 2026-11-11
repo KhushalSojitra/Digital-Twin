@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import {
   Badge,
   Box,
@@ -127,6 +127,35 @@ interface Props {
   onGoToCamera?: (ticket: Ticket) => void
 }
 
+/** useState that restores its value from localStorage (when valid) and saves every change. */
+function usePersistedState<T>(key: string, fallback: T, isValid: (value: T) => boolean) {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const stored = window.localStorage.getItem(key)
+      if (stored === null) return fallback
+      const parsed = JSON.parse(stored) as T
+      return isValid(parsed) ? parsed : fallback
+    } catch {
+      return fallback
+    }
+  })
+  const update = useCallback(
+    (next: T | ((prev: T) => T)) => {
+      setValue((prev) => {
+        const resolved = typeof next === 'function' ? (next as (p: T) => T)(prev) : next
+        try {
+          window.localStorage.setItem(key, JSON.stringify(resolved))
+        } catch {
+          // Storage can be unavailable (private mode); the preference still applies for this session.
+        }
+        return resolved
+      })
+    },
+    [key],
+  )
+  return [value, update] as const
+}
+
 const popoverZ = (t: { zIndex: { modal: number } }) => t.zIndex.modal + 6
 
 export default function TicketManageDialog({
@@ -153,10 +182,20 @@ export default function TicketManageDialog({
   const [filterEl, setFilterEl] = useState<HTMLElement | null>(null)
   const [columnsEl, setColumnsEl] = useState<HTMLElement | null>(null)
   const [menu, setMenu] = useState<{ anchor: HTMLElement; ticket: Ticket } | null>(null)
-  const [scope, setScope] = useState<TicketScope>('all')
-  const [visibleColumns, setVisibleColumns] = useState<ColumnId[]>(DEFAULT_VISIBLE)
-  const [sort, setSort] = useState<SortState | null>(null)
-  const [pageSize, setPageSize] = useState(10)
+  const [scope, setScope] = usePersistedState<TicketScope>('oe.manage.scope', 'all', (v) =>
+    SCOPES.some((s) => s.id === v),
+  )
+  const [visibleColumns, setVisibleColumns] = usePersistedState<ColumnId[]>(
+    'oe.manage.columns',
+    DEFAULT_VISIBLE,
+    (v) => Array.isArray(v) && v.length > 0 && v.every((id) => COLUMNS.some((c) => c.id === id)),
+  )
+  const [sort, setSort] = usePersistedState<SortState | null>(
+    'oe.manage.sort',
+    null,
+    (v) => v === null || (!!v && COLUMNS.some((c) => c.id === v.id) && (v.direction === 'asc' || v.direction === 'desc')),
+  )
+  const [pageSize, setPageSize] = usePersistedState<number>('oe.manage.pageSize', 10, (v) => PAGE_SIZES.includes(v))
   const [page, setPage] = useState(1)
 
   const nextActionLabel = (t: Ticket) => {

@@ -30,6 +30,26 @@ const TicketQueryContext = createContext<TicketQueryValue | null>(null)
 const EARTH_VIEW_KEY = 'oe.earth.ticketView'
 const EARTH_PREVIEW_KEY = 'oe.earth.ticketPreview'
 
+const LIVE_VIEW_KEY = 'oe.live.ticketView'
+const TICKET_SIZE_KEY = 'oe.tickets.size'
+
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    const stored = window.localStorage.getItem(key)
+    return stored === null ? fallback : (JSON.parse(stored) as T)
+  } catch {
+    return fallback
+  }
+}
+
+function writeJson(key: string, value: unknown) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Storage can be unavailable (private mode); the setting still works for this session.
+  }
+}
+
 function readFlag(key: string, fallback: boolean): boolean {
   try {
     const stored = window.localStorage.getItem(key)
@@ -57,17 +77,30 @@ export function TicketQueryProvider({ children }: { children: ReactNode }) {
     setEarthTicketViewState(on)
     writeFlag(EARTH_VIEW_KEY, on)
   }, [])
-  const [liveTicketView, setLiveTicketView] = useState<Record<string, boolean>>({})
+  const [liveTicketView, setLiveTicketView] = useState<Record<string, boolean>>(() =>
+    readJson<Record<string, boolean>>(LIVE_VIEW_KEY, {}),
+  )
   const [earthTicketPreview, setEarthTicketPreviewState] = useState(() => readFlag(EARTH_PREVIEW_KEY, true))
   const setEarthTicketPreview = useCallback((on: boolean) => {
     setEarthTicketPreviewState(on)
     writeFlag(EARTH_PREVIEW_KEY, on)
   }, [])
-  const [ticketSize, setTicketSize] = useState<TicketPinSize>('medium')
+  const [ticketSize, setTicketSizeState] = useState<TicketPinSize>(() => {
+    const stored = readJson<string>(TICKET_SIZE_KEY, 'medium')
+    return stored === 'small' || stored === 'large' ? stored : 'medium'
+  })
+  const setTicketSize = useCallback((size: TicketPinSize) => {
+    setTicketSizeState(size)
+    writeJson(TICKET_SIZE_KEY, size)
+  }, [])
 
   const isLiveTicketView = (siteId: string) => liveTicketView[siteId] !== false
   const toggleLiveTicketView = (siteId: string) =>
-    setLiveTicketView((prev) => ({ ...prev, [siteId]: prev[siteId] === false }))
+    setLiveTicketView((prev) => {
+      const next = { ...prev, [siteId]: prev[siteId] === false }
+      writeJson(LIVE_VIEW_KEY, next)
+      return next
+    })
 
   const value = useMemo(
     () => ({

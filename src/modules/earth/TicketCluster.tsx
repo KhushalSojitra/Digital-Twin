@@ -1,6 +1,5 @@
 import { Box, Tooltip, Typography } from '@mui/material'
 import { STATUS_COLOR, STATUS_LABEL, type Ticket, type TicketStatus } from '../../data/tickets'
-import { TICKET_SIZE_PX } from '../tickets/ticketFilters'
 import TicketUpdateDot from '../tickets/TicketUpdateDot'
 import { useTicketQuery } from '../../state/TicketQueryContext'
 
@@ -48,7 +47,7 @@ export default function TicketCluster({ siteName, tickets, onClick }: Props) {
   const { ticketSize, earthTicketPreview } = useTicketQuery()
   const counts = ORDER.map((status) => ({ status, n: tickets.filter((t) => t.status === status).length })).filter((s) => s.n > 0)
   const lead = counts[0]?.status ?? 'open'
-  const px = Math.round(TICKET_SIZE_PX[ticketSize] * (40 / 28))
+  const px = Math.round(ticketSize * (40 / 28))
 
   const badge = (
     <Box

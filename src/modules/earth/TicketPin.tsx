@@ -4,7 +4,6 @@ import { useWorkflow } from '../../state/WorkflowContext'
 import TicketHoverCopy from '../tickets/TicketHoverCopy'
 import TicketUpdateDot from '../tickets/TicketUpdateDot'
 import TicketGlyph from '../../components/TicketGlyph'
-import { TICKET_SIZE_PX } from '../tickets/ticketFilters'
 import { useTicketQuery } from '../../state/TicketQueryContext'
 import { useTicketMarkerMenu } from '../tickets/TicketMarkerMenu'
 
@@ -19,7 +18,7 @@ export default function TicketPin({ ticket, selected, onClick }: Props) {
   const { onContextMenu, menu } = useTicketMarkerMenu()
   const { stateLabel } = useWorkflow()
   const color = STATUS_COLOR[ticket.status]
-  const px = TICKET_SIZE_PX[ticketSize]
+  const px = ticketSize
   const pin = (
     <Box
       role="button"

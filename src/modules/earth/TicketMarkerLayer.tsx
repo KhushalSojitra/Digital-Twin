@@ -7,7 +7,6 @@ import { PRIORITY_LABEL, STATUS_COLOR, type Ticket } from '../../data/tickets'
 import { useWorkflow } from '../../state/WorkflowContext'
 import TicketGlyph from '../../components/TicketGlyph'
 import { useViewerFrame, type Projector } from './viewerProjection'
-import { TICKET_SIZE_PX } from '../tickets/ticketFilters'
 import { useTicketQuery } from '../../state/TicketQueryContext'
 import { useTicketMarkerMenu } from '../tickets/TicketMarkerMenu'
 
@@ -68,7 +67,7 @@ export default function TicketMarkerLayer({ tickets, selectedId, targetId = null
     else nodes.current.delete(key)
   }
 
-  const size = Math.round(TICKET_SIZE_PX[ticketSize] * (compact ? 16 / 28 : 24 / 28))
+  const size = Math.round(ticketSize * (compact ? 16 / 28 : 24 / 28))
   const target = targetId ? tickets.find((t) => t.id === targetId) : null
 
   return (

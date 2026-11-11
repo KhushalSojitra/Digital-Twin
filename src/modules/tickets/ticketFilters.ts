@@ -98,12 +98,15 @@ export function matchesScope(t: Ticket, scope: TicketScope, me: string) {
   }
 }
 
-export type TicketPinSize = 'small' | 'medium' | 'large'
+/** Ticket pin diameter in px, chosen on a continuous slider. */
+export type TicketPinSize = number
 
-export const TICKET_SIZE_PX: Record<TicketPinSize, number> = { small: 20, medium: 28, large: 36 }
+export const TICKET_SIZE_MIN = 16
+export const TICKET_SIZE_MAX = 40
+export const TICKET_SIZE_DEFAULT = Math.round((TICKET_SIZE_MIN + TICKET_SIZE_MAX) / 2)
 
-export const TICKET_SIZE_LABEL: Record<TicketPinSize, string> = {
-  small: 'Small',
-  medium: 'Medium',
-  large: 'Large',
+export function clampTicketSize(value: unknown): TicketPinSize {
+  const n = typeof value === 'number' ? value : Number.NaN
+  if (!Number.isFinite(n)) return TICKET_SIZE_DEFAULT
+  return Math.min(TICKET_SIZE_MAX, Math.max(TICKET_SIZE_MIN, Math.round(n)))
 }

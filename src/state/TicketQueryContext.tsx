@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
-import { EMPTY_FILTERS, type TicketFilterState, type TicketPinSize, type TicketTab } from '../modules/tickets/ticketFilters'
+import { EMPTY_FILTERS, TICKET_SIZE_DEFAULT, clampTicketSize, type TicketFilterState, type TicketPinSize, type TicketTab } from '../modules/tickets/ticketFilters'
 
 /**
  * The ticket query lives above Earth and Live View so the operator's tab, search, filters and
@@ -85,13 +85,13 @@ export function TicketQueryProvider({ children }: { children: ReactNode }) {
     setEarthTicketPreviewState(on)
     writeFlag(EARTH_PREVIEW_KEY, on)
   }, [])
-  const [ticketSize, setTicketSizeState] = useState<TicketPinSize>(() => {
-    const stored = readJson<string>(TICKET_SIZE_KEY, 'medium')
-    return stored === 'small' || stored === 'large' ? stored : 'medium'
-  })
+  const [ticketSize, setTicketSizeState] = useState<TicketPinSize>(() =>
+    clampTicketSize(readJson<unknown>(TICKET_SIZE_KEY, TICKET_SIZE_DEFAULT)),
+  )
   const setTicketSize = useCallback((size: TicketPinSize) => {
-    setTicketSizeState(size)
-    writeJson(TICKET_SIZE_KEY, size)
+    const next = clampTicketSize(size)
+    setTicketSizeState(next)
+    writeJson(TICKET_SIZE_KEY, next)
   }, [])
 
   const isLiveTicketView = (siteId: string) => liveTicketView[siteId] !== false

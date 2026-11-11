@@ -1,15 +1,15 @@
 import { useState } from 'react'
 import {
   Badge,
-  FormControlLabel,
+  Box,
   IconButton,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
   Popover,
-  Radio,
-  RadioGroup,
+  Slider,
+  Stack,
   Tooltip,
   Typography,
   type SxProps,
@@ -28,7 +28,7 @@ import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined'
 import TicketFilters from './TicketFilters'
 import WorkflowSettingsDialog from './WorkflowSettingsDialog'
 import ImprovementSummary from './ImprovementSummary'
-import { TICKET_SIZE_LABEL, activeFilterCount, type TicketFilterState, type TicketPinSize } from './ticketFilters'
+import { TICKET_SIZE_DEFAULT, TICKET_SIZE_MAX, TICKET_SIZE_MIN, activeFilterCount, type TicketFilterState, type TicketPinSize } from './ticketFilters'
 import type { Ticket } from '../../data/tickets'
 
 interface Props {
@@ -58,7 +58,7 @@ export default function TicketMenu({
   onToggleTicketView,
   ticketPreviewEnabled,
   onToggleTicketPreview,
-  ticketSize = 'medium',
+  ticketSize = TICKET_SIZE_DEFAULT,
   onTicketSizeChange,
   buttonSx,
 }: Props) {
@@ -173,7 +173,7 @@ export default function TicketMenu({
             <ListItemIcon>
               <StraightenOutlinedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Ticket size · {TICKET_SIZE_LABEL[ticketSize]}</ListItemText>
+            <ListItemText>Ticket size · {ticketSize}px</ListItemText>
           </MenuItem>
         )}
       </Menu>
@@ -201,14 +201,34 @@ export default function TicketMenu({
         {kind === 'trends' && <ImprovementSummary tickets={tickets} scopeLabel={scopeLabel} dense />}
         {kind === 'size' && onTicketSizeChange && (
           <>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-              Ticket size
-            </Typography>
-            <RadioGroup value={ticketSize} onChange={(_, next) => onTicketSizeChange(next as TicketPinSize)}>
-              {(Object.keys(TICKET_SIZE_LABEL) as TicketPinSize[]).map((size) => (
-                <FormControlLabel key={size} value={size} control={<Radio size="small" />} label={TICKET_SIZE_LABEL[size]} />
-              ))}
-            </RadioGroup>
+            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline', px: 0.5 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                Ticket size
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {ticketSize}px
+              </Typography>
+            </Stack>
+            <Box sx={{ px: 1.5, pt: 0.5 }}>
+              <Slider
+                size="small"
+                aria-label="Ticket size"
+                value={ticketSize}
+                min={TICKET_SIZE_MIN}
+                max={TICKET_SIZE_MAX}
+                step={1}
+                onChange={(_, next) => onTicketSizeChange(next as number)}
+                valueLabelDisplay="auto"
+              />
+            </Box>
+            <Stack direction="row" sx={{ justifyContent: 'space-between', px: 0.5 }}>
+              <Typography variant="caption" color="text.disabled">
+                Small
+              </Typography>
+              <Typography variant="caption" color="text.disabled">
+                Large
+              </Typography>
+            </Stack>
           </>
         )}
       </Popover>

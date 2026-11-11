@@ -6,6 +6,7 @@ import { TicketsProvider } from './state/TicketsContext'
 import { WorkflowProvider } from './state/WorkflowContext'
 import { TicketReadsProvider } from './state/TicketReadsContext'
 import { TicketQueryProvider } from './state/TicketQueryContext'
+import { PreferencesProvider } from './state/PreferencesContext'
 import { IntegrationsProvider } from './state/IntegrationsContext'
 import AppShell from './layout/AppShell'
 import LoginPage from './pages/LoginPage'
@@ -24,6 +25,7 @@ export default function App() {
   return (
     <ThemeModeProvider>
       <AuthProvider>
+        <PreferencesProvider>
         <CameraSelectionProvider>
           <WorkflowProvider>
           <TicketsProvider>
@@ -51,6 +53,7 @@ export default function App() {
           </TicketsProvider>
           </WorkflowProvider>
         </CameraSelectionProvider>
+        </PreferencesProvider>
       </AuthProvider>
     </ThemeModeProvider>
   )

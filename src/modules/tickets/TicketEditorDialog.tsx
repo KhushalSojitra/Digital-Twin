@@ -152,6 +152,7 @@ function CreateForm({
   const [touched, setTouched] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createError, setCreateError] = useState('')
+  const [workflowTemplateId, setWorkflowTemplateId] = useState<string | undefined>()
   const snapshotPolicy = defaultIntegration.snapshotPolicy
   const [proof, setProof] = useState(snapshotPolicy !== 'disabled')
   const [snapshotPreview] = useState<string | null>(() => {
@@ -193,6 +194,7 @@ function CreateForm({
         pitch: draft.pitch,
         zoom: draft.zoom,
         pinView: view,
+        workflowTemplateId,
       })
     } catch (error) {
       setCreateError(error instanceof Error ? error.message : 'Ticket could not be saved to the cloud.')
@@ -237,6 +239,8 @@ function CreateForm({
       isSubmitting={isSubmitting}
       onSubmit={submit}
       onClose={onClose}
+      workflowTemplateId={workflowTemplateId}
+      onWorkflowTemplateChange={setWorkflowTemplateId}
     />
   )
 }

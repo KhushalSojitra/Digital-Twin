@@ -42,7 +42,16 @@ function failureMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
-export default function WorkflowSettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+interface WorkflowSettingsDialogProps {
+  open: boolean
+  onClose: () => void
+  /** The workflow template this ticket uses (or will use once created). */
+  selectedTemplateId: string | null
+  /** Switches the ticket onto a template. Omit when the viewer may not change this ticket's workflow. */
+  onSelectTemplate?: (templateId: string) => Promise<void>
+}
+
+export default function WorkflowSettingsDialog({ open, onClose, selectedTemplateId, onSelectTemplate }: WorkflowSettingsDialogProps) {
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
   const { currentUser } = useAuth()
@@ -96,13 +105,14 @@ export default function WorkflowSettingsDialog({ open, onClose }: { open: boolea
 
   const renderRow = (template: WorkflowTemplate) => {
     const isActive = activeTemplate?.id === template.id
+    const isSelected = selectedTemplateId === template.id
     const editable = canAdminister && !template.isSystem
     return (
       <Box
         key={template.id}
         sx={{
           border: 1,
-          borderColor: isActive ? 'primary.main' : 'divider',
+          borderColor: isSelected ? 'primary.main' : 'divider',
           borderRadius: '12px',
           px: 1.25,
           py: 1,
@@ -115,7 +125,8 @@ export default function WorkflowSettingsDialog({ open, onClose }: { open: boolea
           <Typography variant="subtitle2" sx={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>
             {template.name}
           </Typography>
-          {isActive && <Chip size="small" color="primary" icon={<CheckCircleRoundedIcon />} label="Active" />}
+          {isSelected && <Chip size="small" color="primary" icon={<CheckCircleRoundedIcon />} label="This ticket" />}
+          {isActive && <Chip size="small" variant="outlined" label="Default" />}
           {template.isSystem && <Chip size="small" variant="outlined" icon={<LockOutlinedIcon />} label="System" />}
         </Box>
         {template.description && (
@@ -127,9 +138,14 @@ export default function WorkflowSettingsDialog({ open, onClose }: { open: boolea
           {flowSummary(template)}
         </Typography>
         <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', rowGap: 0.5, alignItems: 'center' }}>
+          {onSelectTemplate && !isSelected && (
+            <Button size="small" variant="contained" disabled={busy} onClick={() => void run(() => onSelectTemplate(template.id))}>
+              Use for this ticket
+            </Button>
+          )}
           {canAdminister && !isActive && (
             <Button size="small" variant="outlined" disabled={busy} onClick={() => void run(() => activateTemplate(template.id))}>
-              Activate
+              Set as default
             </Button>
           )}
           <Button
@@ -170,6 +186,7 @@ export default function WorkflowSettingsDialog({ open, onClose }: { open: boolea
         fullWidth
         fullScreen={isXs}
         maxWidth="lg"
+        sx={{ zIndex: (t) => t.zIndex.modal + 30 }}
         slotProps={{ paper: { sx: { ...dialogPaperSx, height: isXs ? '100%' : 'min(640px, 86dvh)' } } }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1.5, pr: 1 }}>
@@ -185,13 +202,14 @@ export default function WorkflowSettingsDialog({ open, onClose }: { open: boolea
           <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pb: 2, px: { xs: 1.5, sm: 2 } }}>
             <Box sx={{ borderRadius: '12px', bgcolor: 'action.hover', px: 1.5, py: 1.25 }}>
               <Typography variant="caption" color="text.secondary">
-                Active workflow
+                Workflow for this ticket
               </Typography>
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                {loading ? 'Loading…' : (activeTemplate?.name ?? 'None')}
+                {loading ? 'Loading…' : (templates.find((template) => template.id === selectedTemplateId)?.name ?? 'None')}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                New tickets use the active workflow. Existing tickets keep the workflow they were created with.
+                Each ticket has its own workflow. New tickets start on the default workflow
+                {activeTemplate ? ` (${activeTemplate.name})` : ''}.
               </Typography>
             </Box>
 
@@ -263,7 +281,7 @@ export default function WorkflowSettingsDialog({ open, onClose }: { open: boolea
         )}
       </Dialog>
 
-      <Dialog open={Boolean(deleting)} onClose={() => !busy && setDeleting(null)} maxWidth="xs" fullWidth sx={{ zIndex: (t) => t.zIndex.modal + 12 }}>
+      <Dialog open={Boolean(deleting)} onClose={() => !busy && setDeleting(null)} maxWidth="xs" fullWidth sx={{ zIndex: (t) => t.zIndex.modal + 40 }}>
         <DialogTitle>Delete workflow?</DialogTitle>
         <DialogContent>
           <DialogContentText>

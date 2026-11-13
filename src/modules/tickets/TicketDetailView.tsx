@@ -45,6 +45,7 @@ import { formatDateTime } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
 import { useWorkflow } from '../../state/WorkflowContext'
 import { useTicketActions } from './WorkflowActions'
+import TicketWorkflowButton from './TicketWorkflowButton'
 import TicketActivity from './TicketActivity'
 import TicketCommentThread from './TicketCommentThread'
 import TicketTeamPanel from './TicketTeamPanel'
@@ -465,6 +466,7 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
           </Tooltip>
         )}
         <Box aria-hidden sx={{ width: '1px', height: 28, flexShrink: 0, bgcolor: 'divider' }} />
+        <TicketWorkflowButton ticket={ticket} />
         <IconButton onClick={onClose} aria-label="Close">
           <CloseRoundedIcon />
         </IconButton>

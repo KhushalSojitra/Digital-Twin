@@ -24,9 +24,7 @@ import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined
 import PreviewOutlinedIcon from '@mui/icons-material/PreviewOutlined'
 import HideImageOutlinedIcon from '@mui/icons-material/HideImageOutlined'
 import StraightenOutlinedIcon from '@mui/icons-material/StraightenOutlined'
-import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined'
 import TicketFilters from './TicketFilters'
-import WorkflowSettingsDialog from './WorkflowSettingsDialog'
 import ImprovementSummary from './ImprovementSummary'
 import { TICKET_SIZE_DEFAULT, TICKET_SIZE_MAX, TICKET_SIZE_MIN, activeFilterCount, type TicketFilterState, type TicketPinSize } from './ticketFilters'
 import type { Ticket } from '../../data/tickets'
@@ -65,7 +63,6 @@ export default function TicketMenu({
   const [buttonEl, setButtonEl] = useState<HTMLButtonElement | null>(null)
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const [kind, setKind] = useState<'filter' | 'trends' | 'size' | null>(null)
-  const [workflowOpen, setWorkflowOpen] = useState(false)
   const count = activeFilterCount(filters)
 
   return (
@@ -103,17 +100,6 @@ export default function TicketMenu({
             <ViewListRoundedIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Manage Tickets</ListItemText>
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            setAnchor(null)
-            setWorkflowOpen(true)
-          }}
-        >
-          <ListItemIcon>
-            <AccountTreeOutlinedIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Work Flow Settings</ListItemText>
         </MenuItem>
         <MenuItem
           onClick={() => {
@@ -232,8 +218,6 @@ export default function TicketMenu({
           </>
         )}
       </Popover>
-
-      {workflowOpen && <WorkflowSettingsDialog open onClose={() => setWorkflowOpen(false)} />}
     </>
   )
 }

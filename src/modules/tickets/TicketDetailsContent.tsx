@@ -43,6 +43,7 @@ import TicketComments from './TicketComments'
 import ImprovementVerification from './ImprovementVerification'
 import { useMarkTicketSeen } from '../../state/TicketReadsContext'
 import TicketShare from './TicketShare'
+import TicketWorkflowButton from './TicketWorkflowButton'
 
 interface Props {
   ticket: Ticket
@@ -143,6 +144,7 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
             {following ? <StarRoundedIcon fontSize="small" sx={{ color: '#FFD60A' }} /> : <StarBorderRoundedIcon fontSize="small" />}
           </IconButton>
         </Tooltip>
+        <TicketWorkflowButton ticket={ticket} />
         <IconButton size="small" onClick={onClose} aria-label="Close ticket details">
           <CloseRoundedIcon fontSize="small" />
         </IconButton>

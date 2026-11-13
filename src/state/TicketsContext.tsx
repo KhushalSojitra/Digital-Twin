@@ -50,6 +50,8 @@ interface TicketsValue {
   /** Runs one action of the ticket's workflow; rejects with the server's reason when it is not allowed. */
   performAction: (id: string, actionId: string, input: WorkflowActionInput) => Promise<void>
   attachSnapshot: (id: string, slot: 'before' | 'after', snapshot: Snapshot) => void
+  /** Moves one ticket onto another workflow template; rejects with the server's reason on failure. */
+  setWorkflow: (id: string, templateId: string, by: string) => Promise<void>
 }
 
 const TicketsContext = createContext<TicketsValue | null>(null)
@@ -420,7 +422,16 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
       .single()
     if (error) throw new Error(`Supabase ticket insert error for ${ticket.id}: ${error.message}`)
 
-    const savedTicket = ticketFromDatabase(data)
+    let savedTicket = ticketFromDatabase(data)
+    if (input.workflowTemplateId) {
+      const { data: switched, error: switchError } = await supabase.rpc('set_ticket_workflow', {
+        p_ticket_id: savedTicket.id,
+        p_template_id: input.workflowTemplateId,
+        p_changed_by: input.creator,
+      })
+      if (switchError) console.error(`Unable to set workflow for ticket ${savedTicket.id}:`, switchError.message)
+      else savedTicket = ticketFromDatabase(Array.isArray(switched) ? switched[0] : switched)
+    }
     const next = [savedTicket, ...ticketsRef.current.filter((existing) => existing.id !== savedTicket.id)]
     ticketsRef.current = next
     setTickets(next)
@@ -645,14 +656,37 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     return run
   }, [])
 
+  const setWorkflow = useCallback((id: string, templateId: string, by: string): Promise<void> => {
+    if (!ticketsRef.current.some((ticket) => ticket.id === id)) return Promise.reject(new Error('Ticket not found'))
+    const previousWrite = writeQueues.current.get(id) ?? Promise.resolve()
+    const run = previousWrite.catch(() => undefined).then(async () => {
+      const { data, error } = await supabase.rpc('set_ticket_workflow', {
+        p_ticket_id: id,
+        p_template_id: templateId,
+        p_changed_by: by,
+      })
+      if (error) throw new Error(error.message)
+      const saved = ticketFromDatabase(Array.isArray(data) ? data[0] : data)
+      const next = ticketsRef.current.map((ticket) => ticket.id === id ? saved : ticket)
+      ticketsRef.current = next
+      setTickets(next)
+    })
+    const write = run.catch((error) => console.error(`Unable to set workflow on ticket ${id}:`, error))
+    writeQueues.current.set(id, write)
+    void write.finally(() => {
+      if (writeQueues.current.get(id) === write) writeQueues.current.delete(id)
+    })
+    return run
+  }, [])
+
   const attachSnapshot = useCallback((id: string, slot: 'before' | 'after', snapshot: Snapshot) => patch(id, (ticket) => {
     const freshSnaps = { ...ticket.snapshots, [slot]: snapshot }
     return log({ ...ticket, snapshots: freshSnaps }, snapshot.by, `Attached ${slot} snapshot`)
   }), [patch]);
 
   const value = useMemo(
-    () => ({ tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, attachSnapshot }),
-    [tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, attachSnapshot],
+    () => ({ tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, attachSnapshot, setWorkflow }),
+    [tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, attachSnapshot, setWorkflow],
   )
 
   return <TicketsContext.Provider value={value}>{children}</TicketsContext.Provider>

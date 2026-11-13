@@ -172,6 +172,7 @@ export type NewTicketInput = Pick<
   snapshotConfig: SnapshotConfig
   creationSnapshot?: Snapshot
   additional?: TicketAdditional
+  workflowTemplateId?: string
 }
 
 /** A ticket raised by picking a coordinate directly on the Earth map. */
@@ -184,6 +185,7 @@ export type NewEarthTicketInput = Pick<
   followers?: string[]
   snapshotConfig: SnapshotConfig
   additional?: TicketAdditional
+  workflowTemplateId?: string
 }
 
 export type TicketCreateInput = NewTicketInput | NewEarthTicketInput

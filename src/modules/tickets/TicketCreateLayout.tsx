@@ -42,6 +42,7 @@ import DocumentPreview from './DocumentPreview'
 import SnapshotMarkup, { type MarkupShape } from './SnapshotMarkup'
 import SnapshotCrop from './SnapshotCrop'
 import TicketAdditionalTab, { useTicketAdditional } from './TicketAdditionalTab'
+import TicketWorkflowButton from './TicketWorkflowButton'
 
 type TicketTab = 'general' | 'additional' | 'activity'
 type VoiceState = 'idle' | 'listening' | 'transcribing'
@@ -84,6 +85,8 @@ interface Props {
   isSubmitting: boolean
   onSubmit: (e: FormEvent) => void
   onClose: () => void
+  workflowTemplateId?: string
+  onWorkflowTemplateChange?: (templateId: string | undefined) => void
 }
 
 const VOICE_SAMPLE = {
@@ -342,6 +345,8 @@ export default function TicketCreateLayout({
   isSubmitting,
   onSubmit,
   onClose,
+  workflowTemplateId,
+  onWorkflowTemplateChange,
 }: Props) {
   const uid = useId()
   const [tab, setTab] = useState<TicketTab>('general')
@@ -454,6 +459,7 @@ export default function TicketCreateLayout({
           </IconButton>
         </Tooltip>
         <Box aria-hidden sx={{ width: '1px', height: 28, flexShrink: 0, bgcolor: 'divider' }} />
+        <TicketWorkflowButton draftTemplateId={workflowTemplateId} onDraftTemplateChange={onWorkflowTemplateChange} />
         <IconButton onClick={onClose} aria-label="Close">
           <CloseRoundedIcon />
         </IconButton>

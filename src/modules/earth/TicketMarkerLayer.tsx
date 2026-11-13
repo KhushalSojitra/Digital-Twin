@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { Fragment, useCallback, useEffect, useRef } from 'react'
 import { Box, Tooltip } from '@mui/material'
 import TicketHoverCopy from '../tickets/TicketHoverCopy'
 import TicketUpdateDot from '../tickets/TicketUpdateDot'
@@ -30,7 +30,7 @@ const TARGET_KEY = '__target'
 
 export default function TicketMarkerLayer({ tickets, selectedId, targetId = null, draft = null, compact = false, onSelect }: Props) {
   const { stateLabel } = useWorkflow()
-  const { ticketSize } = useTicketQuery()
+  const { ticketSize, liveTicketPreview } = useTicketQuery()
   const { onContextMenu, menu } = useTicketMarkerMenu()
   const nodes = useRef(new Map<string, HTMLElement>())
   const ticketsRef = useRef(tickets)
@@ -96,6 +96,64 @@ export default function TicketMarkerLayer({ tickets, selectedId, targetId = null
       {tickets.map((t) => {
         const color = STATUS_COLOR[t.status]
         const selected = t.id === selectedId
+        const marker = (
+          <Box
+            ref={register(t.id)}
+            role="button"
+            aria-label={`${t.title}: ${stateLabel(t)}, ${PRIORITY_LABEL[t.priority]} priority`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onSelect(t)
+            }}
+            onContextMenu={(e) => onContextMenu(e, t)}
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              display: 'none',
+              pointerEvents: 'auto',
+              cursor: 'pointer',
+              width: size + 16,
+              height: size + 12,
+              zIndex: selected ? 2 : 1,
+              placeItems: 'center',
+            }}
+          >
+            {liveTicketPreview && (
+              <Box
+                data-ticket-preview-card={t.id}
+                sx={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  mb: 0.4,
+                  px: 0.75,
+                  py: 0.4,
+                  minWidth: compact ? 88 : 112,
+                  maxWidth: compact ? 140 : 188,
+                  borderRadius: '8px',
+                  bgcolor: 'rgba(0,0,0,0.74)',
+                  color: '#fff',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  boxShadow: '0 6px 16px rgba(0,0,0,0.4)',
+                  pointerEvents: 'none',
+                  zIndex: 2,
+                }}
+              >
+                <TicketHoverCopy ticket={t} />
+              </Box>
+            )}
+            <TicketGlyph color={color} size={size} selected={selected} critical={t.priority === 'critical'} />
+            <TicketUpdateDot
+              ticket={t}
+              size={compact ? 8 : 10}
+              sx={{ position: 'absolute', top: compact ? 0 : 1, right: compact ? 2 : 4 }}
+            />
+          </Box>
+        )
+        if (liveTicketPreview) return <Fragment key={t.id}>{marker}</Fragment>
         return (
           <Tooltip
             key={t.id}
@@ -108,35 +166,7 @@ export default function TicketMarkerLayer({ tickets, selectedId, targetId = null
               </Box>
             }
           >
-            <Box
-              ref={register(t.id)}
-              role="button"
-              aria-label={`${t.title}: ${stateLabel(t)}, ${PRIORITY_LABEL[t.priority]} priority`}
-              onClick={(e) => {
-                e.stopPropagation()
-                onSelect(t)
-              }}
-              onContextMenu={(e) => onContextMenu(e, t)}
-              sx={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                display: 'none',
-                pointerEvents: 'auto',
-                cursor: 'pointer',
-                width: size + 16,
-                height: size + 12,
-                zIndex: selected ? 2 : 1,
-                placeItems: 'center',
-              }}
-            >
-              <TicketGlyph color={color} size={size} selected={selected} critical={t.priority === 'critical'} />
-              <TicketUpdateDot
-                ticket={t}
-                size={compact ? 8 : 10}
-                sx={{ position: 'absolute', top: compact ? 0 : 1, right: compact ? 2 : 4 }}
-              />
-            </Box>
+            {marker}
           </Tooltip>
         )
       })}

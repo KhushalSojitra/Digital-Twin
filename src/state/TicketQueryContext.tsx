@@ -23,6 +23,8 @@ interface TicketQueryValue {
   toggleLiveTicketView: (siteId: string) => void
   earthTicketPreview: boolean
   setEarthTicketPreview: (on: boolean) => void
+  liveTicketPreview: boolean
+  setLiveTicketPreview: (on: boolean) => void
   ticketSize: TicketPinSize
   setTicketSize: (size: TicketPinSize) => void
 }
@@ -43,6 +45,7 @@ export function TicketQueryProvider({ children }: { children: ReactNode }) {
   const [earthTicketView, setEarthTicketView] = usePreference<boolean>('earth.ticketView', true, isBoolean)
   const [liveTicketView, setLiveTicketView] = usePreference<Record<string, boolean>>('live.ticketView', EMPTY_FLAGS, isFlagMap)
   const [earthTicketPreview, setEarthTicketPreview] = usePreference<boolean>('earth.ticketPreview', true, isBoolean)
+  const [liveTicketPreview, setLiveTicketPreview] = usePreference<boolean>('live.ticketPreview', true, isBoolean)
   const [ticketSize, setTicketSizeValue] = usePreference<TicketPinSize>(
     'tickets.size',
     TICKET_SIZE_DEFAULT,
@@ -71,10 +74,12 @@ export function TicketQueryProvider({ children }: { children: ReactNode }) {
       toggleLiveTicketView,
       earthTicketPreview,
       setEarthTicketPreview,
+      liveTicketPreview,
+      setLiveTicketPreview,
       ticketSize,
       setTicketSize,
     }),
-    [tab, search, filters, assignedToMe, earthTicketView, liveTicketView, earthTicketPreview, ticketSize],
+    [tab, search, filters, assignedToMe, earthTicketView, liveTicketView, earthTicketPreview, liveTicketPreview, ticketSize],
   )
   return <TicketQueryContext.Provider value={value}>{children}</TicketQueryContext.Provider>
 }

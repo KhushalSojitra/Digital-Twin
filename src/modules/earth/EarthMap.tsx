@@ -13,8 +13,22 @@ import type { Ticket } from '../../data/tickets'
 
 /** Below this zoom the site labels collapse to the short name only. */
 const LABEL_ZOOM = 15.6
-/** Below this zoom individual ticket markers collapse into one badge per site. */
-const TICKET_ZOOM = 16.4
+/** Ticket markers closer than this on screen collapse into one badge, so none ever leave the view when zooming. */
+const CLUSTER_PX = 44
+
+function groupByProximity(tickets: Ticket[], zoom: number): Ticket[][] {
+  const scale = 512 * 2 ** zoom
+  const groups: { x: number; y: number; items: Ticket[] }[] = []
+  for (const t of tickets) {
+    const m = maplibregl.MercatorCoordinate.fromLngLat([t.lng, t.lat])
+    const x = m.x * scale
+    const y = m.y * scale
+    const group = groups.find((g) => Math.hypot(g.x - x, g.y - y) < CLUSTER_PX)
+    if (group) group.items.push(t)
+    else groups.push({ x, y, items: [t] })
+  }
+  return groups.map((g) => g.items)
+}
 
 interface Props {
   /** Site to fly to when the operator picks a camera from the header dropdown. */
@@ -35,7 +49,7 @@ interface Props {
 
 type TicketOverlay =
   | { key: string; kind: 'ticket'; lat: number; lng: number; ticket: Ticket }
-  | { key: string; kind: 'cluster'; lat: number; lng: number; siteId: string; siteName: string; tickets: Ticket[] }
+  | { key: string; kind: 'cluster'; lat: number; lng: number; siteName: string; tickets: Ticket[] }
 
 interface TicketMarkerEntry {
   overlay: TicketOverlay
@@ -86,7 +100,7 @@ export default function EarthMap({
   const [markers, setMarkers] = useState<MarkerEntry[]>([])
   const [imagery, setImagery] = useState<'loading' | 'ready' | 'error'>('loading')
   const [zoomedOut, setZoomedOut] = useState(true)
-  const [clustered, setClustered] = useState(true)
+  const [clusterZoom, setClusterZoom] = useState(1.6)
   const ticketMarkersRef = useRef(new Map<string, TicketMarkerEntry>())
   const [ticketEntries, setTicketEntries] = useState<TicketMarkerEntry[]>([])
   const [mapReady, setMapReady] = useState(false)
@@ -138,7 +152,7 @@ export default function EarthMap({
     const syncZoom = () => {
       const z = map.getZoom()
       setZoomedOut(z < LABEL_ZOOM)
-      setClustered(z < TICKET_ZOOM)
+      setClusterZoom(Math.round(z * 4) / 4)
     }
     syncZoom()
     map.on('zoom', syncZoom)
@@ -196,23 +210,22 @@ export default function EarthMap({
   }, [])
 
   const overlays = useMemo<TicketOverlay[]>(() => {
-    if (!clustered) return tickets.map((t) => ({ key: `t:${t.id}`, kind: 'ticket', lat: t.lat, lng: t.lng, ticket: t }))
-    return SITES.flatMap((site) => {
-      const own = tickets.filter((t) => t.siteId === site.id)
-      if (own.length === 0) return []
-      return [
-        {
-          key: `c:${site.id}`,
-          kind: 'cluster' as const,
-          lat: own.reduce((a, t) => a + t.lat, 0) / own.length,
-          lng: own.reduce((a, t) => a + t.lng, 0) / own.length,
-          siteId: site.id,
-          siteName: site.name,
-          tickets: own,
-        },
-      ]
+    return groupByProximity(tickets, clusterZoom).map((own): TicketOverlay => {
+      if (own.length === 1) {
+        const [t] = own
+        return { key: `t:${t.id}`, kind: 'ticket', lat: t.lat, lng: t.lng, ticket: t }
+      }
+      const siteNames = [...new Set(own.map((t) => SITES.find((s) => s.id === t.siteId)?.name ?? 'Nearby'))]
+      return {
+        key: `c:${own.map((t) => t.id).sort().join('|')}`,
+        kind: 'cluster',
+        lat: own.reduce((a, t) => a + t.lat, 0) / own.length,
+        lng: own.reduce((a, t) => a + t.lng, 0) / own.length,
+        siteName: siteNames.length === 1 ? siteNames[0] : 'Nearby',
+        tickets: own,
+      }
     })
-  }, [tickets, clustered])
+  }, [tickets, clusterZoom])
 
   useEffect(() => {
     const map = mapRef.current
@@ -235,7 +248,7 @@ export default function EarthMap({
       }
       const el = document.createElement('div')
       el.style.zIndex = overlay.kind === 'cluster' ? '3' : '1'
-      const marker = new maplibregl.Marker({ element: el, anchor: 'center', offset: overlay.kind === 'cluster' ? [-42, -16] : [0, 0] })
+      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat([overlay.lng, overlay.lat])
         .addTo(map)
       live.set(overlay.key, { overlay, marker, el })
@@ -290,8 +303,17 @@ export default function EarthMap({
     }
   }, [draftLat, draftLng, mapReady])
 
-  const zoomTo = (lng: number, lat: number) => {
-    mapRef.current?.flyTo({ center: [lng, lat], zoom: 17.6, pitch: 55, duration: 1500, essential: true })
+  const expandCluster = (grouped: Ticket[]) => {
+    const map = mapRef.current
+    if (!map) return
+    const bounds = new maplibregl.LngLatBounds()
+    for (const t of grouped) bounds.extend([t.lng, t.lat])
+    const [sw, ne] = [bounds.getSouthWest(), bounds.getNorthEast()]
+    if (sw.lng === ne.lng && sw.lat === ne.lat) {
+      map.flyTo({ center: [sw.lng, sw.lat], zoom: Math.max(map.getZoom() + 1, 17.6), pitch: 55, duration: 1500, essential: true })
+      return
+    }
+    map.fitBounds(bounds, { padding: 140, maxZoom: 19, duration: 1500, essential: true })
   }
 
   const goHome = () => {
@@ -326,7 +348,7 @@ export default function EarthMap({
               onClick={() => onSelectTicket(overlay.ticket)}
             />
           ) : (
-            <TicketCluster siteName={overlay.siteName} tickets={overlay.tickets} onClick={() => zoomTo(overlay.lng, overlay.lat)} />
+            <TicketCluster siteName={overlay.siteName} tickets={overlay.tickets} onClick={() => expandCluster(overlay.tickets)} />
           ),
           el,
           overlay.key,

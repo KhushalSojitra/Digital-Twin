@@ -56,7 +56,8 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
   const { tickets, addTicket } = useTickets()
   const { currentUser } = useAuth()
-  const { filters, setFilters, isLiveTicketView, toggleLiveTicketView, ticketSize, setTicketSize } = useTicketQuery()
+  const { filters, setFilters, isLiveTicketView, toggleLiveTicketView, liveTicketPreview, setLiveTicketPreview, ticketSize, setTicketSize } =
+    useTicketQuery()
   const liveTicketView = isLiveTicketView(site.id)
   const me = currentUser?.displayName ?? 'Ava Sharma'
   const canEdit = currentUser?.role !== 'Viewer'
@@ -387,6 +388,8 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
                 if (liveTicketView) setShowImprovements(false)
                 toggleLiveTicketView(site.id)
               }}
+              ticketPreviewEnabled={liveTicketPreview}
+              onToggleTicketPreview={() => setLiveTicketPreview(!liveTicketPreview)}
               ticketSize={ticketSize}
               onTicketSizeChange={setTicketSize}
               buttonSx={(t: Theme) => ({ ...glass(t), width: 36, height: 36 })}

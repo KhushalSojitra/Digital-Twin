@@ -152,7 +152,7 @@ function CreateForm({
   const [touched, setTouched] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createError, setCreateError] = useState('')
-  const [workflowTemplateId, setWorkflowTemplateId] = useState<string | undefined>()
+  const [ticketType, setTicketType] = useState('intrusion')
   const snapshotPolicy = defaultIntegration.snapshotPolicy
   const [proof, setProof] = useState(snapshotPolicy !== 'disabled')
   const [snapshotPreview] = useState<string | null>(() => {
@@ -178,7 +178,7 @@ function CreateForm({
       await onCreate({
         title: title.trim(),
         description: description.trim() || 'Raised from Live View at the marked location.',
-        type: 'intrusion',
+        type: ticketType,
         priority,
         zone: draft.camera.name.split(' — ')[1] ?? 'Perimeter',
         assignee,
@@ -194,7 +194,6 @@ function CreateForm({
         pitch: draft.pitch,
         zoom: draft.zoom,
         pinView: view,
-        workflowTemplateId,
       })
     } catch (error) {
       setCreateError(error instanceof Error ? error.message : 'Ticket could not be saved to the cloud.')
@@ -239,8 +238,8 @@ function CreateForm({
       isSubmitting={isSubmitting}
       onSubmit={submit}
       onClose={onClose}
-      workflowTemplateId={workflowTemplateId}
-      onWorkflowTemplateChange={setWorkflowTemplateId}
+      ticketType={ticketType}
+      onTicketTypeChange={setTicketType}
     />
   )
 }

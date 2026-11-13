@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '../supabaseClient'
-import { STATUS_LABEL, type Ticket } from '../data/tickets'
+import { STATUS_LABEL, TYPE_LABEL, type Ticket } from '../data/tickets'
+import { BUILT_IN_TICKET_TYPES, humanizeTypeKey, parseTicketType, type TicketTypeDef } from '../data/ticketTypes'
 import {
   actionsFrom,
   parseVersion,
@@ -18,10 +19,17 @@ interface WorkflowValue {
   activeTemplate: WorkflowTemplate | null
   activeVersion: WorkflowVersion | null
   refresh: () => Promise<void>
-  /** Creates a customer template, or publishes the edit of one (a new version once tickets use it). */
-  saveTemplate: (templateId: string | null, name: string, description: string, definition: WorkflowDefinition) => Promise<void>
-  activateTemplate: (templateId: string) => Promise<void>
-  deleteTemplate: (templateId: string) => Promise<void>
+  /** Every ticket type with the workflow its tickets start on. */
+  ticketTypes: TicketTypeDef[]
+  /** False until the ticket_types table exists in the database; types are then read-only built-ins. */
+  typesAvailable: boolean
+  typeLabel: (typeKey: string) => string
+  /**
+   * Creates a custom ticket type (typeKey null) with its own workflow, or saves the name and workflow of
+   * one. Tickets already created keep the workflow version they started with.
+   */
+  saveTicketType: (typeKey: string | null, label: string, description: string, definition: WorkflowDefinition) => Promise<string>
+  deleteTicketType: (typeKey: string) => Promise<void>
   /** Every state defined by any workflow version, active workflow first. Drives tabs and filters. */
   stateOptions: WorkflowState[]
   versionFor: (ticket: Pick<Ticket, 'workflowVersionId'>) => WorkflowVersion | undefined
@@ -41,13 +49,28 @@ function describeError(error: { message: string }) {
 
 export function WorkflowProvider({ children }: { children: ReactNode }) {
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
+  const [ticketTypes, setTicketTypes] = useState<TicketTypeDef[]>(BUILT_IN_TICKET_TYPES)
+  const [typesAvailable, setTypesAvailable] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
-    const [templateResult, versionResult] = await Promise.all([
+    const [templateResult, versionResult, typeResult] = await Promise.all([
       supabase.from('workflow_templates').select('*').order('created_at', { ascending: true }),
       supabase.from('workflow_versions').select('*').order('version', { ascending: false }),
+      supabase.from('ticket_types').select('*').order('created_at', { ascending: true }),
     ])
+    if (typeResult.error) {
+      console.error('Unable to load ticket types:', typeResult.error.message)
+      setTicketTypes(BUILT_IN_TICKET_TYPES)
+      setTypesAvailable(false)
+    } else {
+      const loaded = (typeResult.data ?? []).flatMap((row) => {
+        const parsed = parseTicketType(row)
+        return parsed ? [parsed] : []
+      })
+      setTicketTypes([...loaded.filter((type) => type.isSystem), ...loaded.filter((type) => !type.isSystem)])
+      setTypesAvailable(true)
+    }
     if (templateResult.error) {
       console.error('Unable to load workflow templates:', templateResult.error.message)
       setLoading(false)
@@ -78,25 +101,36 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
     void refresh()
   }, [refresh])
 
-  const saveTemplate = useCallback<WorkflowValue['saveTemplate']>(async (templateId, name, description, definition) => {
-    const { error } = await supabase.rpc('save_workflow_template', {
-      p_template_id: templateId,
-      p_name: name,
-      p_description: description,
-      p_definition: definition,
-    })
-    if (error) throw new Error(describeError(error))
+  const saveTicketType = useCallback<WorkflowValue['saveTicketType']>(async (typeKey, label, description, definition) => {
+    let savedKey = typeKey ?? ''
+    if (typeKey === null) {
+      const { data, error } = await supabase.rpc('create_ticket_type', {
+        p_label: label,
+        p_description: description,
+        p_definition: definition,
+      })
+      if (error) throw new Error(describeError(error))
+      const created = parseTicketType((Array.isArray(data) ? data[0] : data) ?? {})
+      savedKey = created?.key ?? ''
+    } else {
+      const templateId = ticketTypes.find((type) => type.key === typeKey)?.workflowTemplateId
+      if (!templateId) throw new Error('This ticket type has no workflow to save.')
+      const saved = await supabase.rpc('save_workflow_template', {
+        p_template_id: templateId,
+        p_name: label,
+        p_description: description,
+        p_definition: definition,
+      })
+      if (saved.error) throw new Error(describeError(saved.error))
+      const renamed = await supabase.rpc('update_ticket_type', { p_key: typeKey, p_label: label, p_description: description })
+      if (renamed.error) throw new Error(describeError(renamed.error))
+    }
     await refresh()
-  }, [refresh])
+    return savedKey
+  }, [refresh, ticketTypes])
 
-  const activateTemplate = useCallback(async (templateId: string) => {
-    const { error } = await supabase.rpc('activate_workflow_template', { p_template_id: templateId })
-    if (error) throw new Error(describeError(error))
-    await refresh()
-  }, [refresh])
-
-  const deleteTemplate = useCallback(async (templateId: string) => {
-    const { error } = await supabase.rpc('delete_workflow_template', { p_template_id: templateId })
+  const deleteTicketType = useCallback(async (typeKey: string) => {
+    const { error } = await supabase.rpc('delete_ticket_type', { p_key: typeKey })
     if (error) throw new Error(describeError(error))
     await refresh()
   }, [refresh])
@@ -126,15 +160,17 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
       activeVersion,
       stateOptions,
       refresh,
-      saveTemplate,
-      activateTemplate,
-      deleteTemplate,
+      ticketTypes,
+      typesAvailable,
+      typeLabel: (typeKey) => ticketTypes.find((type) => type.key === typeKey)?.label ?? TYPE_LABEL[typeKey] ?? humanizeTypeKey(typeKey),
+      saveTicketType,
+      deleteTicketType,
       versionFor,
       stateLabel: (ticket) => stateOf(versionFor(ticket)?.definition, ticket.workflowState)?.label ?? STATUS_LABEL[ticket.status],
       actionsFor: (ticket) => actionsFrom(versionFor(ticket)?.definition, ticket.workflowState),
       canAct: (ticket, me) => Boolean(me) && (ticket.assignee === me || ticket.creator === me),
     }
-  }, [templates, loading, refresh, saveTemplate, activateTemplate, deleteTemplate])
+  }, [templates, loading, refresh, ticketTypes, typesAvailable, saveTicketType, deleteTicketType])
 
   return <WorkflowContext.Provider value={value}>{children}</WorkflowContext.Provider>
 }

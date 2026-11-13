@@ -23,7 +23,6 @@ import {
   PRIORITY_LABEL,
   STATUS_COLOR,
   STATUS_NEEDS_DARK_TEXT,
-  TYPE_LABEL,
   ticketContextLabel,
   isCompleted,
   platformLabel,
@@ -79,7 +78,7 @@ function CountLabel({ label, count }: { label: string; count: number }) {
 
 export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, onOpenCamera }: Props) {
   const { toggleFollow, attachSnapshot } = useTickets()
-  const { stateLabel, versionFor } = useWorkflow()
+  const { stateLabel, versionFor, typeLabel } = useWorkflow()
   const { currentUser } = useAuth()
   const capture = useCapture()
   const me = currentUser?.displayName ?? 'Operator'
@@ -211,7 +210,7 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
             <Divider sx={{ my: 1.5 }} />
 
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.25 }}>
-              <Field label="Type" value={TYPE_LABEL[ticket.type]} />
+              <Field label="Type" value={typeLabel(ticket.type)} />
               <Field label="Platform" value={platformLabel(ticket)} />
               <Field label="Site" value={siteName(ticket.siteId)} />
               <Field label="Zone" value={ticket.zone} />

@@ -10,33 +10,22 @@ import {
   DialogContentText,
   DialogTitle,
   IconButton,
-  Stack,
-  Tooltip,
   Typography,
   useMediaQuery,
   useTheme,
 } from '@mui/material'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
-import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded'
-import EditRoundedIcon from '@mui/icons-material/EditRounded'
-import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
+import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import WorkflowTemplateEditor from './WorkflowTemplateEditor'
-import { emptyDefinition, type WorkflowTemplate } from '../../data/workflows'
+import { emptyDefinition } from '../../data/workflows'
+import type { TicketTypeDef } from '../../data/ticketTypes'
 import { useWorkflow } from '../../state/WorkflowContext'
 import { useAuth } from '../../auth/AuthContext'
 import { dialogPaperSx } from '../../theme/hud'
-
-type View = { kind: 'list' } | { kind: 'editor'; template: WorkflowTemplate | null }
-
-function flowSummary(template: WorkflowTemplate) {
-  const definition = template.versions[0]?.definition
-  if (!definition) return ''
-  return definition.states.map((state) => state.label).join(' → ')
-}
 
 function failureMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
@@ -45,138 +34,238 @@ function failureMessage(error: unknown) {
 interface WorkflowSettingsDialogProps {
   open: boolean
   onClose: () => void
-  /** The workflow template this ticket uses (or will use once created). */
-  selectedTemplateId: string | null
-  /** Switches the ticket onto a template. Omit when the viewer may not change this ticket's workflow. */
-  onSelectTemplate?: (templateId: string) => Promise<void>
+  /** The ticket type of the ticket being viewed, edited or created. */
+  selectedTypeKey: string | null
+  /** Picks the ticket type of a ticket that is being created. Omitted for existing tickets. */
+  onSelectType?: (typeKey: string) => void
 }
 
-export default function WorkflowSettingsDialog({ open, onClose, selectedTemplateId, onSelectTemplate }: WorkflowSettingsDialogProps) {
+type Selection = { kind: 'type'; key: string } | { kind: 'new' }
+
+export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey, onSelectType }: WorkflowSettingsDialogProps) {
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
   const { currentUser } = useAuth()
-  const { templates, activeTemplate, loading, saveTemplate, activateTemplate, deleteTemplate } = useWorkflow()
+  const { templates, activeTemplate, ticketTypes, typesAvailable, loading, saveTicketType, deleteTicketType } = useWorkflow()
   const canAdminister = currentUser?.role === 'Administrator'
-  const [view, setView] = useState<View>({ kind: 'list' })
+  const [selection, setSelection] = useState<Selection>({ kind: 'type', key: selectedTypeKey ?? ticketTypes[0]?.key ?? '' })
+  const [showDetail, setShowDetail] = useState(!isXs)
+  const [editorVersion, setEditorVersion] = useState(0)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState<WorkflowTemplate | null>(null)
+  const [deleting, setDeleting] = useState<TicketTypeDef | null>(null)
 
-  const systemTemplates = templates.filter((template) => template.isSystem)
-  const customerTemplates = templates.filter((template) => !template.isSystem)
+  const systemTypes = ticketTypes.filter((type) => type.isSystem)
+  const customTypes = ticketTypes.filter((type) => !type.isSystem)
+  const current = selection.kind === 'type' ? (ticketTypes.find((type) => type.key === selection.key) ?? null) : null
+  const creating = selection.kind === 'new'
+
+  const template = current ? (templates.find((candidate) => candidate.id === current.workflowTemplateId) ?? activeTemplate) : null
+  const definition = template?.versions[0]?.definition
+  const editable = canAdminister && typesAvailable && Boolean(current) && !current?.isSystem && Boolean(current?.workflowTemplateId)
 
   const close = () => {
     if (busy) return
-    setView({ kind: 'list' })
     setFailure(null)
     onClose()
   }
 
-  const backToList = () => {
-    setView({ kind: 'list' })
+  const choose = (next: Selection) => {
+    if (busy) return
+    setSelection(next)
     setFailure(null)
+    setShowDetail(true)
+    setEditorVersion((value) => value + 1)
   }
 
-  const run = async (task: () => Promise<void>, after?: () => void) => {
+  const resetEditor = () => {
+    setFailure(null)
+    setEditorVersion((value) => value + 1)
+    if (isXs) setShowDetail(false)
+  }
+
+  const run = async (task: () => Promise<void>) => {
     setBusy(true)
     setFailure(null)
     try {
       await task()
-      after?.()
     } catch (error) {
-      console.error('Workflow settings action failed:', error)
+      console.error('Flow configuration action failed:', error)
       setFailure(failureMessage(error))
     } finally {
       setBusy(false)
     }
   }
 
-  const clone = (template: WorkflowTemplate) => {
-    const definition = template.versions[0]?.definition
-    if (!definition) return
-    void run(() => saveTemplate(null, `${template.name} (Copy)`, template.description, structuredClone(definition)))
-  }
+  const save = (name: string, description: string, nextDefinition: NonNullable<typeof definition>) =>
+    void run(async () => {
+      const key = await saveTicketType(current?.key ?? null, name, description, nextDefinition)
+      if (key) setSelection({ kind: 'type', key })
+      setEditorVersion((value) => value + 1)
+    })
 
   const confirmDelete = () => {
     if (!deleting) return
     const target = deleting
-    void run(() => deleteTemplate(target.id), () => setDeleting(null))
+    void run(async () => {
+      await deleteTicketType(target.key)
+      setDeleting(null)
+      setSelection({ kind: 'type', key: selectedTypeKey ?? ticketTypes[0]?.key ?? '' })
+      setEditorVersion((value) => value + 1)
+    })
   }
 
-  const renderRow = (template: WorkflowTemplate) => {
-    const isActive = activeTemplate?.id === template.id
-    const isSelected = selectedTemplateId === template.id
-    const editable = canAdminister && !template.isSystem
+  const renderType = (type: TicketTypeDef) => {
+    const isViewed = selection.kind === 'type' && selection.key === type.key
+    const isTicketType = selectedTypeKey === type.key
     return (
       <Box
-        key={template.id}
+        key={type.key}
+        component="button"
+        type="button"
+        onClick={() => choose({ kind: 'type', key: type.key })}
+        aria-current={isViewed ? 'true' : undefined}
         sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          width: '100%',
+          textAlign: 'left',
+          font: 'inherit',
+          color: 'text.primary',
+          cursor: 'pointer',
+          bgcolor: isViewed ? 'action.selected' : 'transparent',
           border: 1,
-          borderColor: isSelected ? 'primary.main' : 'divider',
+          borderColor: isViewed ? 'primary.main' : 'divider',
           borderRadius: '12px',
           px: 1.25,
           py: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 0.5,
+          '&:hover': { bgcolor: 'action.hover' },
+          '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>
-            {template.name}
-          </Typography>
-          {isSelected && <Chip size="small" color="primary" icon={<CheckCircleRoundedIcon />} label="This ticket" />}
-          {isActive && <Chip size="small" variant="outlined" label="Default" />}
-          {template.isSystem && <Chip size="small" variant="outlined" icon={<LockOutlinedIcon />} label="System" />}
-        </Box>
-        {template.description && (
-          <Typography variant="body2" color="text.secondary">
-            {template.description}
-          </Typography>
-        )}
-        <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
-          {flowSummary(template)}
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+          {type.label}
         </Typography>
-        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', rowGap: 0.5, alignItems: 'center' }}>
-          {onSelectTemplate && !isSelected && (
-            <Button size="small" variant="contained" disabled={busy} onClick={() => void run(() => onSelectTemplate(template.id))}>
-              Use for this ticket
-            </Button>
-          )}
-          {canAdminister && !isActive && (
-            <Button size="small" variant="outlined" disabled={busy} onClick={() => void run(() => activateTemplate(template.id))}>
-              Set as default
-            </Button>
-          )}
-          <Button
-            size="small"
-            startIcon={editable ? <EditRoundedIcon /> : <VisibilityRoundedIcon />}
-            disabled={busy}
-            onClick={() => setView({ kind: 'editor', template })}
-          >
-            {editable ? 'Edit' : 'View'}
-          </Button>
-          {canAdminister && (
-            <Button size="small" startIcon={<ContentCopyRoundedIcon />} disabled={busy} onClick={() => clone(template)}>
-              Clone
-            </Button>
-          )}
-          {editable && (
-            <Tooltip title={isActive ? 'Activate another workflow before deleting this one' : 'Delete workflow'}>
-              <span>
-                <Button size="small" color="error" startIcon={<DeleteOutlineRoundedIcon />} disabled={busy || isActive} onClick={() => setDeleting(template)}>
-                  Delete
-                </Button>
-              </span>
-            </Tooltip>
-          )}
-        </Stack>
+        {isTicketType && <CheckCircleRoundedIcon color="primary" fontSize="small" titleAccess="This ticket" />}
+        {type.isSystem && <LockOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} titleAccess="System type" />}
       </Box>
     )
   }
 
-  const editing = view.kind === 'editor' ? view.template : null
-  const title = view.kind === 'list' ? 'Workflow Settings' : editing ? (editing.isSystem || !canAdminister ? editing.name : `Edit ${editing.name}`) : 'New workflow'
+  const renderSection = (id: string, title: string, items: TicketTypeDef[], action?: React.ReactNode) => (
+    <Box component="section" aria-labelledby={id}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 30, mb: 1 }}>
+        <Typography id={id} variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>
+          {title}
+        </Typography>
+        <Chip size="small" variant="outlined" label={items.length} />
+        {action}
+      </Box>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>{items.map(renderType)}</Box>
+    </Box>
+  )
+
+  const listPane = (
+    <Box
+      sx={{
+        width: { xs: '100%', sm: 280 },
+        flexShrink: 0,
+        overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+        p: { xs: 1.5, sm: 2 },
+        borderRight: { sm: 1 },
+        borderColor: 'divider',
+      }}
+    >
+      {renderSection('system-types-heading', 'System Ticket Types', systemTypes)}
+      {renderSection(
+        'custom-types-heading',
+        'Custom Ticket Types',
+        customTypes,
+        canAdminister && typesAvailable ? (
+          <Button size="small" startIcon={<AddRoundedIcon />} disabled={busy} onClick={() => choose({ kind: 'new' })}>
+            Create
+          </Button>
+        ) : undefined,
+      )}
+      {customTypes.length === 0 && (
+        <Typography variant="body2" color="text.secondary" sx={{ border: 1, borderColor: 'divider', borderStyle: 'dashed', borderRadius: '12px', p: 1.5, mt: -1 }}>
+          No custom ticket types yet.
+        </Typography>
+      )}
+    </Box>
+  )
+
+  const controls = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, px: { xs: 1.5, sm: 2 }, pt: 1.5 }}>
+      {isXs && (
+        <Box>
+          <Button size="small" startIcon={<ArrowBackRoundedIcon />} onClick={() => setShowDetail(false)}>
+            Ticket types
+          </Button>
+        </Box>
+      )}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>
+          {creating ? 'New ticket type' : (current?.label ?? 'Ticket type')}
+        </Typography>
+        {current && selectedTypeKey === current.key && <Chip size="small" color="primary" icon={<CheckCircleRoundedIcon />} label="This ticket" />}
+        {current?.isSystem && <Chip size="small" variant="outlined" icon={<LockOutlinedIcon />} label="System" />}
+        <Box sx={{ flex: 1 }} />
+        {onSelectType && current && selectedTypeKey !== current.key && (
+          <Button size="small" variant="contained" disabled={busy} onClick={() => onSelectType(current.key)}>
+            Use for this ticket
+          </Button>
+        )}
+        {editable && current && (
+          <Button size="small" color="error" startIcon={<DeleteOutlineRoundedIcon />} disabled={busy} onClick={() => setDeleting(current)}>
+            Delete
+          </Button>
+        )}
+      </Box>
+      <Typography variant="caption" color="text.secondary">
+        {onSelectType
+          ? 'The new ticket starts on the workflow of the ticket type you choose.'
+          : 'Tickets keep the workflow they started with. Changes here apply to tickets created later.'}
+      </Typography>
+      {!typesAvailable && !loading && (
+        <Alert severity="warning" variant="outlined">
+          Custom ticket types need the latest database migration (supabase/ticket_workflow.sql). Built-in types use the default workflow until then.
+        </Alert>
+      )}
+      {typesAvailable && !canAdminister && (
+        <Alert severity="info" variant="outlined">
+          Only administrators can create or change custom ticket types. You can view how each one is configured.
+        </Alert>
+      )}
+    </Box>
+  )
+
+  const detailPane = (
+    <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      {controls}
+      {creating || definition ? (
+        <WorkflowTemplateEditor
+          key={`${creating ? 'new' : current?.key}-${editorVersion}`}
+          initialName={creating ? '' : (current?.label ?? '')}
+          initialDescription={creating ? '' : (current?.description ?? '')}
+          initialDefinition={structuredClone(creating ? emptyDefinition() : definition!)}
+          readOnly={creating ? !canAdminister : !editable}
+          saving={busy}
+          error={failure}
+          onCancel={resetEditor}
+          onSave={save}
+        />
+      ) : (
+        <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
+          {loading ? 'Loading…' : 'No workflow is configured for this ticket type.'}
+        </Typography>
+      )}
+    </Box>
+  )
 
   return (
     <>
@@ -191,101 +280,23 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTemplate
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1.5, pr: 1 }}>
           <Typography variant="h6" component="span" sx={{ flex: 1, minWidth: 0 }}>
-            {title}
+            Flow Configuration
           </Typography>
           <IconButton size="small" onClick={close} aria-label="Close">
             <CloseRoundedIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
-
-        {view.kind === 'list' ? (
-          <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pb: 2, px: { xs: 1.5, sm: 2 } }}>
-            <Box sx={{ borderRadius: '12px', bgcolor: 'action.hover', px: 1.5, py: 1.25 }}>
-              <Typography variant="caption" color="text.secondary">
-                Workflow for this ticket
-              </Typography>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                {loading ? 'Loading…' : (templates.find((template) => template.id === selectedTemplateId)?.name ?? 'None')}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Each ticket has its own workflow. New tickets start on the default workflow
-                {activeTemplate ? ` (${activeTemplate.name})` : ''}.
-              </Typography>
-            </Box>
-
-            {!canAdminister && (
-              <Alert severity="info" variant="outlined">
-                Only administrators can change workflows. You can view how each one is configured.
-              </Alert>
-            )}
-            {failure && (
-              <Alert severity="error" role="alert" onClose={() => setFailure(null)}>
-                {failure}
-              </Alert>
-            )}
-
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
-                gap: 2,
-                alignItems: 'start',
-              }}
-            >
-              <Box component="section" aria-labelledby="system-templates-heading">
-                <Box sx={{ display: 'flex', alignItems: 'center', minHeight: 30, mb: 1 }}>
-                  <Typography id="system-templates-heading" variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>
-                    System Templates
-                  </Typography>
-                  <Chip size="small" variant="outlined" label={systemTemplates.length} />
-                </Box>
-                <Stack spacing={1}>{systemTemplates.map(renderRow)}</Stack>
-              </Box>
-
-              <Box component="section" aria-labelledby="customer-templates-heading">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 30, mb: 1 }}>
-                  <Typography id="customer-templates-heading" variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>
-                    Customer Templates
-                  </Typography>
-                  <Chip size="small" variant="outlined" label={customerTemplates.length} />
-                  {canAdminister && (
-                    <Button size="small" startIcon={<AddRoundedIcon />} disabled={busy} onClick={() => setView({ kind: 'editor', template: null })}>
-                      Create
-                    </Button>
-                  )}
-                </Box>
-                {customerTemplates.length > 0 ? (
-                  <Stack spacing={1}>{customerTemplates.map(renderRow)}</Stack>
-                ) : (
-                  <Typography variant="body2" color="text.secondary" sx={{ border: 1, borderColor: 'divider', borderStyle: 'dashed', borderRadius: '12px', p: 1.5 }}>
-                    No customer templates yet. Create one, or clone a system template to start from it.
-                  </Typography>
-                )}
-              </Box>
-            </Box>
-          </DialogContent>
-        ) : (
-          <WorkflowTemplateEditor
-            key={editing?.id ?? 'new'}
-            initialName={editing?.name ?? ''}
-            initialDescription={editing?.description ?? ''}
-            initialDefinition={structuredClone(editing?.versions[0]?.definition ?? emptyDefinition())}
-            readOnly={!canAdminister || Boolean(editing?.isSystem)}
-            saving={busy}
-            error={failure}
-            onCancel={backToList}
-            onSave={(name, description, definition) =>
-              void run(() => saveTemplate(editing?.id ?? null, name, description, definition), backToList)
-            }
-          />
-        )}
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', borderTop: 1, borderColor: 'divider' }}>
+          {(!isXs || !showDetail) && listPane}
+          {(!isXs || showDetail) && detailPane}
+        </Box>
       </Dialog>
 
       <Dialog open={Boolean(deleting)} onClose={() => !busy && setDeleting(null)} maxWidth="xs" fullWidth sx={{ zIndex: (t) => t.zIndex.modal + 40 }}>
-        <DialogTitle>Delete workflow?</DialogTitle>
+        <DialogTitle>Delete ticket type?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            {deleting ? `Delete "${deleting.name}"? Workflows used by existing tickets cannot be deleted.` : ''}
+            {deleting ? `Delete "${deleting.label}" and its workflow? Types that tickets still use cannot be deleted.` : ''}
           </DialogContentText>
           {failure && deleting && (
             <Typography role="alert" variant="body2" color="error" sx={{ mt: 1.5, wordBreak: 'break-word' }}>

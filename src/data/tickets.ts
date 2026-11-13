@@ -26,7 +26,8 @@ export function sourceForDevice(device: Pick<CameraDevice, 'kind'>): TicketSourc
 
 export type TicketStatus = 'open' | 'in_progress' | 'done' | 'accepted' | 'failed'
 export type TicketPriority = 'critical' | 'high' | 'medium' | 'low'
-export type TicketType = 'intrusion' | 'loitering' | 'tamper' | 'camera_fault' | 'vehicle' | 'crowd' | 'maintenance'
+/** A built-in type key or the key of a custom ticket type. */
+export type TicketType = string
 /** Where the ticket was raised: the OominiEye console, a client-facing app, or an integrated system. */
 export type TicketPlatform = 'default' | 'client' | 'custom'
 
@@ -172,7 +173,6 @@ export type NewTicketInput = Pick<
   snapshotConfig: SnapshotConfig
   creationSnapshot?: Snapshot
   additional?: TicketAdditional
-  workflowTemplateId?: string
 }
 
 /** A ticket raised by picking a coordinate directly on the Earth map. */
@@ -185,7 +185,6 @@ export type NewEarthTicketInput = Pick<
   followers?: string[]
   snapshotConfig: SnapshotConfig
   additional?: TicketAdditional
-  workflowTemplateId?: string
 }
 
 export type TicketCreateInput = NewTicketInput | NewEarthTicketInput
@@ -369,7 +368,8 @@ export const PRIORITY_COLOR: Record<TicketPriority, string> = {
   low: '#8E8E93',
 }
 
-export const TYPE_LABEL: Record<TicketType, string> = {
+/** Labels of the built-in ticket types; custom types are labelled from the database. */
+export const TYPE_LABEL: Record<string, string> = {
   intrusion: 'Intrusion',
   loitering: 'Loitering',
   tamper: 'Camera tamper',

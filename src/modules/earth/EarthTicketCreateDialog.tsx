@@ -48,7 +48,7 @@ function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: O
   const [touched, setTouched] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [workflowTemplateId, setWorkflowTemplateId] = useState<string | undefined>()
+  const [ticketType, setTicketType] = useState('intrusion')
   const [openedAt] = useState(() => new Date().toISOString())
 
   const submit = async (e: FormEvent) => {
@@ -62,7 +62,7 @@ function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: O
         source: 'EARTH',
         title: title.trim(),
         description: description.trim() || 'Raised on Earth at the marked location.',
-        type: 'intrusion',
+        type: ticketType,
         priority,
         zone: 'Perimeter',
         assignee,
@@ -72,7 +72,6 @@ function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: O
         snapshotConfig: { captureCreation: false, captureCompletion: false, showInImprovementHistory: false },
         lat: location.lat,
         lng: location.lng,
-        workflowTemplateId,
       })
       onCreated(created)
     } catch (err) {
@@ -108,8 +107,8 @@ function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: O
       isSubmitting={isSubmitting}
       onSubmit={submit}
       onClose={onClose}
-      workflowTemplateId={workflowTemplateId}
-      onWorkflowTemplateChange={setWorkflowTemplateId}
+      ticketType={ticketType}
+      onTicketTypeChange={setTicketType}
     />
   )
 }

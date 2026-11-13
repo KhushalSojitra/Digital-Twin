@@ -85,8 +85,8 @@ interface Props {
   isSubmitting: boolean
   onSubmit: (e: FormEvent) => void
   onClose: () => void
-  workflowTemplateId?: string
-  onWorkflowTemplateChange?: (templateId: string | undefined) => void
+  ticketType?: string
+  onTicketTypeChange?: (typeKey: string) => void
 }
 
 const VOICE_SAMPLE = {
@@ -345,8 +345,8 @@ export default function TicketCreateLayout({
   isSubmitting,
   onSubmit,
   onClose,
-  workflowTemplateId,
-  onWorkflowTemplateChange,
+  ticketType,
+  onTicketTypeChange,
 }: Props) {
   const uid = useId()
   const [tab, setTab] = useState<TicketTab>('general')
@@ -459,7 +459,7 @@ export default function TicketCreateLayout({
           </IconButton>
         </Tooltip>
         <Box aria-hidden sx={{ width: '1px', height: 28, flexShrink: 0, bgcolor: 'divider' }} />
-        <TicketWorkflowButton draftTemplateId={workflowTemplateId} onDraftTemplateChange={onWorkflowTemplateChange} />
+        <TicketWorkflowButton draftType={ticketType} onDraftTypeChange={onTicketTypeChange} />
         <IconButton onClick={onClose} aria-label="Close">
           <CloseRoundedIcon />
         </IconButton>

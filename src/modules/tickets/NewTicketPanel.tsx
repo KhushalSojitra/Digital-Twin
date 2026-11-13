@@ -25,7 +25,6 @@ import {
   DEFAULT_SNAPSHOT_CONFIG,
   PLATFORM_LABEL,
   PRIORITY_LABEL,
-  TYPE_LABEL,
   ZONES,
   type NewTicketInput,
   type TicketPlatform,
@@ -37,6 +36,7 @@ import {
 import type { CameraDevice } from '../../data/cameras'
 import { useCapture } from './captureContext'
 import { useIntegrations } from '../../state/IntegrationsContext'
+import { useWorkflow } from '../../state/WorkflowContext'
 
 export interface TicketDraft {
   camera: CameraDevice
@@ -89,6 +89,7 @@ function NewTicketForm({ draft, creator, onSubmit, onCancel }: Props & { draft: 
   const { defaultIntegration } = useIntegrations()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const { ticketTypes } = useWorkflow()
   const [type, setType] = useState<TicketType>('intrusion')
   const [priority, setPriority] = useState<TicketPriority>('medium')
   const [zone, setZone] = useState<string>(defaultZone(draft.camera))
@@ -166,9 +167,9 @@ function NewTicketForm({ draft, creator, onSubmit, onCancel }: Props & { draft: 
           <FormControl size="small">
             <InputLabel id="new-ticket-type">Type</InputLabel>
             <Select labelId="new-ticket-type" label="Type" value={type} onChange={(e) => setType(e.target.value as TicketType)}>
-              {(Object.keys(TYPE_LABEL) as TicketType[]).map((t) => (
-                <MenuItem key={t} value={t}>
-                  {TYPE_LABEL[t]}
+              {ticketTypes.map((t) => (
+                <MenuItem key={t.key} value={t.key}>
+                  {t.label}
                 </MenuItem>
               ))}
             </Select>

@@ -42,7 +42,7 @@ export function useTicketActions(me: string): TicketActions {
 
   const run = useCallback(
     (ticket: Ticket, action: WorkflowTransition) => {
-      if (action.assign === 'pick' || action.requireNote) setPending({ ticket, action })
+      if (action.assign === 'pick' || action.assign === 'optional' || action.requireNote) setPending({ ticket, action })
       else void submit(ticket, action, {})
     },
     [submit],
@@ -77,12 +77,13 @@ function ActionPrompt({
   const from = stateOf(definition, ticket.workflowState)?.label
   const to = stateOf(definition, action.to)?.label
   const needsAssignee = action.assign === 'pick'
+  const choosesAssignee = needsAssignee || action.assign === 'optional'
   const ready = (!needsAssignee || assignee !== '') && (!action.requireNote || note.trim() !== '')
 
   const confirm = async () => {
     setBusy(true)
     await onSubmit(ticket, action, {
-      ...(needsAssignee ? { assignee } : {}),
+      ...(choosesAssignee && assignee !== '' ? { assignee } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
     })
     setBusy(false)
@@ -98,18 +99,18 @@ function ActionPrompt({
               {from} to {to}
             </Typography>
           )}
-          {needsAssignee && (
+          {choosesAssignee && (
             <TextField
               select
-              required
-              label="Pass work to"
+              required={needsAssignee}
+              label={needsAssignee ? 'Pass work to' : 'Assignee (optional)'}
               value={assignee}
               onChange={(e) => setAssignee(e.target.value)}
               slotProps={{ inputLabel: { shrink: true }, select: { MenuProps: { sx: { zIndex: (t) => t.zIndex.modal + 14 } }, displayEmpty: true } }}
               sx={fieldSx}
             >
-              <MenuItem value="" disabled>
-                Select a person
+              <MenuItem value="" disabled={needsAssignee}>
+                {needsAssignee ? 'Select a person' : 'Keep current assignee'}
               </MenuItem>
               {ASSIGNEES.filter((person) => person !== ticket.assignee).map((person) => (
                 <MenuItem key={person} value={person}>

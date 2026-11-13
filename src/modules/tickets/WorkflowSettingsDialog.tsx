@@ -20,9 +20,8 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
-import WorkflowTemplateEditor from './WorkflowTemplateEditor'
-import { emptyDefinition } from '../../data/workflows'
-import type { TicketTypeDef } from '../../data/ticketTypes'
+import TicketTypeConfigEditor from './TicketTypeConfigEditor'
+import { DEFAULT_CONFIG, type TicketTypeConfig, type TicketTypeDef } from '../../data/ticketTypes'
 import { useWorkflow } from '../../state/WorkflowContext'
 import { useAuth } from '../../auth/AuthContext'
 import { dialogPaperSx } from '../../theme/hud'
@@ -46,7 +45,7 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey,
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
   const { currentUser } = useAuth()
-  const { templates, activeTemplate, ticketTypes, typesAvailable, loading, saveTicketType, deleteTicketType } = useWorkflow()
+  const { ticketTypes, typesAvailable, loading, saveTicketType, deleteTicketType } = useWorkflow()
   const canAdminister = currentUser?.role === 'Administrator'
   const [selection, setSelection] = useState<Selection>({ kind: 'type', key: selectedTypeKey ?? ticketTypes[0]?.key ?? '' })
   const [showDetail, setShowDetail] = useState(!isXs)
@@ -60,9 +59,7 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey,
   const current = selection.kind === 'type' ? (ticketTypes.find((type) => type.key === selection.key) ?? null) : null
   const creating = selection.kind === 'new'
 
-  const template = current ? (templates.find((candidate) => candidate.id === current.workflowTemplateId) ?? activeTemplate) : null
-  const definition = template?.versions[0]?.definition
-  const editable = canAdminister && typesAvailable && Boolean(current) && !current?.isSystem && Boolean(current?.workflowTemplateId)
+  const editable = canAdminister && typesAvailable && Boolean(current) && !current?.isSystem && Boolean(current?.workflowTemplateId) && Boolean(current?.config)
 
   const close = () => {
     if (busy) return
@@ -97,9 +94,9 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey,
     }
   }
 
-  const save = (name: string, description: string, nextDefinition: NonNullable<typeof definition>) =>
+  const save = (name: string, description: string, config: TicketTypeConfig) =>
     void run(async () => {
-      const key = await saveTicketType(current?.key ?? null, name, description, nextDefinition)
+      const key = await saveTicketType(current?.key ?? null, name, description, config)
       if (key) setSelection({ kind: 'type', key })
       setEditorVersion((value) => value + 1)
     })
@@ -247,12 +244,12 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey,
   const detailPane = (
     <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {controls}
-      {creating || definition ? (
-        <WorkflowTemplateEditor
+      {creating || current ? (
+        <TicketTypeConfigEditor
           key={`${creating ? 'new' : current?.key}-${editorVersion}`}
           initialName={creating ? '' : (current?.label ?? '')}
           initialDescription={creating ? '' : (current?.description ?? '')}
-          initialDefinition={structuredClone(creating ? emptyDefinition() : definition!)}
+          initialConfig={creating ? DEFAULT_CONFIG : (current?.config ?? null)}
           readOnly={creating ? !canAdminister : !editable}
           saving={busy}
           error={failure}

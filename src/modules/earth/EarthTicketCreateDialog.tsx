@@ -4,6 +4,7 @@ import { dialogPaperSx } from '../../theme/hud'
 import { ASSIGNEES, TICKETING_SYSTEM, type Ticket, type TicketPriority } from '../../data/tickets'
 import { formatDateTime } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
+import { DEFAULT_TICKET_TYPE_KEY } from '../../data/ticketTypes'
 import TicketCreateLayout from '../tickets/TicketCreateLayout'
 
 export interface EarthLocation {
@@ -48,7 +49,7 @@ function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: O
   const [touched, setTouched] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [ticketType, setTicketType] = useState('intrusion')
+  const [ticketType, setTicketType] = useState(DEFAULT_TICKET_TYPE_KEY)
   const [openedAt] = useState(() => new Date().toISOString())
 
   const submit = async (e: FormEvent) => {

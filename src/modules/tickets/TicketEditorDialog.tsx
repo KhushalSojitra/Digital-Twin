@@ -18,6 +18,7 @@ import { useIntegrations } from '../../state/IntegrationsContext'
 import { useCapture } from './captureContext'
 import { useMarkTicketSeen } from '../../state/TicketReadsContext'
 import TicketDetailView from './TicketDetailView'
+import { DEFAULT_TICKET_TYPE_KEY } from '../../data/ticketTypes'
 import TicketCreateLayout, { type SnapshotControl, type TicketCreateContext } from './TicketCreateLayout'
 
 const DEVICE_KIND_LABEL: Record<CameraDevice['kind'], string> = {
@@ -152,7 +153,7 @@ function CreateForm({
   const [touched, setTouched] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createError, setCreateError] = useState('')
-  const [ticketType, setTicketType] = useState('intrusion')
+  const [ticketType, setTicketType] = useState(DEFAULT_TICKET_TYPE_KEY)
   const snapshotPolicy = defaultIntegration.snapshotPolicy
   const [proof, setProof] = useState(snapshotPolicy !== 'disabled')
   const [snapshotPreview] = useState<string | null>(() => {

@@ -4,6 +4,7 @@ import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
 import WorkflowSettingsDialog from './WorkflowSettingsDialog'
 import { useAuth } from '../../auth/AuthContext'
 import type { Ticket } from '../../data/tickets'
+import { DEFAULT_TICKET_TYPE_KEY } from '../../data/ticketTypes'
 
 interface Props {
   /** The ticket whose ticket type is shown. Omit while a ticket is still being created. */
@@ -18,7 +19,7 @@ export default function TicketWorkflowButton({ ticket, draftType, onDraftTypeCha
   const { currentUser } = useAuth()
   const canChange = currentUser?.role !== 'Viewer'
 
-  const selectedTypeKey = ticket ? ticket.type : (draftType ?? 'intrusion')
+  const selectedTypeKey = ticket ? ticket.type : (draftType ?? DEFAULT_TICKET_TYPE_KEY)
   const onSelectType = !ticket && canChange ? onDraftTypeChange : undefined
 
   return (

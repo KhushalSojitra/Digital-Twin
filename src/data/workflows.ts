@@ -13,12 +13,13 @@ export const STATE_GROUP_LABEL: Record<StateGroup, string> = {
   failed: 'Failed',
 }
 
-export type AssignBehavior = 'none' | 'pick' | 'reporter'
+export type AssignBehavior = 'none' | 'pick' | 'reporter' | 'optional'
 
 export const ASSIGN_LABEL: Record<AssignBehavior, string> = {
   none: 'Keep assignee',
   pick: 'Choose a new assignee',
   reporter: 'Hand back to reporter',
+  optional: 'Keep or change assignee',
 }
 
 export interface WorkflowState {
@@ -77,7 +78,8 @@ export function parseDefinition(value: unknown): WorkflowDefinition {
     const transition = record(entry)
     if (typeof transition.id !== 'string' || typeof transition.label !== 'string' || typeof transition.to !== 'string') return []
     const from = Array.isArray(transition.from) ? transition.from.filter((key): key is string => typeof key === 'string') : []
-    const assign: AssignBehavior = transition.assign === 'pick' || transition.assign === 'reporter' ? transition.assign : 'none'
+    const assign: AssignBehavior =
+      transition.assign === 'pick' || transition.assign === 'reporter' || transition.assign === 'optional' ? transition.assign : 'none'
     return [{ id: transition.id, label: transition.label, from, to: transition.to, assign, requireNote: transition.requireNote === true }]
   })
   return { initial: typeof raw.initial === 'string' ? raw.initial : (states[0]?.key ?? ''), states, transitions }

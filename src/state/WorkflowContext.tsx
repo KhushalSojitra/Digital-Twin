@@ -1,12 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '../supabaseClient'
 import { STATUS_LABEL, TYPE_LABEL, type Ticket } from '../data/tickets'
-import { BUILT_IN_TICKET_TYPES, humanizeTypeKey, parseTicketType, type TicketTypeDef } from '../data/ticketTypes'
+import {
+  BUILT_IN_TICKET_TYPES,
+  configToDatabase,
+  humanizeTypeKey,
+  parseTicketType,
+  type TicketTypeConfig,
+  type TicketTypeDef,
+} from '../data/ticketTypes'
 import {
   actionsFrom,
   parseVersion,
   stateOf,
-  type WorkflowDefinition,
   type WorkflowState,
   type WorkflowTemplate,
   type WorkflowTransition,
@@ -28,7 +34,7 @@ interface WorkflowValue {
    * Creates a custom ticket type (typeKey null) with its own workflow, or saves the name and workflow of
    * one. Tickets already created keep the workflow version they started with.
    */
-  saveTicketType: (typeKey: string | null, label: string, description: string, definition: WorkflowDefinition) => Promise<string>
+  saveTicketType: (typeKey: string | null, label: string, description: string, config: TicketTypeConfig) => Promise<string>
   deleteTicketType: (typeKey: string) => Promise<void>
   /** Every state defined by any workflow version, active workflow first. Drives tabs and filters. */
   stateOptions: WorkflowState[]
@@ -101,33 +107,29 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
     void refresh()
   }, [refresh])
 
-  const saveTicketType = useCallback<WorkflowValue['saveTicketType']>(async (typeKey, label, description, definition) => {
+  const saveTicketType = useCallback<WorkflowValue['saveTicketType']>(async (typeKey, label, description, config) => {
     let savedKey = typeKey ?? ''
     if (typeKey === null) {
       const { data, error } = await supabase.rpc('create_ticket_type', {
         p_label: label,
         p_description: description,
-        p_definition: definition,
+        p_config: configToDatabase(config),
       })
       if (error) throw new Error(describeError(error))
       const created = parseTicketType((Array.isArray(data) ? data[0] : data) ?? {})
       savedKey = created?.key ?? ''
     } else {
-      const templateId = ticketTypes.find((type) => type.key === typeKey)?.workflowTemplateId
-      if (!templateId) throw new Error('This ticket type has no workflow to save.')
-      const saved = await supabase.rpc('save_workflow_template', {
-        p_template_id: templateId,
-        p_name: label,
+      const { error } = await supabase.rpc('update_ticket_type', {
+        p_key: typeKey,
+        p_label: label,
         p_description: description,
-        p_definition: definition,
+        p_config: configToDatabase(config),
       })
-      if (saved.error) throw new Error(describeError(saved.error))
-      const renamed = await supabase.rpc('update_ticket_type', { p_key: typeKey, p_label: label, p_description: description })
-      if (renamed.error) throw new Error(describeError(renamed.error))
+      if (error) throw new Error(describeError(error))
     }
     await refresh()
     return savedKey
-  }, [refresh, ticketTypes])
+  }, [refresh])
 
   const deleteTicketType = useCallback(async (typeKey: string) => {
     const { error } = await supabase.rpc('delete_ticket_type', { p_key: typeKey })

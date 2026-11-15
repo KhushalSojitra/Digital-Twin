@@ -11,6 +11,10 @@
 --
 -- RESTORED (to the state captured in public.ticket_type_migration_backup before the migration ran)
 --   * Table privileges of anon / authenticated / PUBLIC on ticket_types, workflow_templates, workflow_versions.
+--   * Column-level INSERT / UPDATE privileges of anon / authenticated on the columns of those three tables,
+--     exactly as recorded ('column' rows) before the migration revoked them. Only INSERT and UPDATE are ever
+--     granted back, only to anon / authenticated, only on columns that still exist. Any other direct column
+--     INSERT/UPDATE grant to those roles on the three tables is revoked first, so the result equals the snapshot.
 --   * EXECUTE privileges of PUBLIC / anon / authenticated / service_role on the legacy functions:
 --     apply_workflow_action, apply_ticket_type_workflow, create_ticket_type, update_ticket_type,
 --     delete_ticket_type, save_workflow_template (every overload recorded in the snapshot).
@@ -37,9 +41,20 @@
 --     or version the seed step created or repaired. The migration stores no row snapshot of them, so what the
 --     seed inserted or updated cannot be told apart from what existed, and deleting them could orphan tickets.
 --     They are kept as they are.
---   * Column-level and other privileges the migration never touched (tickets, ticket_state_history, ...).
+--   * Column-level SELECT / REFERENCES grants and any PUBLIC column grants (the migration never changed them),
+--     and all privileges on tickets, ticket_state_history, ... (never touched).
+--
+-- COLUMN GRANT SNAPSHOT REQUIREMENT
+--   Column grants can only be restored if the migration captured them before it revoked them: the snapshot must
+--   hold a 'column_capture' marker for each of the three tables. A snapshot created by an earlier revision of the
+--   migration has no markers, and the original column grants cannot be reconstructed afterwards (the revoked state
+--   looks the same as "never had any"). In that case the script refuses to run. To roll back anyway WITHOUT
+--   restoring column grants (browsers stay without column-level INSERT/UPDATE, the safe direction), change 'off'
+--   to 'on' in the oomnieye.rollback_skip_column_grants line below.
 --
 -- NOT COVERED
+--   * Column grants made by a different grantor than the role running this script are restored as granted by the
+--     running role, and WITH GRANT OPTION is not recorded or restored (the table snapshot has the same limits).
 --   * It does not undo supabase/ticket_workflow.sql.
 --   * It cannot revert seed UPDATEs to ticket_types (see above). Doing that needs a row snapshot taken by the
 --     migration before its seed step.
@@ -56,6 +71,7 @@ set local lock_timeout = '10s';
 set local statement_timeout = '120s';
 set local search_path = public, pg_temp;
 select set_config('oomnieye.rollback_accept_snapshot', 'off', true);
+select set_config('oomnieye.rollback_skip_column_grants', 'off', true);
 
 -- 0. Preflight: snapshot validity and row counts to compare against at the end ---------------------------
 do $pre$
@@ -67,6 +83,7 @@ declare
   v_functions int;
   v_open_tables int;
   v_open_functions int;
+  v_column_tables int;
 begin
   foreach v_name in array array['tickets', 'ticket_types', 'workflow_templates', 'workflow_versions', 'ticket_state_history',
                                 'ticket_assignment_history', 'ticket_type_changes', 'ticket_type_migration_backup'] loop
@@ -107,6 +124,19 @@ begin
   if v_open_tables = 0 and v_open_functions = 0
      and coalesce(current_setting('oomnieye.rollback_accept_snapshot', true), 'off') <> 'on' then
     raise exception 'The snapshot shows browsers with no write access and no EXECUTE on the legacy functions. That looks like the state AFTER the migration, so restoring it would not undo anything. Nothing was changed. If you have verified it is the original state, set oomnieye.rollback_accept_snapshot to on.';
+  end if;
+
+  select count(distinct object_name) into v_column_tables
+  from public.ticket_type_migration_backup
+  where migration = 'ticket_type_hardening_v2' and object_type = 'column_capture' and grantee = '*'
+    and object_name in ('ticket_types', 'workflow_templates', 'workflow_versions');
+  if v_column_tables = 3 then
+    perform set_config('oomnieye.rb_column_mode', 'restore', true);
+  elsif coalesce(current_setting('oomnieye.rollback_skip_column_grants', true), 'off') = 'on' then
+    perform set_config('oomnieye.rb_column_mode', 'skipped', true);
+    raise warning 'Column-level INSERT/UPDATE grants will NOT be restored: the snapshot has no column capture (% of 3 tables).', v_column_tables;
+  else
+    raise exception 'The snapshot has no column-level grant capture (% of 3 tables), so the original column INSERT/UPDATE grants cannot be restored: it was created by an earlier revision of the migration, after which the columns had already been revoked. Nothing was changed. To roll back without restoring column grants, set oomnieye.rollback_skip_column_grants to on.', v_column_tables;
   end if;
 
   foreach v_name in array array['tickets', 'ticket_types', 'workflow_templates', 'workflow_versions', 'ticket_state_history',
@@ -171,6 +201,64 @@ begin
 end;
 $restore$;
 
+-- 2b. RESTORED: column-level INSERT/UPDATE grants captured before the migration. Must run after the table
+-- restore above, because REVOKE ... ON TABLE also removes the same grantor's column grants.
+do $columns$
+declare
+  r record;
+  v_privs text[];
+  v_restored int := 0;
+  v_missing int := 0;
+begin
+  if current_setting('oomnieye.rb_column_mode') <> 'restore' then
+    raise notice 'Column-level grants: restore skipped (no capture in the snapshot, skip confirmed).';
+    return;
+  end if;
+
+  for r in
+    select c.relname, a.attname
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    join pg_attribute a on a.attrelid = c.oid
+    where n.nspname = 'public' and c.relkind in ('r', 'p')
+      and c.relname in ('ticket_types', 'workflow_templates', 'workflow_versions')
+      and a.attnum > 0 and not a.attisdropped
+  loop
+    execute format('revoke insert (%1$I), update (%1$I) on public.%2$I from anon, authenticated', r.attname, r.relname);
+  end loop;
+
+  for r in
+    select s.tbl, s.col, s.grantee, s.privileges,
+           exists (select 1 from pg_attribute a
+                   where a.attrelid = to_regclass('public.' || s.tbl) and a.attname = s.col
+                     and a.attnum > 0 and not a.attisdropped) as col_exists
+    from (
+      select split_part(b.object_name, '.', 1) as tbl,
+             substr(b.object_name, length(split_part(b.object_name, '.', 1)) + 2) as col,
+             b.grantee, b.privileges
+      from public.ticket_type_migration_backup b
+      where b.migration = 'ticket_type_hardening_v2' and b.object_type = 'column'
+        and b.grantee in ('anon', 'authenticated')
+    ) s
+    where s.tbl in ('ticket_types', 'workflow_templates', 'workflow_versions')
+  loop
+    v_privs := array(select p from unnest(r.privileges) p where p in ('INSERT', 'UPDATE') order by p);
+    if cardinality(v_privs) = 0 then
+      continue;
+    elsif not r.col_exists then
+      v_missing := v_missing + 1;
+      raise warning 'Column %.% no longer exists; its recorded grants for % are not restored.', r.tbl, r.col, r.grantee;
+    else
+      execute format('grant %s on public.%I to %I',
+                     (select string_agg(format('%s (%I)', p, r.col), ', ' order by p) from unnest(v_privs) p),
+                     r.tbl, r.grantee);
+      v_restored := v_restored + 1;
+    end if;
+  end loop;
+  raise notice 'Column-level grants restored: % (columns no longer present: %).', v_restored, v_missing;
+end;
+$columns$;
+
 -- 3. REMOVED: functions added by the migration -------------------------------------------------------------
 drop function if exists public.create_ticket_type_secure(text, text, jsonb, text, text);
 drop function if exists public.update_ticket_type_secure(text, text, text, jsonb, text, text);
@@ -217,7 +305,43 @@ declare
   v_name text;
   v_expected boolean;
   v_n bigint;
+  v_diff text;
 begin
+  -- direct column INSERT/UPDATE grants of browser roles equal the snapshot exactly (columns that still exist)
+  if current_setting('oomnieye.rb_column_mode') = 'restore' then
+    with actual as (
+      select c.relname || '.' || a.attname as obj, ro.rolname::text as grantee, acl.privilege_type::text as priv
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      join pg_attribute a on a.attrelid = c.oid
+      cross join lateral aclexplode(a.attacl) as acl
+      join pg_roles ro on ro.oid = acl.grantee
+      where n.nspname = 'public' and c.relname in ('ticket_types', 'workflow_templates', 'workflow_versions')
+        and a.attnum > 0 and not a.attisdropped
+        and ro.rolname in ('anon', 'authenticated') and acl.privilege_type in ('INSERT', 'UPDATE')
+    ),
+    expected as (
+      select b.object_name as obj, b.grantee, p as priv
+      from public.ticket_type_migration_backup b
+      cross join lateral unnest(b.privileges) as p
+      where b.migration = 'ticket_type_hardening_v2' and b.object_type = 'column'
+        and b.grantee in ('anon', 'authenticated') and p in ('INSERT', 'UPDATE')
+        and exists (select 1 from pg_attribute a
+                    where a.attrelid = to_regclass('public.' || split_part(b.object_name, '.', 1))
+                      and a.attname = substr(b.object_name, length(split_part(b.object_name, '.', 1)) + 2)
+                      and a.attnum > 0 and not a.attisdropped)
+    ),
+    diff as (
+      (select 'unexpected' as kind, * from (select * from actual except select * from expected) x)
+      union all
+      (select 'missing' as kind, * from (select * from expected except select * from actual) y)
+    )
+    select string_agg(kind || ' ' || obj || ' (' || grantee || ': ' || priv || ')', ', ') into v_diff from diff;
+    if v_diff is not null then
+      raise exception 'Rollback postflight failed: column-level grants differ from the snapshot: %', v_diff;
+    end if;
+  end if;
+
   -- legacy function privileges match the snapshot
   for r in
     select distinct object_name from public.ticket_type_migration_backup

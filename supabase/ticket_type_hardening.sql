@@ -144,6 +144,33 @@ begin
     group by a.grantee
     on conflict do nothing;
   end loop;
+
+  -- Column-level INSERT/UPDATE grants of anon/authenticated (pg_attribute.attacl) on the three tables whose
+  -- columns are revoked in section 6. Captured only in the run that creates the snapshot, i.e. before any
+  -- revoke. One 'column_capture' marker per table proves the capture happened; a table with no direct column
+  -- grants has a marker and no 'column' rows. object_name is '<table>.<column>'.
+  insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
+  select 'ticket_type_hardening_v2', 'column_capture', c.relname, '*', '{}'
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind in ('r', 'p')
+    and c.relname in ('ticket_types', 'workflow_templates', 'workflow_versions')
+  on conflict do nothing;
+
+  insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
+  select 'ticket_type_hardening_v2', 'column', c.relname || '.' || a.attname, ro.rolname,
+         array_agg(distinct acl.privilege_type::text order by acl.privilege_type::text)
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  join pg_attribute a on a.attrelid = c.oid
+  cross join lateral aclexplode(a.attacl) as acl
+  join pg_roles ro on ro.oid = acl.grantee
+  where n.nspname = 'public' and c.relkind in ('r', 'p')
+    and c.relname in ('ticket_types', 'workflow_templates', 'workflow_versions')
+    and a.attnum > 0 and not a.attisdropped
+    and ro.rolname in ('anon', 'authenticated')
+    and acl.privilege_type in ('INSERT', 'UPDATE')
+  group by c.relname, a.attname, ro.rolname
+  on conflict do nothing;
 end;
 $snapshot$;
 

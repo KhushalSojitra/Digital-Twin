@@ -13,7 +13,85 @@
 --   workflow_versions  (id, template_id, version, definition jsonb, is_active, created_at)
 --   tickets            (id, type, status, assignee, workflow_version_id, workflow_state, ...)
 --   ticket_assignment_history, ticket_state_history, save_workflow_template(...)
--- Run once in the Supabase SQL editor of the project the app is connected to. Safe to re-run.
+-- Run once in the SQL editor of the project the app is connected to (okkgnwiqcupflocoobes), BEFORE
+-- supabase/ticket_type_hardening.sql. Safe to re-run until the hardening has been applied; after that it
+-- refuses to run, because re-running it would hand browsers EXECUTE on functions the hardening locked.
+--
+-- The whole script is ONE transaction: the prerequisite check below runs first and any failure rolls back
+-- everything, so a refused run changes nothing. It never deletes or rewrites ticket rows or history rows.
+--
+-- Not created here (must already exist, checked below): workflow_group_status(text), save_workflow_template(...).
+-- The new ticket-type functions are NOT granted to browsers: only the service role (used by the API) can run
+-- them, so there is no window between this script and the hardening in which a browser could manage types.
+
+begin;
+set local lock_timeout = '10s';
+set local statement_timeout = '120s';
+set local search_path = public, pg_temp;
+
+do $prereq$
+declare
+  v_item text;
+  v_missing text[] := '{}';
+begin
+  if to_regclass('public.ticket_type_migration_backup') is not null then
+    raise exception 'ticket_type_hardening.sql has already been applied (or rolled back) on this database. Do not re-run ticket_workflow.sql: it would give browsers EXECUTE on the locked functions again. Nothing was changed.';
+  end if;
+
+  foreach v_item in array array[
+    'tickets.id', 'tickets.status', 'tickets.assignee', 'tickets.reporter', 'tickets.history_log',
+    'tickets.completed_at', 'tickets.workflow_version_id', 'tickets.workflow_state',
+    'workflow_templates.id', 'workflow_templates.name', 'workflow_templates.description',
+    'workflow_templates.is_system', 'workflow_templates.created_at',
+    'workflow_versions.id', 'workflow_versions.template_id', 'workflow_versions.version',
+    'workflow_versions.definition', 'workflow_versions.is_active',
+    'ticket_state_history.ticket_id', 'ticket_state_history.from_state', 'ticket_state_history.to_state',
+    'ticket_state_history.changed_by', 'ticket_state_history.changed_at', 'ticket_state_history.workflow_version_id',
+    'ticket_assignment_history.ticket_id', 'ticket_assignment_history.from_assignee',
+    'ticket_assignment_history.to_assignee', 'ticket_assignment_history.changed_by', 'ticket_assignment_history.changed_at'
+  ] loop
+    if not exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = split_part(v_item, '.', 1) and column_name = split_part(v_item, '.', 2)
+    ) then
+      v_missing := v_missing || ('column ' || v_item);
+    end if;
+  end loop;
+
+  if to_regprocedure('public.workflow_group_status(text)') is null then
+    v_missing := v_missing || 'function workflow_group_status(text)';
+  end if;
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'save_workflow_template'
+  ) then
+    v_missing := v_missing || 'function save_workflow_template(...)';
+  end if;
+
+  if cardinality(v_missing) > 0 then
+    raise exception 'Prerequisite objects are missing, so this script cannot run safely (wrong database, or an older schema): %. Nothing was changed.', array_to_string(v_missing, ', ');
+  end if;
+end;
+$prereq$;
+
+-- The workflow action function below returns public.tickets with named parameters. CREATE OR REPLACE cannot
+-- change a function's return type or parameter names, so a legacy function with the same argument types but a
+-- different shape is dropped first. A function that already has this shape is only replaced, keeping its grants.
+-- DROP is without CASCADE: if anything depends on the legacy function the script stops and rolls back.
+do $legacy$
+begin
+  if to_regprocedure('public.apply_workflow_action(text,text,text,text,text)') is not null
+     and not exists (
+       select 1 from pg_proc p
+       where p.oid = to_regprocedure('public.apply_workflow_action(text,text,text,text,text)')
+         and p.prorettype = 'public.tickets'::regtype
+         and p.proargnames = array['p_ticket_id', 'p_action_id', 'p_changed_by', 'p_new_assignee', 'p_note']
+         and p.pronargdefaults <= 2
+     ) then
+    drop function public.apply_workflow_action(text, text, text, text, text);
+  end if;
+end;
+$legacy$;
 
 -- Replaces the old "move one ticket to another workflow" behaviour and the free-form editor RPCs.
 drop function if exists public.set_ticket_workflow(text, text, text);
@@ -41,13 +119,17 @@ alter table public.ticket_types enable row level security;
 drop policy if exists "ticket_types_read" on public.ticket_types;
 create policy "ticket_types_read" on public.ticket_types for select to anon, authenticated using (true);
 
--- Writes go through the security definer functions below.
+-- Writes go through the security definer functions below. New public tables get ALL privileges for the
+-- browser roles by default (RLS blocks row writes, but TRUNCATE is not subject to RLS), so take them away.
+revoke insert, update, delete, truncate on public.ticket_types from anon, authenticated;
 grant select on public.ticket_types to anon, authenticated;
 
 -- The comment typed for an action (for example the Pass On handover comment) is kept with the
--- assignment and state history entries.
+-- assignment and state history entries. action_label is written by apply_workflow_action.
 alter table public.ticket_assignment_history add column if not exists note text;
 alter table public.ticket_state_history add column if not exists note text;
+alter table public.ticket_assignment_history add column if not exists action_label text;
+alter table public.ticket_state_history add column if not exists action_label text;
 
 -- Builds the workflow definition for a set of switches.
 create or replace function public.build_ticket_type_definition(p_config jsonb)
@@ -553,10 +635,25 @@ begin
 end;
 $$;
 
+-- Pure helpers: harmless for browsers.
 grant execute on function public.build_ticket_type_definition(jsonb) to anon, authenticated;
 grant execute on function public.normalize_ticket_type_config(jsonb) to anon, authenticated;
-grant execute on function public.create_ticket_type(text, text, jsonb) to anon, authenticated;
-grant execute on function public.update_ticket_type(text, text, text, jsonb) to anon, authenticated;
-grant execute on function public.delete_ticket_type(text) to anon, authenticated;
-grant execute on function public.apply_ticket_type_workflow(text) to anon, authenticated;
+
+-- The security definer functions write ticket types, workflows and tickets. Only the API (service role)
+-- calls them, so browsers never get EXECUTE on them, not even until the hardening runs.
+revoke execute on function public.create_ticket_type(text, text, jsonb) from public, anon, authenticated;
+revoke execute on function public.update_ticket_type(text, text, text, jsonb) from public, anon, authenticated;
+revoke execute on function public.delete_ticket_type(text) from public, anon, authenticated;
+revoke execute on function public.apply_ticket_type_workflow(text) from public, anon, authenticated;
+grant execute on function public.create_ticket_type(text, text, jsonb) to service_role;
+grant execute on function public.update_ticket_type(text, text, text, jsonb) to service_role;
+grant execute on function public.delete_ticket_type(text) to service_role;
+grant execute on function public.apply_ticket_type_workflow(text) to service_role;
+
+-- Pre-existing behaviour kept: apply_workflow_action was already executable by browsers and runs with the
+-- caller's own permissions. ticket_type_hardening.sql removes that access.
 grant execute on function public.apply_workflow_action(text, text, text, text, text) to anon, authenticated;
+
+notify pgrst, 'reload schema';
+
+commit;

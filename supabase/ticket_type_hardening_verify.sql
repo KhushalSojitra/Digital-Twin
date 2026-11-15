@@ -16,7 +16,7 @@ select p.oid::regprocedure::text as function,
        p.prosecdef as security_definer
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public'
-  and (p.proname in ('apply_workflow_action', 'apply_ticket_type_workflow', 'create_ticket_type', 'update_ticket_type', 'delete_ticket_type', 'save_workflow_template')
+  and (p.proname in ('apply_workflow_action', 'apply_ticket_type_workflow', 'create_ticket_type', 'update_ticket_type', 'delete_ticket_type', 'save_workflow_template', 'change_ticket_state')
        or p.proname like '%\_secure' escape '\')
 order by 1;
 

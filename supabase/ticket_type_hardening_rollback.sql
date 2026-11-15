@@ -17,7 +17,9 @@
 --     INSERT/UPDATE grant to those roles on the three tables is revoked first, so the result equals the snapshot.
 --   * EXECUTE privileges of PUBLIC / anon / authenticated / service_role on the legacy functions:
 --     apply_workflow_action, apply_ticket_type_workflow, create_ticket_type, update_ticket_type,
---     delete_ticket_type, save_workflow_template (every overload recorded in the snapshot).
+--     delete_ticket_type, save_workflow_template, change_ticket_state (every overload recorded in the snapshot).
+--     The snapshot is taken after supabase/ticket_workflow.sql, so the four ticket-type functions that script
+--     creates are restored to service-role-only, exactly as that script left them.
 --
 -- REMOVED (objects the migration added; none of them holds data)
 --   * Triggers: zz_guard_ticket_protected_fields (tickets), protect_system_ticket_types (ticket_types),
@@ -34,6 +36,9 @@
 --     browser privileges, SELECT for service_role only. Rollback re-asserts this.
 --   * public.ticket_type_migration_backup                     - the snapshot; kept so this script can be re-run
 --     and the restore can be re-checked. Also kept locked.
+--   * Legacy tickets that the migration initialised (workflow_version_id, workflow_state and ticket_type_key
+--     set where all were empty, step 6b). They are NOT reset: they stay on their workflow, and their
+--     ticket_type_changes audit row (changed_by 'migration') records the original type and that they had no state.
 --   * tickets, ticket_state_history, ticket_assignment_history, history_log: untouched. Ticket states and
 --     history entries written by change_ticket_type_secure stay; ticket_type_changes records the previous type
 --     and state of every change.

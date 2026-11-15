@@ -13,7 +13,12 @@
 --     postflight block asserts the final privileges; any failure rolls everything back.
 --   * Idempotent: safe to run again. The "before" privileges are captured once in
 --     public.ticket_type_migration_backup so supabase/ticket_type_hardening_rollback.sql can restore them.
---   * No table is dropped or recreated and no ticket's workflow state is rewritten.
+--   * No table is dropped or recreated. The only ticket rows changed are legacy tickets that have NO workflow
+--     at all (workflow_version_id and workflow_state both NULL, e.g. created before workflows were seeded):
+--     they get a workflow version, a state and a ticket type (step 6b). Their status, assignee, completed_at,
+--     history_log and every history row stay as they are, and each one gets a ticket_type_changes audit row.
+--     A ticket whose status cannot be mapped to a workflow state with certainty stops the whole migration with
+--     a diagnostic (nothing is changed); no ticket that already has a workflow is touched.
 --
 -- What it does
 --   1. Ticket Type on the ticket (tickets.ticket_type_key) and an audit trail (ticket_type_changes) that
@@ -80,6 +85,11 @@ begin
       raise exception 'public.ticket_types has no column %', v_name;
     end if;
   end loop;
+  foreach v_name in array array['ticket_id', 'from_state', 'to_state', 'changed_by', 'changed_at', 'action_label', 'note', 'workflow_version_id'] loop
+    if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'ticket_state_history' and column_name = v_name) then
+      raise exception 'public.ticket_state_history has no column %; run supabase/ticket_workflow.sql first', v_name;
+    end if;
+  end loop;
 end;
 $pre$;
 
@@ -109,7 +119,7 @@ begin
     select p.oid::regprocedure::text as obj, p.proacl as acl
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
-      and p.proname in ('apply_workflow_action', 'apply_ticket_type_workflow', 'create_ticket_type', 'update_ticket_type', 'delete_ticket_type', 'save_workflow_template')
+      and p.proname in ('apply_workflow_action', 'apply_ticket_type_workflow', 'create_ticket_type', 'update_ticket_type', 'delete_ticket_type', 'save_workflow_template', 'change_ticket_state')
   loop
     insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
     values ('ticket_type_hardening_v2', 'function', r.obj, '*', '{}');
@@ -517,6 +527,87 @@ begin
 end;
 $seed$;
 
+-- 6b. Legacy tickets without any workflow --------------------------------------------------------------------
+-- A ticket with workflow_version_id AND workflow_state both NULL cannot run any workflow action ("This ticket
+-- has no workflow"). Such a ticket is put on the current workflow of its own ticket type, or of 'standard'
+-- when it has none, but only when its status maps to a state with certainty:
+--     open -> todo,  in_progress -> in_progress,  done -> done.
+-- Any other status (accepted, failed, empty, unknown ...) or a half-initialised ticket (only one of the two
+-- columns set) stops the migration with a list of the tickets; nothing is guessed and nothing is changed.
+-- status, assignee, completed_at, history_log and all history rows are left alone; the legacy `type` value
+-- stays in place and is recorded as from_type in ticket_type_changes.
+do $backfill$
+declare
+  r record;
+  v_bad text;
+  v_type public.ticket_types%rowtype;
+  v_version public.workflow_versions%rowtype;
+  v_state text;
+  v_count int := 0;
+begin
+  select string_agg(format('ticket %s (workflow_version_id %s, workflow_state %s)', t.id, coalesce(t.workflow_version_id::text, 'NULL'), coalesce(t.workflow_state, 'NULL')), '; ' order by t.id::text)
+  into v_bad
+  from public.tickets t
+  where (t.workflow_version_id is null) <> (t.workflow_state is null);
+  if v_bad is not null then
+    raise exception 'Tickets with only half a workflow need a manual decision, nothing was changed: %', v_bad;
+  end if;
+
+  select string_agg(format('ticket %s (status %L)', t.id, to_jsonb(t) ->> 'status'), '; ' order by t.id::text)
+  into v_bad
+  from public.tickets t
+  where t.workflow_version_id is null and t.workflow_state is null
+    and replace(lower(trim(coalesce(to_jsonb(t) ->> 'status', ''))), ' ', '_') not in ('open', 'in_progress', 'done');
+  if v_bad is not null then
+    raise exception 'Tickets without a workflow whose status cannot be mapped to a workflow state with certainty (map them by hand, then re-run). Nothing was changed: %', v_bad;
+  end if;
+
+  for r in
+    select t.id,
+           t.ticket_type_key,
+           coalesce(t.ticket_type_key, to_jsonb(t) ->> 'type', to_jsonb(t) -> 'ptz_coordinates' -> 'metadata' ->> 'type') as from_type,
+           case replace(lower(trim(to_jsonb(t) ->> 'status')), ' ', '_')
+             when 'open' then 'todo'
+             when 'in_progress' then 'in_progress'
+             when 'done' then 'done'
+           end as target_state
+    from public.tickets t
+    where t.workflow_version_id is null and t.workflow_state is null
+    order by t.id::text
+    for update
+  loop
+    select * into v_type from public.ticket_types where key = coalesce(r.ticket_type_key, 'standard');
+    if not found or v_type.workflow_template_id is null then
+      raise exception 'Ticket %: ticket type % has no workflow, so the ticket cannot be initialised. Nothing was changed.', r.id, coalesce(r.ticket_type_key, 'standard');
+    end if;
+    select * into v_version from public.current_ticket_type_version(v_type.workflow_template_id);
+    if v_version.id is null or not public.workflow_has_state(v_version.definition, r.target_state) then
+      raise exception 'Ticket %: the workflow of ticket type % has no valid state "%". Nothing was changed.', r.id, v_type.key, r.target_state;
+    end if;
+
+    insert into public.ticket_type_changes (ticket_id, from_type, to_type, from_state, to_state, from_version_id, to_version_id, reason, changed_by, changed_role)
+    values (r.id::text, r.from_type, v_type.key, null, r.target_state, null, v_version.id::text,
+            'Legacy ticket without a workflow initialised by ticket_type_hardening.sql', 'migration', 'System');
+
+    update public.tickets
+    set ticket_type_key = v_type.key,
+        workflow_version_id = v_version.id,
+        workflow_state = r.target_state
+    where id = r.id;
+
+    select workflow_state into v_state
+    from public.tickets t
+    where t.id = r.id and t.workflow_version_id::text = v_version.id::text and t.ticket_type_key = v_type.key;
+    if v_state is distinct from r.target_state then
+      raise exception 'Ticket % was not initialised as expected (a trigger on public.tickets changed the result). Nothing was changed.', r.id;
+    end if;
+    v_count := v_count + 1;
+  end loop;
+
+  raise notice 'Legacy tickets initialised into a workflow: %', v_count;
+end;
+$backfill$;
+
 create trigger zz_guard_ticket_protected_fields
   before insert or update on public.tickets
   for each row execute function public.guard_ticket_protected_fields();
@@ -896,7 +987,9 @@ grant execute on function public.apply_ticket_type_workflow(text) to service_rol
 grant execute on function public.apply_workflow_action(text, text, text, text, text) to service_role;
 
 -- save_workflow_template is only ever called from the security definer functions above (as their owner).
--- Browsers must not be able to call it, whatever its signature is.
+-- change_ticket_state is the legacy direct state change; the app never calls it and the workflow actions replace
+-- it. apply_workflow_action overloads other than the one above are closed the same way. Browsers must not be
+-- able to call any of them, whatever their signature is. service_role keeps whatever it had.
 do $grants$
 declare
   r record;
@@ -904,7 +997,7 @@ begin
   for r in
     select p.oid::regprocedure::text as sig
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'save_workflow_template'
+    where n.nspname = 'public' and p.proname in ('save_workflow_template', 'change_ticket_state', 'apply_workflow_action')
   loop
     execute format('revoke execute on function %s from public, anon, authenticated', r.sig);
   end loop;
@@ -969,7 +1062,7 @@ begin
   for r in
     select p.oid::regprocedure::text as sig
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'save_workflow_template'
+    where n.nspname = 'public' and p.proname in ('save_workflow_template', 'change_ticket_state', 'apply_workflow_action')
   loop
     foreach v_role in array array['anon', 'authenticated'] loop
       if has_function_privilege(v_role, r.sig, 'execute') then

@@ -104,6 +104,15 @@ export function route(method: 'GET' | 'POST', handler: Handler) {
       let body: unknown
       if (method === 'POST') {
         if (!isSameOrigin(req)) {
+          console.log('[v0] origin check failed', {
+            origin: req.headers.origin,
+            referer: req.headers.referer,
+            host: req.headers.host,
+            xfh: req.headers['x-forwarded-host'],
+            xfp: req.headers['x-forwarded-proto'],
+            fetchSite: req.headers['sec-fetch-site'],
+            fetchDest: req.headers['sec-fetch-dest'],
+          })
           fail(res, 403, 'origin_mismatch', 'Cross-origin requests are not allowed.')
           return
         }

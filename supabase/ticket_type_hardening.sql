@@ -508,6 +508,51 @@ revoke insert, update, delete, truncate on public.ticket_types from anon, authen
 revoke insert, update, delete, truncate on public.workflow_templates from anon, authenticated;
 revoke insert, update, delete, truncate on public.workflow_versions from anon, authenticated;
 
+-- Column-level write grants are separate ACL entries (pg_attribute.attacl). A table-level REVOKE only removes
+-- column grants made by the same grantor, so revoke them explicitly per column, then fail the migration if
+-- any direct column-level INSERT/UPDATE grant to a browser role is still present. SELECT is left untouched.
+do $column_privileges$
+declare
+  r record;
+  v_remaining text;
+begin
+  for r in
+    select c.relname, a.attname
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    join pg_attribute a on a.attrelid = c.oid
+    where n.nspname = 'public'
+      and c.relname in ('ticket_types', 'workflow_templates', 'workflow_versions')
+      and c.relkind in ('r', 'p')
+      and a.attnum > 0
+      and not a.attisdropped
+  loop
+    execute format(
+      'revoke insert (%1$I), update (%1$I) on public.%2$I from anon, authenticated',
+      r.attname, r.relname
+    );
+  end loop;
+
+  select string_agg(distinct c.relname || '.' || a.attname || ' (' || ro.rolname || ': ' || acl.privilege_type || ')', ', ')
+  into v_remaining
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  join pg_attribute a on a.attrelid = c.oid
+  cross join lateral aclexplode(a.attacl) as acl
+  join pg_roles ro on ro.oid = acl.grantee
+  where n.nspname = 'public'
+    and c.relname in ('ticket_types', 'workflow_templates', 'workflow_versions')
+    and a.attnum > 0
+    and not a.attisdropped
+    and ro.rolname in ('anon', 'authenticated')
+    and acl.privilege_type in ('INSERT', 'UPDATE');
+
+  if v_remaining is not null then
+    raise exception 'Column-level write grants remain for browser roles: %', v_remaining;
+  end if;
+end;
+$column_privileges$;
+
 -- 7. Service-role functions ------------------------------------------------------------------------------
 -- Manage custom types: Administrator and Operator. System defaults are never editable.
 create or replace function public.create_ticket_type_secure(

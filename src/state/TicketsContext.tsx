@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, useEffect, useRef, type ReactNode } from 'react'
 import { supabase } from '../supabaseClient'
+import { postTicketTypeAction } from '../auth/authApi'
 import { ALL_DEVICES } from '../data/cameras'
 import {
   DEFAULT_SNAPSHOT_CONFIG,
@@ -49,6 +50,8 @@ interface TicketsValue {
   updateDetails: (id: string, patch: TicketDetailsPatch, by: string) => void
   /** Runs one action of the ticket's workflow; rejects with the server's reason when it is not allowed. */
   performAction: (id: string, actionId: string, input: WorkflowActionInput) => Promise<void>
+  /** Moves a ticket to another ticket type's workflow; the server records the change in its audit trail. */
+  changeTicketType: (id: string, typeKey: string, reason: string) => Promise<void>
   attachSnapshot: (id: string, slot: 'before' | 'after', snapshot: Snapshot) => void
 }
 
@@ -269,7 +272,7 @@ function ticketFromDatabase(value: unknown): Ticket {
   const id = stringValue(row.ticket_id, stringValue(row.id, ''))
   if (!id) throw new Error('Supabase ticket row is missing both ticket_id and id')
 
-  const rawType = row.type ?? metadata.type
+  const rawType = row.ticket_type_key ?? row.type ?? metadata.type
   const rawPlatform = row.platform ?? metadata.platform
   const platform: Ticket['platform'] = rawPlatform === 'client' || rawPlatform === 'custom' ? rawPlatform : 'default'
   const snapshotConfig = typeof (row.snapshot_config ?? metadata.snapshotConfig) === 'object'
@@ -421,9 +424,12 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
 
     let savedTicket = ticketFromDatabase(data)
     // The ticket starts on the workflow of its type; if that step is unavailable it keeps the default one.
-    const { data: applied, error: applyError } = await supabase.rpc('apply_ticket_type_workflow', { p_ticket_id: savedTicket.id })
-    if (applyError) console.error(`Unable to apply the ticket type workflow to ${savedTicket.id}:`, applyError.message)
-    else if (applied) savedTicket = ticketFromDatabase(Array.isArray(applied) ? applied[0] : applied)
+    try {
+      const applied = await postTicketTypeAction({ action: 'apply', ticketId: savedTicket.id, typeKey: ticket.type })
+      if (applied) savedTicket = ticketFromDatabase(Array.isArray(applied) ? applied[0] : applied)
+    } catch (applyError) {
+      console.error(`Unable to apply the ticket type workflow to ${savedTicket.id}:`, applyError)
+    }
     const next = [savedTicket, ...ticketsRef.current.filter((existing) => existing.id !== savedTicket.id)]
     ticketsRef.current = next
     setTickets(next)
@@ -648,14 +654,32 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     return run
   }, [])
 
+  const changeTicketType = useCallback((id: string, typeKey: string, reason: string): Promise<void> => {
+    if (!ticketsRef.current.some((ticket) => ticket.id === id)) return Promise.reject(new Error('Ticket not found'))
+    const previousWrite = writeQueues.current.get(id) ?? Promise.resolve()
+    const run = previousWrite.catch(() => undefined).then(async () => {
+      const data = await postTicketTypeAction({ action: 'change', ticketId: id, typeKey, reason })
+      const saved = ticketFromDatabase(Array.isArray(data) ? data[0] : data)
+      const next = ticketsRef.current.map((ticket) => ticket.id === id ? saved : ticket)
+      ticketsRef.current = next
+      setTickets(next)
+    })
+    const write = run.catch((error) => console.error(`Unable to change the type of ticket ${id}:`, error))
+    writeQueues.current.set(id, write)
+    void write.finally(() => {
+      if (writeQueues.current.get(id) === write) writeQueues.current.delete(id)
+    })
+    return run
+  }, [])
+
   const attachSnapshot = useCallback((id: string, slot: 'before' | 'after', snapshot: Snapshot) => patch(id, (ticket) => {
     const freshSnaps = { ...ticket.snapshots, [slot]: snapshot }
     return log({ ...ticket, snapshots: freshSnaps }, snapshot.by, `Attached ${slot} snapshot`)
   }), [patch]);
 
   const value = useMemo(
-    () => ({ tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, attachSnapshot }),
-    [tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, attachSnapshot],
+    () => ({ tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot }),
+    [tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot],
   )
 
   return <TicketsContext.Provider value={value}>{children}</TicketsContext.Provider>

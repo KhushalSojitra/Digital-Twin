@@ -43,6 +43,7 @@ import ImprovementVerification from './ImprovementVerification'
 import { useMarkTicketSeen } from '../../state/TicketReadsContext'
 import TicketShare from './TicketShare'
 import TicketWorkflowButton from './TicketWorkflowButton'
+import TicketTypeChanger from './TicketTypeChanger'
 
 interface Props {
   ticket: Ticket
@@ -170,6 +171,8 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
               {ticket.description}
             </Typography>
+
+            <TicketTypeChanger ticket={ticket} />
 
             <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap', gap: 1 }}>
               <Button size="small" variant="contained" startIcon={<MyLocationRoundedIcon />} onClick={() => onGoToLocation(ticket)}>

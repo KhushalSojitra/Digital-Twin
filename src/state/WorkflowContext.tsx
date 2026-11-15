@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '../supabaseClient'
+import { postTicketTypeAction } from '../auth/authApi'
 import { STATUS_LABEL, TYPE_LABEL, type Ticket } from '../data/tickets'
 import {
   BUILT_IN_TICKET_TYPES,
@@ -49,9 +50,6 @@ interface WorkflowValue {
 
 const WorkflowContext = createContext<WorkflowValue | null>(null)
 
-function describeError(error: { message: string }) {
-  return error.message
-}
 
 export function WorkflowProvider({ children }: { children: ReactNode }) {
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
@@ -109,31 +107,20 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
 
   const saveTicketType = useCallback<WorkflowValue['saveTicketType']>(async (typeKey, label, description, config) => {
     let savedKey = typeKey ?? ''
+    const flags = configToDatabase(config) as Record<string, boolean>
     if (typeKey === null) {
-      const { data, error } = await supabase.rpc('create_ticket_type', {
-        p_label: label,
-        p_description: description,
-        p_config: configToDatabase(config),
-      })
-      if (error) throw new Error(describeError(error))
+      const data = await postTicketTypeAction({ action: 'create', label, description, config: flags })
       const created = parseTicketType((Array.isArray(data) ? data[0] : data) ?? {})
       savedKey = created?.key ?? ''
     } else {
-      const { error } = await supabase.rpc('update_ticket_type', {
-        p_key: typeKey,
-        p_label: label,
-        p_description: description,
-        p_config: configToDatabase(config),
-      })
-      if (error) throw new Error(describeError(error))
+      await postTicketTypeAction({ action: 'update', key: typeKey, label, description, config: flags })
     }
     await refresh()
     return savedKey
   }, [refresh])
 
   const deleteTicketType = useCallback(async (typeKey: string) => {
-    const { error } = await supabase.rpc('delete_ticket_type', { p_key: typeKey })
-    if (error) throw new Error(describeError(error))
+    await postTicketTypeAction({ action: 'delete', key: typeKey })
     await refresh()
   }, [refresh])
 

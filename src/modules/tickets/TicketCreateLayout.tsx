@@ -43,6 +43,8 @@ import SnapshotMarkup, { type MarkupShape } from './SnapshotMarkup'
 import SnapshotCrop from './SnapshotCrop'
 import TicketAdditionalTab, { useTicketAdditional } from './TicketAdditionalTab'
 import TicketWorkflowButton from './TicketWorkflowButton'
+import { useWorkflow } from '../../state/WorkflowContext'
+import { DEFAULT_TICKET_TYPE_KEY } from '../../data/ticketTypes'
 
 type TicketTab = 'general' | 'additional' | 'activity'
 type VoiceState = 'idle' | 'listening' | 'transcribing'
@@ -349,6 +351,8 @@ export default function TicketCreateLayout({
   onTicketTypeChange,
 }: Props) {
   const uid = useId()
+  const { ticketTypes } = useWorkflow()
+  const selectableTypes = ticketTypes.filter((type) => type.isActive)
   const [tab, setTab] = useState<TicketTab>('general')
   const additional = useTicketAdditional(title)
   const [fullscreen, setFullscreen] = useState(false)
@@ -563,6 +567,21 @@ export default function TicketCreateLayout({
               </Box>
 
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
+                <TextField
+                  select
+                  label="Ticket Type"
+                  value={selectableTypes.some((type) => type.key === ticketType) ? ticketType : DEFAULT_TICKET_TYPE_KEY}
+                  onChange={(e) => onTicketTypeChange?.(e.target.value)}
+                  sx={[fieldSx, { gridColumn: { sm: '1 / -1' } }]}
+                  slotProps={{ select: { MenuProps: menuProps }, htmlInput: { 'aria-label': 'Ticket Type' } }}
+                >
+                  {selectableTypes.map((type) => (
+                    <MenuItem key={type.key} value={type.key}>
+                      {type.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+
                 <FormControl fullWidth sx={fieldSx}>
                   <Select
                     value={priority}

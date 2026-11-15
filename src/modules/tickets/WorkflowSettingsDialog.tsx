@@ -46,7 +46,7 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey,
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
   const { currentUser } = useAuth()
   const { ticketTypes, typesAvailable, loading, saveTicketType, deleteTicketType } = useWorkflow()
-  const canAdminister = currentUser?.role === 'Administrator'
+  const canAdminister = currentUser?.role === 'Administrator' || currentUser?.role === 'Operator'
   const [selection, setSelection] = useState<Selection>({ kind: 'type', key: selectedTypeKey ?? ticketTypes[0]?.key ?? '' })
   const [showDetail, setShowDetail] = useState(!isXs)
   const [editorVersion, setEditorVersion] = useState(0)
@@ -196,7 +196,7 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey,
   info.push('To Do, In Progress and Done are always part of the workflow.')
   if (current?.isSystem) info.push('System ticket types are built in and cannot be changed.')
   if (current && !current.config) info.push('This ticket type was created before configurable options existed. Its tickets keep their current workflow.')
-  if (typesAvailable && !canAdminister) info.push('Only administrators can create or change custom ticket types. You can view how each one is configured.')
+  if (typesAvailable && !canAdminister) info.push('Only administrators and operators can create or change custom ticket types. You can view how each one is configured.')
 
   const actions =
     current && (onSelectType || editable) ? (

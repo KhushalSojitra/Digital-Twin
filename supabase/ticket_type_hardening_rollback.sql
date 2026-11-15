@@ -57,6 +57,17 @@
 --   restoring column grants (browsers stay without column-level INSERT/UPDATE, the safe direction), change 'off'
 --   to 'on' in the oomnieye.rollback_skip_column_grants line below.
 --
+-- RESTORED / REMOVED for public.tickets browser access (migration section 6c)
+--   * RESTORED: the row level security state, every policy that existed before (rebuilt from the snapshot),
+--     and the table-level and column-level SELECT / INSERT / UPDATE / REFERENCES grants of anon / authenticated.
+--   * REMOVED: the policy tickets_read_signed_in and the functions create_ticket_secure,
+--     update_ticket_details_secure, add_ticket_comment_secure, update_ticket_followers_secure,
+--     attach_ticket_snapshot_secure, delete_ticket_secure and ticket_metadata_set.
+--   * RESTORED: EXECUTE on apply_workflow_action for service_role, exactly as in the snapshot.
+--   * Needs the 'tickets_capture' marker in the snapshot; without it (an older revision of the migration) the
+--     script stops unless oomnieye.rollback_skip_tickets_access is set to on, in which case tickets access is
+--     left locked down.
+--
 -- NOT COVERED
 --   * Column grants made by a different grantor than the role running this script are restored as granted by the
 --     running role, and WITH GRANT OPTION is not recorded or restored (the table snapshot has the same limits).
@@ -77,6 +88,7 @@ set local statement_timeout = '120s';
 set local search_path = public, pg_temp;
 select set_config('oomnieye.rollback_accept_snapshot', 'off', true);
 select set_config('oomnieye.rollback_skip_column_grants', 'off', true);
+select set_config('oomnieye.rollback_skip_tickets_access', 'off', true);
 
 -- 0. Preflight: snapshot validity and row counts to compare against at the end ---------------------------
 do $pre$
@@ -153,6 +165,20 @@ begin
   perform set_config('oomnieye.rb_count_typed_tickets', v_n::text, true);
 end;
 $pre$;
+
+do $pre_tickets$
+begin
+  if exists (select 1 from public.ticket_type_migration_backup
+             where migration = 'ticket_type_hardening_v2' and object_type = 'tickets_capture' and object_name = 'tickets') then
+    perform set_config('oomnieye.rb_tickets_mode', 'restore', true);
+  elsif coalesce(current_setting('oomnieye.rollback_skip_tickets_access', true), 'off') = 'on' then
+    perform set_config('oomnieye.rb_tickets_mode', 'skipped', true);
+    raise warning 'Browser access to public.tickets will NOT be restored: the snapshot has no tickets capture.';
+  else
+    raise exception 'The snapshot has no capture of the original public.tickets policies and grants (it was created by an earlier revision of the migration), so they cannot be restored. Nothing was changed. To roll back and leave tickets locked down, set oomnieye.rollback_skip_tickets_access to on.';
+  end if;
+end;
+$pre_tickets$;
 
 -- 1. REMOVED: protection triggers and their functions -----------------------------------------------------
 drop trigger if exists zz_guard_ticket_protected_fields on public.tickets;
@@ -264,6 +290,68 @@ begin
 end;
 $columns$;
 
+-- 2c. RESTORED: public.tickets row level security, policies, table and column grants of the browser roles.
+do $tickets_restore$
+declare
+  r record;
+  v_privs text[];
+  v_rls text[];
+begin
+  if current_setting('oomnieye.rb_tickets_mode') <> 'restore' then
+    raise notice 'public.tickets access: restore skipped (confirmed).';
+    return;
+  end if;
+
+  for r in select policyname from pg_policies where schemaname = 'public' and tablename = 'tickets' loop
+    execute format('drop policy %I on public.tickets', r.policyname);
+  end loop;
+  for r in
+    select object_name, privileges as p from public.ticket_type_migration_backup
+    where migration = 'ticket_type_hardening_v2' and object_type = 'tickets_policy'
+  loop
+    execute format('create policy %I on public.tickets as %s for %s to %s%s%s',
+      r.object_name, lower(r.p[2]), lower(r.p[1]),
+      (select string_agg(case when x = 'public' then 'public' else quote_ident(x) end, ', ') from unnest(string_to_array(r.p[3], ',')) x),
+      case when r.p[4] <> '' then format(' using (%s)', r.p[4]) else '' end,
+      case when r.p[5] <> '' then format(' with check (%s)', r.p[5]) else '' end);
+  end loop;
+
+  select privileges into v_rls from public.ticket_type_migration_backup
+  where migration = 'ticket_type_hardening_v2' and object_type = 'tickets_capture' and object_name = 'tickets';
+  execute case when v_rls[1] = 'RLS_ON' then 'alter table public.tickets enable row level security'
+               else 'alter table public.tickets disable row level security' end;
+  execute case when v_rls[2] = 'FORCE_ON' then 'alter table public.tickets force row level security'
+               else 'alter table public.tickets no force row level security' end;
+
+  execute 'revoke all on table public.tickets from anon, authenticated';
+  for r in
+    select grantee, privileges from public.ticket_type_migration_backup
+    where migration = 'ticket_type_hardening_v2' and object_type = 'table' and object_name = 'tickets'
+      and grantee in ('anon', 'authenticated') and cardinality(privileges) > 0
+  loop
+    execute format('grant %s on table public.tickets to %I', array_to_string(r.privileges, ', '), r.grantee);
+  end loop;
+
+  for r in
+    select b.object_name as col, b.grantee, b.privileges,
+           exists (select 1 from pg_attribute a where a.attrelid = to_regclass('public.tickets') and a.attname = b.object_name
+                   and a.attnum > 0 and not a.attisdropped) as col_exists
+    from public.ticket_type_migration_backup b
+    where b.migration = 'ticket_type_hardening_v2' and b.object_type = 'tickets_column' and b.grantee in ('anon', 'authenticated')
+  loop
+    v_privs := array(select p from unnest(r.privileges) p where p in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES') order by p);
+    if cardinality(v_privs) = 0 then
+      continue;
+    elsif not r.col_exists then
+      raise warning 'Column tickets.% no longer exists; its recorded grants for % are not restored.', r.col, r.grantee;
+    else
+      execute format('grant %s on public.tickets to %I',
+                     (select string_agg(format('%s (%I)', p, r.col), ', ' order by p) from unnest(v_privs) p), r.grantee);
+    end if;
+  end loop;
+end;
+$tickets_restore$;
+
 -- 3. REMOVED: functions added by the migration -------------------------------------------------------------
 drop function if exists public.create_ticket_type_secure(text, text, jsonb, text, text);
 drop function if exists public.update_ticket_type_secure(text, text, text, jsonb, text, text);
@@ -279,6 +367,13 @@ drop function if exists public.workflow_has_state(jsonb, text);
 drop function if exists public.current_ticket_type_version(text);
 drop function if exists public.assert_ticket_type_actor(text, text, text[]);
 drop function if exists public.is_browser_role();
+drop function if exists public.create_ticket_secure(jsonb, text, text, text);
+drop function if exists public.update_ticket_details_secure(text, text, text, text, jsonb, jsonb, text, text);
+drop function if exists public.add_ticket_comment_secure(text, text, jsonb, text, text);
+drop function if exists public.update_ticket_followers_secure(text, text, text[], text, text);
+drop function if exists public.attach_ticket_snapshot_secure(text, text, jsonb, text, text);
+drop function if exists public.delete_ticket_secure(text, text, text);
+drop function if exists public.ticket_metadata_set(jsonb, text, jsonb);
 
 -- 4. RETAINED and kept locked: the audit trail and the snapshot never become browser-readable -------------
 do $lock$
@@ -385,6 +480,60 @@ begin
     end loop;
   end loop;
 
+  -- public.tickets: RLS, policies, table and column grants equal the snapshot
+  if current_setting('oomnieye.rb_tickets_mode') = 'restore' then
+    if (select relrowsecurity from pg_class where oid = 'public.tickets'::regclass)
+       is distinct from ((select privileges[1] from public.ticket_type_migration_backup
+                          where migration = 'ticket_type_hardening_v2' and object_type = 'tickets_capture') = 'RLS_ON') then
+      raise exception 'Rollback postflight failed: RLS on public.tickets does not match the snapshot';
+    end if;
+    if exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'tickets' and policyname = 'tickets_read_signed_in')
+       and not exists (select 1 from public.ticket_type_migration_backup where migration = 'ticket_type_hardening_v2'
+                       and object_type = 'tickets_policy' and object_name = 'tickets_read_signed_in') then
+      raise exception 'Rollback postflight failed: the migration policy tickets_read_signed_in is still present';
+    end if;
+    if (select count(*) from pg_policies where schemaname = 'public' and tablename = 'tickets')
+       <> (select count(*) from public.ticket_type_migration_backup where migration = 'ticket_type_hardening_v2' and object_type = 'tickets_policy') then
+      raise exception 'Rollback postflight failed: the policies on public.tickets do not match the snapshot';
+    end if;
+    foreach v_role in array array['anon', 'authenticated'] loop
+      foreach v_priv in array array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'] loop
+        select exists (
+          select 1 from public.ticket_type_migration_backup b
+          where b.migration = 'ticket_type_hardening_v2' and b.object_type = 'table' and b.object_name = 'tickets'
+            and b.grantee in ('public', v_role) and v_priv = any (b.privileges)
+        ) into v_expected;
+        if has_table_privilege(v_role::name, 'public.tickets'::regclass::oid, v_priv) <> v_expected then
+          raise exception 'Rollback postflight failed: % % on public.tickets does not match the snapshot', v_role, v_priv;
+        end if;
+      end loop;
+    end loop;
+    with actual as (
+      select a.attname::text as obj, ro.rolname::text as grantee, acl.privilege_type::text as priv
+      from pg_attribute a
+      cross join lateral aclexplode(a.attacl) as acl
+      join pg_roles ro on ro.oid = acl.grantee
+      where a.attrelid = 'public.tickets'::regclass and a.attnum > 0 and not a.attisdropped
+        and ro.rolname in ('anon', 'authenticated')
+    ),
+    expected as (
+      select b.object_name as obj, b.grantee, p as priv
+      from public.ticket_type_migration_backup b cross join lateral unnest(b.privileges) p
+      where b.migration = 'ticket_type_hardening_v2' and b.object_type = 'tickets_column'
+        and exists (select 1 from pg_attribute a where a.attrelid = 'public.tickets'::regclass and a.attname = b.object_name
+                    and a.attnum > 0 and not a.attisdropped)
+    ),
+    diff as (
+      (select 'unexpected' as kind, * from (select * from actual except select * from expected) x)
+      union all
+      (select 'missing' as kind, * from (select * from expected except select * from actual) y)
+    )
+    select string_agg(kind || ' ' || obj || ' (' || grantee || ': ' || priv || ')', ', ') into v_diff from diff;
+    if v_diff is not null then
+      raise exception 'Rollback postflight failed: column-level grants on public.tickets differ from the snapshot: %', v_diff;
+    end if;
+  end if;
+
   -- removed objects are gone
   if exists (select 1 from pg_trigger where not tgisinternal and tgname in (
       'zz_guard_ticket_protected_fields', 'protect_system_ticket_types', 'guard_workflow_templates', 'guard_workflow_versions')) then
@@ -399,7 +548,11 @@ begin
     'public.get_ticket_type_changes_secure(text,text,text)', 'public.ticket_type_hardening_status()',
     'public.reconcile_ticket_state(text,jsonb,jsonb)', 'public.workflow_state_group(jsonb,text)',
     'public.workflow_has_state(jsonb,text)', 'public.current_ticket_type_version(text)',
-    'public.assert_ticket_type_actor(text,text,text[])', 'public.is_browser_role()'
+    'public.assert_ticket_type_actor(text,text,text[])', 'public.is_browser_role()',
+    'public.create_ticket_secure(jsonb,text,text,text)', 'public.update_ticket_details_secure(text,text,text,text,jsonb,jsonb,text,text)',
+    'public.add_ticket_comment_secure(text,text,jsonb,text,text)', 'public.update_ticket_followers_secure(text,text,text[],text,text)',
+    'public.attach_ticket_snapshot_secure(text,text,jsonb,text,text)', 'public.delete_ticket_secure(text,text,text)',
+    'public.ticket_metadata_set(jsonb,text,jsonb)'
   ] loop
     if to_regprocedure(v_name) is not null then
       raise exception 'Rollback postflight failed: % still exists', v_name;

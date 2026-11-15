@@ -146,7 +146,7 @@ export class BodyError extends Error {
 }
 
 /** Resolves to the parsed JSON body, or undefined when the body is empty. */
-export async function readJsonBody(req: ApiRequest): Promise<unknown> {
+export async function readJsonBody(req: ApiRequest, maxBytes: number = MAX_BODY_BYTES): Promise<unknown> {
   const parsedByPlatform = req.body
   if (parsedByPlatform !== undefined && parsedByPlatform !== null && typeof parsedByPlatform !== 'string') {
     return parsedByPlatform
@@ -161,13 +161,13 @@ export async function readJsonBody(req: ApiRequest): Promise<unknown> {
     for await (const chunk of req) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string)
       size += buffer.length
-      if (size > MAX_BODY_BYTES) throw new BodyError('Request body is too large.', 413)
+      if (size > maxBytes) throw new BodyError('Request body is too large.', 413)
       chunks.push(buffer)
     }
     raw = Buffer.concat(chunks).toString('utf8')
   }
 
-  if (raw.length > MAX_BODY_BYTES) throw new BodyError('Request body is too large.', 413)
+  if (raw.length > maxBytes) throw new BodyError('Request body is too large.', 413)
   if (raw.trim() === '') return undefined
   try {
     return JSON.parse(raw) as unknown

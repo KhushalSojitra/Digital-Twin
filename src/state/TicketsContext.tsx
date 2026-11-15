@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, useEffect, useRef, type ReactNode } from 'react'
 import { supabase } from '../supabaseClient'
-import { postTicketTypeAction } from '../auth/authApi'
+import { postTicketAction, postTicketTypeAction, type TicketAction } from '../auth/authApi'
 import { ALL_DEVICES } from '../data/cameras'
 import {
   DEFAULT_SNAPSHOT_CONFIG,
@@ -41,13 +41,12 @@ interface TicketsValue {
   tickets: Ticket[]
   addTicket: (input: TicketCreateInput) => Promise<Ticket>
   deleteTicket: (id: string) => Promise<void>
-  assign: (id: string, assignee: string, by: string) => void
   toggleFollow: (id: string, person: string) => void
-  addFollowers: (id: string, people: string[], by: string) => void
-  shareWith: (id: string, person: string, by: string) => void
-  removeFollower: (id: string, person: string, by: string) => void
+  addFollowers: (id: string, people: string[], by?: string) => void
+  shareWith: (id: string, person: string, by?: string) => void
+  removeFollower: (id: string, person: string, by?: string) => void
   addComment: (id: string, text: string, by: string, attachments?: CommentAttachment[]) => void
-  updateDetails: (id: string, patch: TicketDetailsPatch, by: string) => void
+  updateDetails: (id: string, patch: TicketDetailsPatch, by?: string) => void
   /** Runs one action of the ticket's workflow; rejects with the server's reason when it is not allowed. */
   performAction: (id: string, actionId: string, input: WorkflowActionInput) => Promise<void>
   /** Moves a ticket to another ticket type's workflow; the server records the change in its audit trail. */
@@ -351,134 +350,63 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     ticketsRef.current = tickets
   }, [tickets])
 
-  const persistTicket = useCallback(async (ticket: Ticket): Promise<Ticket> => {
-    const update = databaseRowForTicket(ticket)
-    const { data, error } = await supabase
-      .from('tickets')
-      .update(update)
-      .eq('id', ticket.id)
-      .select('*')
-    if (error) {
-      throw new Error(`Supabase ticket update error for ${ticket.id}: ${error.message}`)
-    }
-    if (data?.[0]) return ticketFromDatabase(data[0])
-
-    const fallbackUpdate = await supabase
-      .from('tickets')
-      .update(update)
-      .eq('ticket_id', ticket.id)
-      .select('*')
-    if (fallbackUpdate.error) {
-      throw new Error(`Supabase ticket update error for ${ticket.id}: ${fallbackUpdate.error.message}`)
-    }
-    if (!fallbackUpdate.data?.[0]) throw new Error(`Supabase ticket update matched no row for ${ticket.id}`)
-    return ticketFromDatabase(fallbackUpdate.data[0])
-  }, [])
-
-  const patch = useCallback((id: string, fn: (ticket: Ticket) => Ticket) => {
-    const current = ticketsRef.current.find((ticket) => ticket.id === id)
-    if (!current) return
-    const updated = fn(current)
-    const next = ticketsRef.current.map((ticket) => ticket.id === id ? updated : ticket)
-    ticketsRef.current = next
-    setTickets(next)
+  // Runs one server write per ticket at a time, in the order requested.
+  const runForTicket = useCallback(<T,>(id: string, job: () => Promise<T>): Promise<T> => {
     const previousWrite = writeQueues.current.get(id) ?? Promise.resolve()
-    const write = previousWrite.catch(() => undefined).then(async () => {
-      try {
-        const saved = await persistTicket(updated)
-        if (ticketsRef.current.find((ticket) => ticket.id === id) !== updated) return
-        const persistedTickets = ticketsRef.current.map((ticket) => ticket.id === id ? saved : ticket)
-        ticketsRef.current = persistedTickets
-        setTickets(persistedTickets)
-      } catch (error) {
-        console.error(`Unable to save ticket ${id}:`, error)
-        if (ticketsRef.current.find((ticket) => ticket.id === id) !== updated) return
-        const restored = ticketsRef.current.map((ticket) => ticket.id === id ? current : ticket)
-        ticketsRef.current = restored
-        setTickets(restored)
-      }
-    })
+    const run = previousWrite.catch(() => undefined).then(job)
+    const write = run.then(() => undefined, () => undefined)
     writeQueues.current.set(id, write)
     void write.finally(() => {
       if (writeQueues.current.get(id) === write) writeQueues.current.delete(id)
     })
-  }, [persistTicket])
+    return run
+  }, [])
 
-  const log = (t: Ticket, by: string, text: string, state?: LifecycleState): Ticket => {
-    const at = new Date().toISOString()
-    return { ...t, updatedAt: at, timeline: [...(t.timeline ?? []), { at, by, text, state }] }
-  }
+  /** Stores the row the server returned (replacing the ticket if it is known, adding it otherwise). */
+  const applySaved = useCallback((data: unknown): Ticket => {
+    const saved = ticketFromDatabase(Array.isArray(data) ? data[0] : data)
+    const exists = ticketsRef.current.some((ticket) => ticket.id === saved.id)
+    const next = exists
+      ? ticketsRef.current.map((ticket) => ticket.id === saved.id ? saved : ticket)
+      : [saved, ...ticketsRef.current]
+    ticketsRef.current = next
+    setTickets(next)
+    return saved
+  }, [])
 
-  // 2. CREATE TICKET ACTION
+  const send = useCallback((id: string, body: TicketAction): void => {
+    runForTicket(id, async () => applySaved(await postTicketAction(body)))
+      .catch((error) => console.error(`Unable to save ticket ${id}:`, error))
+  }, [runForTicket, applySaved])
+
+  // 2. CREATE TICKET ACTION: the server creates the row (reporter, time and workflow are decided there).
   const addTicket = useCallback(async (input: TicketCreateInput) => {
     const createdAtMs = Date.now()
     const uniqueId = `OE-${createdAtMs.toString().slice(-6)}-${crypto.randomUUID()}`
     const ticket = isEarthInput(input) ? createEarthTicket(input, uniqueId) : createTicket(input, uniqueId)
+    const row = databaseRowForTicket(ticket, true)
+    const data = await postTicketAction({
+      action: 'create',
+      typeKey: ticket.type,
+      ticket: {
+        id: ticket.id,
+        title: row.title,
+        description: row.description,
+        priority: row.priority,
+        assignee: row.assignee,
+        camera_name: row.camera_name,
+        ptz_coordinates: row.ptz_coordinates,
+      },
+    })
+    return applySaved(data)
+  }, [applySaved])
 
-    const { data, error } = await supabase
-      .from('tickets')
-      .insert(databaseRowForTicket(ticket, true))
-      .select('*')
-      .single()
-    if (error) throw new Error(`Supabase ticket insert error for ${ticket.id}: ${error.message}`)
-
-    let savedTicket = ticketFromDatabase(data)
-    // The ticket starts on the workflow of its type; if that step is unavailable it keeps the default one.
-    try {
-      const applied = await postTicketTypeAction({ action: 'apply', ticketId: savedTicket.id, typeKey: ticket.type })
-      if (applied) savedTicket = ticketFromDatabase(Array.isArray(applied) ? applied[0] : applied)
-    } catch (applyError) {
-      console.error(`Unable to apply the ticket type workflow to ${savedTicket.id}:`, applyError)
-    }
-    const next = [savedTicket, ...ticketsRef.current.filter((existing) => existing.id !== savedTicket.id)]
-    ticketsRef.current = next
-    setTickets(next)
-    return savedTicket
-  }, [])
-
-  // Throws with the exact Supabase message on failure. A DELETE that matches zero rows is never success:
-  // under RLS a blocked delete returns no error and no rows, so we confirm the row is really gone.
   const deleteTicket = useCallback(async (id: string): Promise<void> => {
-    let result = await supabase.from('tickets').delete().eq('id', id).select('id')
-    if (result.error?.code === '42703') {
-      result = await supabase.from('tickets').delete().eq('ticket_id', id).select('ticket_id')
-    }
-    const { data, error } = result
-    console.log('[v0] delete ticket result', { id, data, error })
-    if (error) {
-      throw new Error(`Supabase delete failed (${error.code ?? 'no code'}): ${error.message}`)
-    }
-
-    if (!data || data.length === 0) {
-      const { data: stillThere, error: checkError } = await supabase
-        .from('tickets')
-        .select('id')
-        .or(`id.eq.${id},ticket_id.eq.${id}`)
-        .limit(1)
-      if (checkError) throw new Error(`Supabase delete check failed (${checkError.code ?? 'no code'}): ${checkError.message}`)
-      if (stillThere && stillThere.length > 0) {
-        throw new Error(
-          `Supabase deleted 0 rows for ${id}: the ticket still exists, so the delete was blocked by Row Level Security. public.tickets needs a DELETE policy for this role.`,
-        )
-      }
-    }
-
-    const withoutDeleted = ticketsRef.current.filter((ticket) => ticket.id !== id)
-    ticketsRef.current = withoutDeleted
-    setTickets(withoutDeleted)
-
-    const { data: remaining, error: refreshError } = await supabase
-      .from('tickets')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (refreshError) {
-      console.error('Unable to refresh tickets after delete:', refreshError.message)
-      return
-    }
-    const next = (remaining ?? []).map(ticketFromDatabase)
+    await runForTicket(id, () => postTicketAction({ action: 'delete', ticketId: id }))
+    const next = ticketsRef.current.filter((ticket) => ticket.id !== id)
     ticketsRef.current = next
     setTickets(next)
-  }, [])
+  }, [runForTicket])
   // 3. READ AND REALTIME SYNC
   useEffect(() => {
     let active = true
@@ -598,37 +526,33 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // UI STATE MUTATION PIPELINES WITH ACTIVE PARAMETER REFACTORING FOR COMPILER SANITY
-  const assign = useCallback((id: string, assignee: string, by: string) => patch(id, (ticket) => log({ ...ticket, assignee }, by, assignee === 'Unassigned' ? 'Ticket unassigned' : `Assigned to ${assignee}`)), [patch])
-  const toggleFollow = useCallback((id: string, person: string) => patch(id, (ticket) => {
-    const followers = ticket.followers.includes(person)
-      ? ticket.followers.filter((follower) => follower !== person)
-      : [...ticket.followers, person]
-    return log({ ...ticket, followers }, person, followers.includes(person) ? 'Started following ticket' : 'Stopped following ticket')
-  }), [patch])
-  
-  const addFollowers = useCallback((id: string, people: string[], by: string) => patch(id, (ticket) => {
-    return log({ ...ticket, followers: [...new Set([...ticket.followers, ...people])] }, by, 'Added followers')
-  }), [patch])
-
-  const shareWith = useCallback((id: string, person: string, by: string) => patch(id, (ticket) => {
-    return log({ ...ticket, followers: [...new Set([...ticket.followers, person])] }, by, 'Shared ticket')
-  }), [patch])
-
-  const removeFollower = useCallback((id: string, person: string, by: string) => patch(id, (ticket) => {
-    return log({ ...ticket, followers: ticket.followers.filter((follower) => follower !== person) }, by, 'Removed follower')
-  }), [patch])
-
-  const updateDetails = useCallback((id: string, next: TicketDetailsPatch, by: string) => patch(id, (ticket) => {
-    const { creationSnapshot, ...fields } = next
-    const snapshots = creationSnapshot ? { ...ticket.snapshots, before: creationSnapshot } : ticket.snapshots
-    return log({ ...ticket, ...fields, snapshots }, by, 'Updated details')
-  }), [patch])
-  const addComment = useCallback((id: string, text: string, by: string, attachments?: CommentAttachment[]) => patch(id, (ticket) => {
-    const at = new Date().toISOString()
-    const comment = { at, by, text, ...(attachments?.length ? { attachments } : {}) }
-    return log({ ...ticket, comments: [...ticket.comments, comment] }, by, 'Added a comment')
-  }), [patch])
+  // Every change below is made by the server as the signed-in user; the browser has no write access to tickets.
+  const toggleFollow = useCallback((id: string, person: string) => {
+    send(id, { action: 'followers', ticketId: id, op: 'toggle', people: [person] })
+  }, [send])
+  const addFollowers = useCallback((id: string, people: string[]) => {
+    send(id, { action: 'followers', ticketId: id, op: 'add', people })
+  }, [send])
+  const shareWith = useCallback((id: string, person: string) => {
+    send(id, { action: 'followers', ticketId: id, op: 'share', people: [person] })
+  }, [send])
+  const removeFollower = useCallback((id: string, person: string) => {
+    send(id, { action: 'followers', ticketId: id, op: 'remove', people: [person] })
+  }, [send])
+  const updateDetails = useCallback((id: string, next: TicketDetailsPatch) => {
+    send(id, {
+      action: 'details',
+      ticketId: id,
+      title: next.title,
+      description: next.description,
+      priority: next.priority,
+      additional: next.additional ?? null,
+      creationSnapshot: next.creationSnapshot ?? null,
+    })
+  }, [send])
+  const addComment = useCallback((id: string, text: string, _by: string, attachments?: CommentAttachment[]) => {
+    send(id, { action: 'comment', ticketId: id, text, attachments: attachments ?? [] })
+  }, [send])
   const performAction = useCallback((id: string, actionId: string, input: WorkflowActionInput): Promise<void> => {
     if (!ticketsRef.current.some((ticket) => ticket.id === id)) return Promise.reject(new Error('Ticket not found'))
     const previousWrite = writeQueues.current.get(id) ?? Promise.resolve()
@@ -672,14 +596,13 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     return run
   }, [])
 
-  const attachSnapshot = useCallback((id: string, slot: 'before' | 'after', snapshot: Snapshot) => patch(id, (ticket) => {
-    const freshSnaps = { ...ticket.snapshots, [slot]: snapshot }
-    return log({ ...ticket, snapshots: freshSnaps }, snapshot.by, `Attached ${slot} snapshot`)
-  }), [patch]);
+  const attachSnapshot = useCallback((id: string, slot: 'before' | 'after', snapshot: Snapshot) => {
+    send(id, { action: 'snapshot', ticketId: id, slot, snapshot })
+  }, [send])
 
   const value = useMemo(
-    () => ({ tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot }),
-    [tickets, addTicket, deleteTicket, assign, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot],
+    () => ({ tickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot }),
+    [tickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot],
   )
 
   return <TicketsContext.Provider value={value}>{children}</TicketsContext.Provider>

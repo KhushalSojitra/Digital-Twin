@@ -7,7 +7,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   IconButton,
   Menu,
   MenuItem,
@@ -45,8 +44,7 @@ function Card({ children }: { children: React.ReactNode }) {
 }
 
 export default function TicketTeamPanel({ ticket, me }: Props) {
-  const { assign, addFollowers, removeFollower } = useTickets()
-  const [assignAnchor, setAssignAnchor] = useState<HTMLElement | null>(null)
+  const { addFollowers, removeFollower } = useTickets()
   const [watchAnchor, setWatchAnchor] = useState<HTMLElement | null>(null)
   const [pending, setPending] = useState<{ action: 'add' | 'remove'; name: string } | null>(null)
   const [note, setNote] = useState<string | null>(null)
@@ -73,15 +71,6 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
       <Card>
         <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Typography sx={{ fontSize: 15, fontWeight: 700 }}>Assignee</Typography>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<PersonOutlineRoundedIcon />}
-            onClick={(e) => setAssignAnchor(e.currentTarget)}
-            sx={{ textTransform: 'none', fontWeight: 600 }}
-          >
-            Change Assignee
-          </Button>
         </Stack>
         <Stack direction="row" spacing={1.75} sx={{ mt: 2, alignItems: 'center' }}>
           <Avatar
@@ -99,38 +88,6 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
             </Typography>
           </Box>
         </Stack>
-        <Menu
-          open={Boolean(assignAnchor)}
-          anchorEl={assignAnchor}
-          onClose={() => setAssignAnchor(null)}
-          sx={{ zIndex: menuZ }}
-        >
-          <MenuItem
-            dense
-            selected={unassigned}
-            onClick={() => {
-              setAssignAnchor(null)
-              if (!unassigned) assign(ticket.id, UNASSIGNED, me)
-            }}
-          >
-            Unassigned
-          </MenuItem>
-          <Divider component="li" />
-          {ASSIGNEES.map((p) => (
-            <MenuItem
-              key={p}
-              dense
-              selected={p === ticket.assignee}
-              onClick={() => {
-                setAssignAnchor(null)
-                if (p !== ticket.assignee) assign(ticket.id, p, me)
-              }}
-            >
-              {p}
-              {p === me ? ' (you)' : ''}
-            </MenuItem>
-          ))}
-        </Menu>
       </Card>
 
       <Card>

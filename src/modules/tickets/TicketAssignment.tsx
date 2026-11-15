@@ -9,13 +9,10 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
-  InputLabel,
   ListItemText,
   MenuItem,
   MenuList,
   Popover,
-  Select,
   Snackbar,
   Stack,
   Typography,
@@ -31,7 +28,7 @@ interface Props {
 }
 
 export default function TicketAssignment({ ticket, me }: Props) {
-  const { assign, addFollowers, removeFollower } = useTickets()
+  const { addFollowers, removeFollower } = useTickets()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const [pending, setPending] = useState<{ action: 'add' | 'remove'; name: string } | null>(null)
   const [note, setNote] = useState<string | null>(null)
@@ -55,27 +52,15 @@ export default function TicketAssignment({ ticket, me }: Props) {
     <Box>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <Avatar sx={{ width: 30, height: 30, fontSize: 11, fontWeight: 700, bgcolor: 'primary.main' }}>{initials(ticket.assignee)}</Avatar>
-        <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
-          <InputLabel id={`assignee-${ticket.id}`}>Assignee</InputLabel>
-          <Select
-            labelId={`assignee-${ticket.id}`}
-            label="Assignee"
-            value={ticket.assignee}
-            onChange={(e) => assign(ticket.id, e.target.value as string, me)}
-            sx={{ '& .MuiSelect-select': { py: 0.85, fontSize: 13.5 } }}
-            MenuProps={{ sx: { zIndex: (t) => t.zIndex.modal + 10 } }}
-          >
-            <MenuItem value={UNASSIGNED} sx={{ fontSize: 13.5 }}>
-              Unassigned
-            </MenuItem>
-            {ASSIGNEES.map((p) => (
-              <MenuItem key={p} value={p} sx={{ fontSize: 13.5 }}>
-                {p}
-                {p === me ? ' (you)' : ''}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+            Assignee
+          </Typography>
+          <Typography sx={{ fontSize: 13.5 }} noWrap>
+            {ticket.assignee || UNASSIGNED}
+            {ticket.assignee === me ? ' (you)' : ''}
+          </Typography>
+        </Box>
       </Stack>
 
       <Stack direction="row" spacing={0.5} sx={{ mt: 1, alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>

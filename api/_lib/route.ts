@@ -74,7 +74,7 @@ export function respondWithSession(ctx: RouteContext, nextState: SessionPayload,
   sendJson(ctx.res, status, view)
 }
 
-export function route(method: 'GET' | 'POST', handler: Handler) {
+export function route(method: 'GET' | 'POST', handler: Handler, options: { maxBodyBytes?: number } = {}) {
   return async function dispatch(req: ApiRequest, res: ApiResponse): Promise<void> {
     secureHeaders(res)
 
@@ -119,7 +119,7 @@ export function route(method: 'GET' | 'POST', handler: Handler) {
           fail(res, 403, 'csrf_invalid', 'Your session security token is missing or expired. Please try again.')
           return
         }
-        body = await readJsonBody(req)
+        body = await readJsonBody(req, options.maxBodyBytes)
       }
 
       await handler({ req, res, secret, settings, now, state, csrfToken, body })

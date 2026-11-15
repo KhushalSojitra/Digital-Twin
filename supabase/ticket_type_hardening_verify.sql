@@ -58,6 +58,18 @@ where coalesce(t.is_system, false)
   and not exists (select 1 from public.ticket_types tt where tt.workflow_template_id = t.id::text)
 order by t.created_at;
 
+-- I. public.tickets browser access. After the migration: RLS on, exactly one policy (tickets_read_signed_in,
+--    SELECT, authenticated), anon has nothing, authenticated can only select, and no column-level grants remain.
+select (select relrowsecurity from pg_class where oid = 'public.tickets'::regclass) as rls_enabled,
+       (select string_agg(policyname || ' [' || cmd || ' / ' || array_to_string(roles, ',') || ']', '; ') from pg_policies where schemaname = 'public' and tablename = 'tickets') as policies,
+       has_table_privilege('anon', 'public.tickets', 'select,insert,update,delete') as anon_any_table_privilege,
+       has_any_column_privilege('anon', 'public.tickets', 'select,insert,update,references') as anon_any_column_privilege,
+       has_table_privilege('authenticated', 'public.tickets', 'select') as authenticated_select,
+       has_table_privilege('authenticated', 'public.tickets', 'insert,update,delete') as authenticated_write_table,
+       (select count(*) from pg_attribute a cross join lateral aclexplode(a.attacl) acl join pg_roles ro on ro.oid = acl.grantee
+         where a.attrelid = 'public.tickets'::regclass and a.attnum > 0 and not a.attisdropped
+           and ro.rolname in ('anon', 'authenticated') and acl.privilege_type in ('INSERT', 'UPDATE', 'REFERENCES')) as authenticated_or_anon_column_write_grants;
+
 -- H. Existing tickets: how many already carry a type, how many are legacy (type only in metadata)
 select count(*) filter (where to_jsonb(t) ->> 'ticket_type_key' is not null) as with_ticket_type_key,
        count(*) filter (where to_jsonb(t) ->> 'ticket_type_key' is null) as without_ticket_type_key,

@@ -1,4 +1,5 @@
 import { getPublicUser } from './_lib/config.js'
+import { roleMayRun } from './_lib/policy.js'
 import { fail, route } from './_lib/route.js'
 import { sendJson } from './_lib/http.js'
 import { callAdminRpc, describeAdminConfig, SupabaseAdminError } from './_lib/supabaseAdmin.js'
@@ -71,7 +72,10 @@ export default route('POST', async (ctx) => {
     return
   }
 
-  if (actor.role === 'Viewer') {
+  // Viewers are read-only for Ticket Types and ticket changes. Workflow actions are open to every role because
+  // the database only lets the ticket's current assignee or reporter run them (see apply_workflow_action).
+  const operation = input.action === 'workflow' ? 'workflow' : input.action === 'change' ? 'change_type' : 'manage_types'
+  if (!roleMayRun(actor.role, operation)) {
     fail(ctx.res, 403, 'forbidden', 'Your role is not allowed to do this.')
     return
   }
@@ -129,17 +133,6 @@ export default route('POST', async (ctx) => {
         sendJson(ctx.res, 200, { data: null })
         return
       }
-      case 'apply': {
-        const ticketId = text(input.ticketId, 120)
-        const typeKey = text(input.typeKey, 80)
-        if (!ticketId || !typeKey) break
-        const data = await secureOrLegacy(
-          () => callAdminRpc('apply_ticket_type_secure', { p_ticket_id: ticketId, p_type_key: typeKey, ...identity }),
-          () => callAdminRpc('apply_ticket_type_workflow', { p_ticket_id: ticketId }),
-        )
-        sendJson(ctx.res, 200, { data })
-        return
-      }
       case 'change': {
         const ticketId = text(input.ticketId, 120)
         const typeKey = text(input.typeKey, 80)
@@ -158,15 +151,10 @@ export default route('POST', async (ctx) => {
         const assignee = input.assignee === undefined || input.assignee === null ? null : text(input.assignee, 120)
         const note = input.note === undefined || input.note === null ? null : text(input.note, 2000)
         if (!ticketId || !actionId || !ACTION_ID.test(actionId) || (input.assignee != null && assignee === null) || (input.note != null && note === null)) break
+        // No fallback to the legacy function: it must never run without the hardened participant checks.
         const data = await secureOrLegacy(
           () => callAdminRpc('apply_workflow_action_secure', { p_ticket_id: ticketId, p_action_id: actionId, p_new_assignee: assignee, p_note: note, ...identity }),
-          () => callAdminRpc('apply_workflow_action', {
-            p_ticket_id: ticketId,
-            p_action_id: actionId,
-            p_changed_by: actor.displayName,
-            p_new_assignee: assignee,
-            p_note: note,
-          }),
+          null,
         )
         sendJson(ctx.res, 200, { data })
         return

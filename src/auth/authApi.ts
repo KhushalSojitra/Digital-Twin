@@ -1,3 +1,4 @@
+import { clearDbToken } from '../dbToken'
 import type { User } from './users'
 
 export interface Session {
@@ -45,7 +46,6 @@ export type TicketTypeAction =
   | { action: 'create'; label: string; description: string; config: Record<string, boolean> }
   | { action: 'update'; key: string; label: string; description: string; config: Record<string, boolean> }
   | { action: 'delete'; key: string }
-  | { action: 'apply'; ticketId: string; typeKey: string }
   | { action: 'change'; ticketId: string; typeKey: string; reason: string }
   | { action: 'workflow'; ticketId: string; actionId: string; assignee?: string | null; note?: string | null }
   | { action: 'history'; ticketId: string }
@@ -59,8 +59,25 @@ export interface TicketTypeServerStatus {
   revision: number | null
 }
 
+export type TicketAction =
+  | { action: 'create'; typeKey: string; ticket: Record<string, unknown> }
+  | { action: 'details'; ticketId: string; title: string; description: string; priority: string; additional: unknown; creationSnapshot: unknown }
+  | { action: 'comment'; ticketId: string; text: string; attachments: unknown[] }
+  | { action: 'followers'; ticketId: string; op: 'toggle' | 'add' | 'remove' | 'share'; people: string[] }
+  | { action: 'snapshot'; ticketId: string; slot: 'before' | 'after'; snapshot: unknown }
+  | { action: 'delete'; ticketId: string }
+
 /** Sends a ticket type mutation with the session cookie and CSRF token; the server decides who is acting. */
-export async function postTicketTypeAction(body: TicketTypeAction): Promise<unknown> {
+export function postTicketTypeAction(body: TicketTypeAction): Promise<unknown> {
+  return postSigned('/api/ticket-types', body)
+}
+
+/** Sends a ticket change (create, edit, comment, watchers, snapshot, delete); the server decides who is acting. */
+export function postTicketAction(body: TicketAction): Promise<unknown> {
+  return postSigned('/api/tickets', body)
+}
+
+async function postSigned(path: '/api/ticket-types' | '/api/tickets', body: unknown): Promise<unknown> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (!csrfToken) {
       const refreshed = await fetchSession()
@@ -68,7 +85,7 @@ export async function postTicketTypeAction(body: TicketTypeAction): Promise<unkn
     }
     let response: Response
     try {
-      response = await fetch('/api/ticket-types', {
+      response = await fetch(path, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': csrfToken ?? '' },
@@ -104,6 +121,7 @@ export async function postAuth(path: '/api/login' | '/api/logout' | '/api/switch
       const { state, error, code } = await parse(response)
       if (state) {
         csrfToken = state.csrfToken
+        clearDbToken()
         return { ok: true, state }
       }
       if (code === 'csrf_invalid' && attempt === 0) {

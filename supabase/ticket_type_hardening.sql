@@ -181,6 +181,36 @@ begin
     and acl.privilege_type in ('INSERT', 'UPDATE')
   group by c.relname, a.attname, ro.rolname
   on conflict do nothing;
+
+  -- Browser access to public.tickets (changed in section 6c): row level security state, every existing
+  -- policy and every column-level grant of anon / authenticated. The table-level grants are in the 'table' rows above.
+  insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
+  select 'ticket_type_hardening_v2', 'tickets_capture', 'tickets', '*',
+         array[case when c.relrowsecurity then 'RLS_ON' else 'RLS_OFF' end,
+               case when c.relforcerowsecurity then 'FORCE_ON' else 'FORCE_OFF' end]
+  from pg_class c
+  where c.oid = to_regclass('public.tickets')
+  on conflict do nothing;
+
+  -- privileges = {command, permissive, roles (comma separated), USING expression, WITH CHECK expression}
+  insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
+  select 'ticket_type_hardening_v2', 'tickets_policy', p.policyname::text, 'policy',
+         array[p.cmd::text, p.permissive::text, array_to_string(p.roles, ','), coalesce(p.qual, ''), coalesce(p.with_check, '')]
+  from pg_policies p
+  where p.schemaname = 'public' and p.tablename = 'tickets'
+  on conflict do nothing;
+
+  insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
+  select 'ticket_type_hardening_v2', 'tickets_column', a.attname::text, ro.rolname::text,
+         array_agg(distinct acl.privilege_type::text order by acl.privilege_type::text)
+  from pg_attribute a
+  cross join lateral aclexplode(a.attacl) as acl
+  join pg_roles ro on ro.oid = acl.grantee
+  where a.attrelid = to_regclass('public.tickets')
+    and a.attnum > 0 and not a.attisdropped
+    and ro.rolname in ('anon', 'authenticated')
+  group by a.attname, ro.rolname
+  on conflict do nothing;
 end;
 $snapshot$;
 
@@ -284,12 +314,16 @@ as $$
 $$;
 
 -- Where a ticket lands when its Ticket Type changes.
+--   0. The current state must be known: either the new workflow has it, or it is one of the base states
+--      todo / pending_approval / approved / in_progress / on_hold / pending_post_approval / done. A missing
+--      or unrecognised state is REJECTED, never silently reset to the initial state.
 --   1. Keep the current state when the new workflow has it; otherwise use the nearest earlier stage:
 --        pending approval / approved        -> To Do
 --        on hold / pending post-approval    -> In Progress
---   2. Approvals the new workflow requires and the old one did not are never skipped:
---        Done and a new post-approval stage        -> Pending Post-approval
---        In Progress / On Hold and a new pre-approval -> Pending Approval
+--   2. Approvals the new workflow requires are never skipped and never granted automatically:
+--        To Do and a pre-approval stage                -> Pending Approval (Start Work needs "approved")
+--        In Progress / On Hold and a NEW pre-approval  -> Pending Approval
+--        Done and a NEW post-approval stage            -> Pending Post-approval
 --      An unknown old workflow (null definition) counts as "had no approvals", so the checks still apply.
 --   3. Done stays Done when the new workflow only adds a pre-approval (nothing is left to approve in advance).
 create or replace function public.reconcile_ticket_state(p_old_state text, p_old_definition jsonb, p_new_definition jsonb)
@@ -298,14 +332,17 @@ language plpgsql
 immutable
 as $$
 declare
-  v_initial text := p_new_definition ->> 'initial';
-  v_old text := coalesce(p_old_state, v_initial);
+  v_old text := nullif(trim(coalesce(p_old_state, '')), '');
   v_target text;
   v_new_pre boolean := public.workflow_has_state(p_new_definition, 'pending_approval');
   v_new_post boolean := public.workflow_has_state(p_new_definition, 'pending_post_approval');
   v_old_pre boolean := public.workflow_has_state(p_old_definition, 'pending_approval');
   v_old_post boolean := public.workflow_has_state(p_old_definition, 'pending_post_approval');
 begin
+  if v_old is null then
+    raise exception 'The ticket has no workflow state, so its ticket type cannot be changed safely';
+  end if;
+
   if public.workflow_has_state(p_new_definition, v_old) then
     v_target := v_old;
   elsif v_old in ('pending_approval', 'approved') then
@@ -313,15 +350,20 @@ begin
   elsif v_old in ('on_hold', 'pending_post_approval') then
     v_target := 'in_progress';
   else
-    v_target := v_initial;
+    raise exception 'The ticket state "%" does not exist in the new workflow and cannot be mapped', v_old;
   end if;
 
   if v_target = 'done' and v_new_post and not v_old_post then
     v_target := 'pending_post_approval';
+  elsif v_target = 'todo' and v_new_pre then
+    v_target := 'pending_approval';
   elsif v_target in ('in_progress', 'on_hold') and v_new_pre and not v_old_pre then
     v_target := 'pending_approval';
   end if;
 
+  if not public.workflow_has_state(p_new_definition, v_target) then
+    raise exception 'The new workflow has no state "%" for this ticket', v_target;
+  end if;
   return v_target;
 end;
 $$;
@@ -671,6 +713,69 @@ begin
 end;
 $column_privileges$;
 
+-- 6c. Browser access to public.tickets ------------------------------------------------------------------------
+-- Before: anonymous visitors could read tickets and browsers could write title, description, assignee and
+-- every other ticket field directly. After: only signed-in users (the API hands the browser a short-lived
+-- `authenticated` database token, see api/db-token.ts) can READ tickets, which also keeps realtime updates
+-- working. Nobody can write a ticket from a browser; every write goes through the *_secure functions below.
+-- The previous policies, RLS state and grants are recorded in ticket_type_migration_backup for the rollback.
+alter table public.tickets enable row level security;
+
+do $tickets_policies$
+declare
+  p record;
+begin
+  for p in select policyname from pg_policies where schemaname = 'public' and tablename = 'tickets' loop
+    execute format('drop policy %I on public.tickets', p.policyname);
+  end loop;
+end;
+$tickets_policies$;
+
+create policy "tickets_read_signed_in" on public.tickets for select to authenticated using (true);
+
+do $tickets_privileges$
+declare
+  r record;
+  v_remaining text;
+begin
+  for r in
+    select a.attname
+    from pg_attribute a
+    where a.attrelid = to_regclass('public.tickets') and a.attnum > 0 and not a.attisdropped
+  loop
+    execute format('revoke select (%1$I), insert (%1$I), update (%1$I), references (%1$I) on public.tickets from anon, authenticated', r.attname);
+  end loop;
+
+  revoke all on public.tickets from anon, authenticated;
+  grant select on public.tickets to authenticated;
+
+  select string_agg(distinct a.attname || ' (' || ro.rolname || ': ' || acl.privilege_type || ')', ', ')
+  into v_remaining
+  from pg_attribute a
+  cross join lateral aclexplode(a.attacl) as acl
+  join pg_roles ro on ro.oid = acl.grantee
+  where a.attrelid = to_regclass('public.tickets') and a.attnum > 0 and not a.attisdropped
+    and ro.rolname in ('anon', 'authenticated');
+  if v_remaining is not null then
+    raise exception 'Column-level grants remain on public.tickets for browser roles: %', v_remaining;
+  end if;
+end;
+$tickets_privileges$;
+
+-- Small helper for the functions below: sets one key inside ptz_coordinates.metadata.
+create or replace function public.ticket_metadata_set(p_ptz jsonb, p_key text, p_value jsonb)
+returns jsonb
+language sql
+immutable
+as $$
+  select jsonb_set(
+    case when jsonb_typeof(p_ptz) = 'object' then p_ptz else '{}'::jsonb end,
+    '{metadata}',
+    (case when jsonb_typeof(p_ptz -> 'metadata') = 'object' then p_ptz -> 'metadata' else '{}'::jsonb end)
+      || jsonb_build_object(p_key, p_value)
+  );
+$$;
+
 -- 7. Service-role functions ------------------------------------------------------------------------------
 -- Manage custom types: Administrator and Operator. System defaults are never editable.
 create or replace function public.create_ticket_type_secure(
@@ -926,7 +1031,10 @@ end;
 $$;
 
 -- Runs one workflow action for the signed-in user. The actor recorded in the history is the session user,
--- never a value chosen by the browser.
+-- never a value chosen by the browser. Every role (Administrator, Operator, Viewer) may run permitted
+-- workflow actions, but ONLY when they are the ticket's current assignee or its reporter: the role alone
+-- never grants permission. The transition rules, approval gates, mandatory comments and assignment history
+-- are enforced by apply_workflow_action, which only this function can reach.
 create or replace function public.apply_workflow_action_secure(
   p_ticket_id text, p_action_id text, p_actor text, p_role text,
   p_new_assignee text default null, p_note text default null
@@ -936,9 +1044,349 @@ language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
+declare
+  v_ticket public.tickets%rowtype;
+  v_actor text := nullif(trim(coalesce(p_actor, '')), '');
+  v_new text := nullif(trim(coalesce(p_new_assignee, '')), '');
+begin
+  perform public.assert_ticket_type_actor(p_actor, p_role, array['Administrator', 'Operator', 'Viewer']);
+
+  select * into v_ticket from public.tickets where id::text = p_ticket_id for update;
+  if not found then
+    raise exception 'Ticket not found';
+  end if;
+
+  if v_actor is null
+     or lower(v_actor) = 'unassigned'
+     or not coalesce(v_actor = trim(coalesce(v_ticket.assignee, '')) or v_actor = trim(coalesce(v_ticket.reporter, '')), false) then
+    raise exception 'Only the ticket''s current assignee or its reporter can run workflow actions' using errcode = '42501';
+  end if;
+  if v_new is not null and lower(v_new) = 'unassigned' then
+    raise exception 'Choose a person, not Unassigned';
+  end if;
+
+  return public.apply_workflow_action(p_ticket_id, p_action_id, v_actor, v_new, p_note);
+end;
+$$;
+
+-- Creates a ticket. The reporter, the creation time, the status and the workflow are decided here, never by
+-- the browser: the ticket is pinned to the CURRENT workflow version of the Ticket Type it was created with,
+-- overriding whatever a trigger on INSERT (for example tickets_assign_workflow) may have assigned.
+create or replace function public.create_ticket_secure(
+  p_ticket jsonb, p_type_key text, p_actor text, p_role text
+)
+returns public.tickets
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_ticket public.tickets%rowtype;
+  v_type public.ticket_types%rowtype;
+  v_version public.workflow_versions%rowtype;
+  v_by text := nullif(trim(coalesce(p_actor, '')), '');
+  v_id text;
+  v_title text;
+  v_priority text;
+  v_assignee text;
+  v_initial text;
+  v_group text;
+  v_status text;
+  v_now timestamptz := now();
+  v_ptz jsonb;
+  v_followers jsonb;
+  v_row jsonb;
+  v_cols text;
 begin
   perform public.assert_ticket_type_actor(p_actor, p_role, array['Administrator', 'Operator']);
-  return public.apply_workflow_action(p_ticket_id, p_action_id, p_actor, p_new_assignee, p_note);
+  if jsonb_typeof(p_ticket) is distinct from 'object' then
+    raise exception 'Invalid ticket';
+  end if;
+
+  v_id := nullif(trim(coalesce(p_ticket ->> 'id', '')), '');
+  v_title := nullif(trim(coalesce(p_ticket ->> 'title', '')), '');
+  v_priority := lower(trim(coalesce(p_ticket ->> 'priority', '')));
+  v_assignee := coalesce(nullif(trim(coalesce(p_ticket ->> 'assignee', '')), ''), 'Unassigned');
+  if v_id is null or v_title is null then
+    raise exception 'A ticket needs an id and a title';
+  end if;
+  if v_priority not in ('critical', 'high', 'medium', 'low') then
+    raise exception 'Invalid priority';
+  end if;
+  if exists (select 1 from public.tickets t where t.id::text = v_id) then
+    raise exception 'A ticket with this id already exists';
+  end if;
+
+  select * into v_type from public.ticket_types where key = p_type_key and is_active;
+  if not found or v_type.workflow_template_id is null then
+    raise exception 'Choose an active ticket type';
+  end if;
+  select * into v_version from public.current_ticket_type_version(v_type.workflow_template_id);
+  if v_version.id is null then
+    raise exception 'This ticket type has no valid workflow';
+  end if;
+  v_initial := v_version.definition ->> 'initial';
+  v_group := coalesce(public.workflow_state_group(v_version.definition, v_initial), 'open');
+  v_status := public.workflow_group_status(v_group);
+
+  v_ptz := case when jsonb_typeof(p_ticket -> 'ptz_coordinates') = 'object' then p_ticket -> 'ptz_coordinates' else '{}'::jsonb end;
+  select coalesce(jsonb_agg(f order by f), '[]'::jsonb) into v_followers
+  from (
+    select v_by as f
+    union
+    select x from jsonb_array_elements_text(
+      case when jsonb_typeof(v_ptz -> 'metadata' -> 'followers') = 'array' then v_ptz -> 'metadata' -> 'followers' else '[]'::jsonb end) x
+    where nullif(trim(x), '') is not null
+  ) s;
+  v_ptz := jsonb_set(v_ptz, '{metadata}',
+    ((case when jsonb_typeof(v_ptz -> 'metadata') = 'object' then v_ptz -> 'metadata' else '{}'::jsonb end) - 'completedAt' - 'completion')
+    || jsonb_build_object('type', v_type.key, 'followers', v_followers));
+
+  v_row := jsonb_build_object(
+    'id', v_id, 'ticket_id', v_id, 'created_at', v_now, 'status', v_status,
+    'title', v_title, 'description', coalesce(p_ticket ->> 'description', ''), 'priority', v_priority,
+    'reporter', v_by, 'assignee', v_assignee, 'camera_name', coalesce(p_ticket ->> 'camera_name', 'Earth'),
+    'ptz_coordinates', v_ptz,
+    'history_log', jsonb_build_array(jsonb_build_object('at', v_now, 'by', v_by, 'text', 'Ticket created')),
+    'replies', '[]'::jsonb,
+    'ticket_type_key', v_type.key, 'workflow_version_id', v_version.id, 'workflow_state', v_initial);
+
+  select string_agg(quote_ident(k), ', ') into v_cols
+  from jsonb_object_keys(v_row) k
+  where exists (select 1 from information_schema.columns c where c.table_schema = 'public' and c.table_name = 'tickets' and c.column_name = k);
+
+  execute format('insert into public.tickets (%1$s) select %1$s from jsonb_populate_record(null::public.tickets, $1) returning *', v_cols)
+  into v_ticket using v_row;
+
+  -- A trigger on INSERT may have attached some other workflow: pin the one that belongs to the Ticket Type.
+  update public.tickets
+  set ticket_type_key = v_type.key,
+      workflow_version_id = v_version.id,
+      workflow_state = v_initial,
+      status = v_status
+  where id = v_ticket.id
+  returning * into v_ticket;
+
+  if v_ticket.ticket_type_key is distinct from v_type.key
+     or v_ticket.workflow_version_id::text is distinct from v_version.id::text
+     or v_ticket.workflow_state is distinct from v_initial then
+    raise exception 'The ticket was not created on the workflow of its ticket type (a trigger changed the result)';
+  end if;
+
+  insert into public.ticket_type_changes (ticket_id, from_type, to_type, from_state, to_state, from_version_id, to_version_id, reason, changed_by, changed_role, changed_at)
+  values (v_ticket.id::text, null, v_type.key, null, v_initial, null, v_version.id::text, 'Ticket type chosen at creation', v_by, p_role, v_now);
+
+  if v_assignee <> 'Unassigned' then
+    insert into public.ticket_assignment_history (ticket_id, from_assignee, to_assignee, changed_by, action_label, note, changed_at)
+    values (v_ticket.id, 'Unassigned', v_assignee, v_by, 'Assigned at creation', null, v_now);
+  end if;
+
+  return v_ticket;
+end;
+$$;
+
+-- Edits title, description, priority, the additional fields and the creation snapshot. It never touches the
+-- assignee, the workflow, the status or the reporter.
+create or replace function public.update_ticket_details_secure(
+  p_ticket_id text, p_title text, p_description text, p_priority text,
+  p_additional jsonb, p_creation_snapshot jsonb, p_actor text, p_role text
+)
+returns public.tickets
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_ticket public.tickets%rowtype;
+  v_by text := nullif(trim(coalesce(p_actor, '')), '');
+  v_title text := nullif(trim(coalesce(p_title, '')), '');
+  v_priority text := lower(trim(coalesce(p_priority, '')));
+  v_ptz jsonb;
+  v_snapshots jsonb;
+begin
+  perform public.assert_ticket_type_actor(p_actor, p_role, array['Administrator', 'Operator']);
+  if v_title is null then
+    raise exception 'A ticket needs a title';
+  end if;
+  if v_priority not in ('critical', 'high', 'medium', 'low') then
+    raise exception 'Invalid priority';
+  end if;
+
+  select * into v_ticket from public.tickets where id::text = p_ticket_id for update;
+  if not found then
+    raise exception 'Ticket not found';
+  end if;
+
+  v_ptz := v_ticket.ptz_coordinates;
+  if p_additional is not null then
+    v_ptz := public.ticket_metadata_set(v_ptz, 'additional', p_additional);
+  end if;
+  if p_creation_snapshot is not null then
+    v_snapshots := case when jsonb_typeof(v_ptz -> 'metadata' -> 'snapshots') = 'object' then v_ptz -> 'metadata' -> 'snapshots' else '{}'::jsonb end;
+    v_ptz := public.ticket_metadata_set(v_ptz, 'snapshots', v_snapshots || jsonb_build_object('before', p_creation_snapshot));
+  end if;
+
+  update public.tickets
+  set title = v_title,
+      description = coalesce(p_description, ''),
+      priority = v_priority,
+      ptz_coordinates = v_ptz,
+      history_log = coalesce(history_log, '[]'::jsonb)
+        || jsonb_build_array(jsonb_build_object('at', now(), 'by', v_by, 'text', 'Ticket details updated'))
+  where id = v_ticket.id
+  returning * into v_ticket;
+  return v_ticket;
+end;
+$$;
+
+-- Adds a comment (every role may comment).
+create or replace function public.add_ticket_comment_secure(
+  p_ticket_id text, p_text text, p_attachments jsonb, p_actor text, p_role text
+)
+returns public.tickets
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_ticket public.tickets%rowtype;
+  v_by text := nullif(trim(coalesce(p_actor, '')), '');
+  v_attachments jsonb := coalesce(p_attachments, '[]'::jsonb);
+  v_comment jsonb;
+begin
+  perform public.assert_ticket_type_actor(p_actor, p_role, array['Administrator', 'Operator', 'Viewer']);
+  if jsonb_typeof(v_attachments) <> 'array' then
+    raise exception 'Invalid attachments';
+  end if;
+  if nullif(trim(coalesce(p_text, '')), '') is null and jsonb_array_length(v_attachments) = 0 then
+    raise exception 'A comment needs text or an attachment';
+  end if;
+
+  select * into v_ticket from public.tickets where id::text = p_ticket_id for update;
+  if not found then
+    raise exception 'Ticket not found';
+  end if;
+
+  v_comment := jsonb_build_object('at', now(), 'by', v_by, 'text', coalesce(p_text, ''))
+    || case when jsonb_array_length(v_attachments) > 0 then jsonb_build_object('attachments', v_attachments) else '{}'::jsonb end;
+
+  update public.tickets
+  set replies = coalesce(replies, '[]'::jsonb) || jsonb_build_array(v_comment)
+  where id = v_ticket.id
+  returning * into v_ticket;
+  return v_ticket;
+end;
+$$;
+
+-- Followers: toggle (the signed-in user follows / unfollows), add, share and remove.
+create or replace function public.update_ticket_followers_secure(
+  p_ticket_id text, p_op text, p_people text[], p_actor text, p_role text
+)
+returns public.tickets
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_ticket public.tickets%rowtype;
+  v_by text := nullif(trim(coalesce(p_actor, '')), '');
+  v_current text[];
+  v_people text[];
+  v_next text[];
+  v_text text;
+begin
+  perform public.assert_ticket_type_actor(p_actor, p_role, array['Administrator', 'Operator', 'Viewer']);
+  if p_op not in ('toggle', 'add', 'share', 'remove') then
+    raise exception 'Invalid follower operation';
+  end if;
+
+  select * into v_ticket from public.tickets where id::text = p_ticket_id for update;
+  if not found then
+    raise exception 'Ticket not found';
+  end if;
+
+  v_current := array(
+    select x from jsonb_array_elements_text(
+      case when jsonb_typeof(v_ticket.ptz_coordinates -> 'metadata' -> 'followers') = 'array'
+           then v_ticket.ptz_coordinates -> 'metadata' -> 'followers' else '[]'::jsonb end) x);
+  v_people := array(select distinct trim(x) from unnest(coalesce(p_people, '{}')) x where nullif(trim(x), '') is not null);
+
+  if p_op = 'toggle' then
+    if v_by = any (v_current) then
+      v_next := array(select f from unnest(v_current) f where f <> v_by);
+      v_text := v_by || ' stopped following this ticket';
+    else
+      v_next := v_current || v_by;
+      v_text := v_by || ' started following this ticket';
+    end if;
+  elsif p_op = 'remove' then
+    v_next := array(select f from unnest(v_current) f where f <> all (v_people));
+    v_text := v_by || ' removed ' || array_to_string(v_people, ', ') || ' from followers';
+  else
+    v_next := v_current || array(select p from unnest(v_people) p where p <> all (v_current));
+    v_text := case when p_op = 'share' then v_by || ' shared this ticket with ' else v_by || ' added followers: ' end
+      || array_to_string(v_people, ', ');
+  end if;
+
+  update public.tickets
+  set ptz_coordinates = public.ticket_metadata_set(ptz_coordinates, 'followers', to_jsonb(v_next)),
+      history_log = coalesce(history_log, '[]'::jsonb)
+        || jsonb_build_array(jsonb_build_object('at', now(), 'by', v_by, 'text', v_text))
+  where id = v_ticket.id
+  returning * into v_ticket;
+  return v_ticket;
+end;
+$$;
+
+-- Stores the before / after snapshot of a ticket.
+create or replace function public.attach_ticket_snapshot_secure(
+  p_ticket_id text, p_slot text, p_snapshot jsonb, p_actor text, p_role text
+)
+returns public.tickets
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_ticket public.tickets%rowtype;
+  v_by text := nullif(trim(coalesce(p_actor, '')), '');
+  v_snapshots jsonb;
+begin
+  perform public.assert_ticket_type_actor(p_actor, p_role, array['Administrator', 'Operator']);
+  if p_slot not in ('before', 'after') or jsonb_typeof(p_snapshot) is distinct from 'object' then
+    raise exception 'Invalid snapshot';
+  end if;
+
+  select * into v_ticket from public.tickets where id::text = p_ticket_id for update;
+  if not found then
+    raise exception 'Ticket not found';
+  end if;
+
+  v_snapshots := case when jsonb_typeof(v_ticket.ptz_coordinates -> 'metadata' -> 'snapshots') = 'object'
+                      then v_ticket.ptz_coordinates -> 'metadata' -> 'snapshots' else '{}'::jsonb end;
+  update public.tickets
+  set ptz_coordinates = public.ticket_metadata_set(ptz_coordinates, 'snapshots', v_snapshots || jsonb_build_object(p_slot, p_snapshot)),
+      history_log = coalesce(history_log, '[]'::jsonb)
+        || jsonb_build_array(jsonb_build_object('at', now(), 'by', v_by, 'text', initcap(p_slot) || ' snapshot saved'))
+  where id = v_ticket.id
+  returning * into v_ticket;
+  return v_ticket;
+end;
+$$;
+
+-- Deletes a ticket. History and audit tables are not touched by this function.
+create or replace function public.delete_ticket_secure(p_ticket_id text, p_actor text, p_role text)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  perform public.assert_ticket_type_actor(p_actor, p_role, array['Administrator', 'Operator']);
+  delete from public.tickets where id::text = p_ticket_id;
+  if not found then
+    raise exception 'Ticket not found';
+  end if;
 end;
 $$;
 
@@ -970,7 +1418,10 @@ as $$
   select jsonb_build_object(
     'revision', 2,
     'browser_can_run_workflow_actions', has_function_privilege('anon', 'public.apply_workflow_action(text,text,text,text,text)', 'execute'),
-    'browser_can_read_type_changes', has_table_privilege('anon', 'public.ticket_type_changes', 'select')
+    'browser_can_read_type_changes', has_table_privilege('anon', 'public.ticket_type_changes', 'select'),
+    'anon_can_read_tickets', has_table_privilege('anon', 'public.tickets', 'select'),
+    'browser_can_write_tickets', has_table_privilege('anon', 'public.tickets', 'insert,update,delete')
+                              or has_table_privilege('authenticated', 'public.tickets', 'insert,update,delete')
   );
 $$;
 
@@ -979,30 +1430,36 @@ revoke execute on function public.create_ticket_type(text, text, jsonb) from pub
 revoke execute on function public.update_ticket_type(text, text, text, jsonb) from public, anon, authenticated;
 revoke execute on function public.delete_ticket_type(text) from public, anon, authenticated;
 revoke execute on function public.apply_ticket_type_workflow(text) from public, anon, authenticated;
-revoke execute on function public.apply_workflow_action(text, text, text, text, text) from public, anon, authenticated;
 grant execute on function public.create_ticket_type(text, text, jsonb) to service_role;
 grant execute on function public.update_ticket_type(text, text, text, jsonb) to service_role;
 grant execute on function public.delete_ticket_type(text) to service_role;
 grant execute on function public.apply_ticket_type_workflow(text) to service_role;
-grant execute on function public.apply_workflow_action(text, text, text, text, text) to service_role;
 
 -- save_workflow_template is only ever called from the security definer functions above (as their owner).
 -- change_ticket_state is the legacy direct state change; the app never calls it and the workflow actions replace
--- it. apply_workflow_action overloads other than the one above are closed the same way. Browsers must not be
--- able to call any of them, whatever their signature is. service_role keeps whatever it had.
+-- it. Browsers must not be able to call any of them, whatever their signature is. service_role keeps whatever
+-- it had for these two.
+-- apply_workflow_action (every overload) is closed to service_role as well: it trusts the actor it is given and
+-- has no assignee / reporter check, so the ONLY way to run a workflow action is apply_workflow_action_secure,
+-- which calls it as the function owner.
 do $grants$
 declare
   r record;
 begin
   for r in
-    select p.oid::regprocedure::text as sig
+    select p.oid::regprocedure::text as sig, p.proname::text as name
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname in ('save_workflow_template', 'change_ticket_state', 'apply_workflow_action')
   loop
     execute format('revoke execute on function %s from public, anon, authenticated', r.sig);
+    if r.name = 'apply_workflow_action' then
+      execute format('revoke execute on function %s from service_role', r.sig);
+    end if;
   end loop;
 end;
 $grants$;
+
+revoke execute on function public.ticket_metadata_set(jsonb, text, jsonb) from public, anon, authenticated;
 
 revoke execute on function public.assert_ticket_type_actor(text, text, text[]) from public, anon, authenticated;
 revoke execute on function public.current_ticket_type_version(text) from public, anon, authenticated;
@@ -1018,7 +1475,19 @@ revoke execute on function public.change_ticket_type_secure(text, text, text, te
 revoke execute on function public.apply_workflow_action_secure(text, text, text, text, text, text) from public, anon, authenticated;
 revoke execute on function public.get_ticket_type_changes_secure(text, text, text) from public, anon, authenticated;
 revoke execute on function public.ticket_type_hardening_status() from public, anon, authenticated;
+revoke execute on function public.create_ticket_secure(jsonb, text, text, text) from public, anon, authenticated;
+revoke execute on function public.update_ticket_details_secure(text, text, text, text, jsonb, jsonb, text, text) from public, anon, authenticated;
+revoke execute on function public.add_ticket_comment_secure(text, text, jsonb, text, text) from public, anon, authenticated;
+revoke execute on function public.update_ticket_followers_secure(text, text, text[], text, text) from public, anon, authenticated;
+revoke execute on function public.attach_ticket_snapshot_secure(text, text, jsonb, text, text) from public, anon, authenticated;
+revoke execute on function public.delete_ticket_secure(text, text, text) from public, anon, authenticated;
 
+grant execute on function public.create_ticket_secure(jsonb, text, text, text) to service_role;
+grant execute on function public.update_ticket_details_secure(text, text, text, text, jsonb, jsonb, text, text) to service_role;
+grant execute on function public.add_ticket_comment_secure(text, text, jsonb, text, text) to service_role;
+grant execute on function public.update_ticket_followers_secure(text, text, text[], text, text) to service_role;
+grant execute on function public.attach_ticket_snapshot_secure(text, text, jsonb, text, text) to service_role;
+grant execute on function public.delete_ticket_secure(text, text, text) to service_role;
 grant execute on function public.create_ticket_type_secure(text, text, jsonb, text, text) to service_role;
 grant execute on function public.update_ticket_type_secure(text, text, text, jsonb, text, text) to service_role;
 grant execute on function public.delete_ticket_type_secure(text, text, text) to service_role;
@@ -1036,7 +1505,6 @@ declare
   r record;
 begin
   foreach v_sig in array array[
-    'public.apply_workflow_action(text,text,text,text,text)',
     'public.apply_ticket_type_workflow(text)',
     'public.create_ticket_type(text,text,jsonb)',
     'public.update_ticket_type(text,text,text,jsonb)',
@@ -1047,7 +1515,13 @@ begin
     'public.apply_ticket_type_secure(text,text,text,text)',
     'public.change_ticket_type_secure(text,text,text,text,text)',
     'public.apply_workflow_action_secure(text,text,text,text,text,text)',
-    'public.get_ticket_type_changes_secure(text,text,text)'
+    'public.get_ticket_type_changes_secure(text,text,text)',
+    'public.create_ticket_secure(jsonb,text,text,text)',
+    'public.update_ticket_details_secure(text,text,text,text,jsonb,jsonb,text,text)',
+    'public.add_ticket_comment_secure(text,text,jsonb,text,text)',
+    'public.update_ticket_followers_secure(text,text,text[],text,text)',
+    'public.attach_ticket_snapshot_secure(text,text,jsonb,text,text)',
+    'public.delete_ticket_secure(text,text,text)'
   ] loop
     foreach v_role in array array['anon', 'authenticated'] loop
       if has_function_privilege(v_role, v_sig, 'execute') then
@@ -1070,6 +1544,37 @@ begin
       end if;
     end loop;
   end loop;
+
+  for r in
+    select p.oid::regprocedure::text as sig
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'apply_workflow_action'
+  loop
+    if has_function_privilege('service_role', r.sig, 'execute') then
+      raise exception 'Postflight failed: service_role can still execute % directly (workflow actions must go through apply_workflow_action_secure)', r.sig;
+    end if;
+  end loop;
+
+  -- public.tickets: anonymous visitors have nothing, signed-in browsers can only read, and there is exactly one policy
+  if has_table_privilege('anon', 'public.tickets', 'select,insert,update,delete,truncate,references,trigger')
+     or has_any_column_privilege('anon', 'public.tickets', 'select,insert,update,references') then
+    raise exception 'Postflight failed: anon can still access public.tickets';
+  end if;
+  if has_table_privilege('authenticated', 'public.tickets', 'insert,update,delete,truncate,references,trigger')
+     or has_any_column_privilege('authenticated', 'public.tickets', 'insert,update,references') then
+    raise exception 'Postflight failed: authenticated can still write public.tickets';
+  end if;
+  if not has_table_privilege('authenticated', 'public.tickets', 'select') then
+    raise exception 'Postflight failed: authenticated can no longer read public.tickets';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.tickets'::regclass) then
+    raise exception 'Postflight failed: row level security is not enabled on public.tickets';
+  end if;
+  if (select count(*) from pg_policies where schemaname = 'public' and tablename = 'tickets') <> 1
+     or not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'tickets'
+                    and policyname = 'tickets_read_signed_in' and cmd = 'SELECT' and roles = '{authenticated}') then
+    raise exception 'Postflight failed: public.tickets must have exactly one policy, tickets_read_signed_in (SELECT, authenticated)';
+  end if;
 
   foreach v_sig in array array['public.ticket_types', 'public.workflow_templates', 'public.workflow_versions'] loop
     foreach v_role in array array['anon', 'authenticated'] loop

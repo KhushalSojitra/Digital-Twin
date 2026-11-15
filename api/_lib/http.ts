@@ -71,15 +71,57 @@ export function serializeCookie(name: string, value: string, settings: CookieSet
   return parts.join('; ')
 }
 
+const V0_PREVIEW_HOST = /^[a-z0-9-]+\.v0\.build$/
+
+function isDeployedOnVercel(): boolean {
+  const vercelEnv = process.env.VERCEL_ENV
+  return vercelEnv === 'production' || vercelEnv === 'preview'
+}
+
+function parseOrigin(value: string | undefined): URL | null {
+  if (!value) return null
+  try {
+    return new URL(value)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The v0 preview reverse proxy serves the app on https://<id>.v0.build but forwards requests to the
+ * sandbox with its own Host / X-Forwarded-Host, so the browser Origin can never equal the host the
+ * server sees. This accepts exactly that topology, and only outside Vercel deployments, when:
+ *  - the Origin is https on a single-label *.v0.build host,
+ *  - the Referer (when sent) has that same origin, and
+ *  - the browser-set Sec-Fetch-Site is "same-origin" (JS cannot forge it, and a page on a different
+ *    *.v0.build preview is reported as "same-site", so it is rejected).
+ */
+function isTrustedV0Preview(req: IncomingMessage, origin: URL): boolean {
+  if (isDeployedOnVercel()) return false
+  if (origin.protocol !== 'https:' || origin.port !== '' || !V0_PREVIEW_HOST.test(origin.hostname)) return false
+  if (firstHeader(req, 'sec-fetch-site') !== 'same-origin') return false
+  const referer = parseOrigin(firstHeader(req, 'referer'))
+  return referer === null || referer.origin === origin.origin
+}
+
+/** Exact origins (comma separated, e.g. https://app.example.com) that may call the API through a proxy. */
+function isAllowlistedOrigin(origin: URL): boolean {
+  const configured = process.env.AUTH_ALLOWED_ORIGINS
+  if (!configured) return false
+  return configured
+    .split(',')
+    .map((entry) => entry.trim())
+    .some((entry) => entry !== '' && entry !== '*' && entry === origin.origin)
+}
+
 export function isSameOrigin(req: IncomingMessage): boolean {
   const host = firstHeader(req, 'x-forwarded-host') ?? firstHeader(req, 'host')
-  const origin = firstHeader(req, 'origin')
-  if (origin) {
-    try {
-      return host !== undefined && new URL(origin).host === host
-    } catch {
-      return false
-    }
+  const originHeader = firstHeader(req, 'origin')
+  if (originHeader) {
+    const origin = parseOrigin(originHeader)
+    if (!origin) return false
+    if (host !== undefined && origin.host === host) return true
+    return isAllowlistedOrigin(origin) || isTrustedV0Preview(req, origin)
   }
   const fetchSite = firstHeader(req, 'sec-fetch-site')
   return fetchSite === undefined || fetchSite === 'same-origin' || fetchSite === 'none'

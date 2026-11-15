@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
+import { APPLICATION_PROJECT_REF, jwtClaims, projectRefFromUrl } from './api/_lib/projectRef.ts'
 
 // Serves the root /api functions during `vite dev`/preview; Vercel runs them natively once deployed.
 function apiDevServer(env: Record<string, string>): Plugin {
@@ -11,7 +12,9 @@ function apiDevServer(env: Record<string, string>): Plugin {
     apply: 'serve',
     configureServer(server) {
       for (const [key, value] of Object.entries(env)) {
-        if (key.startsWith('AUTH_') && process.env[key] === undefined) process.env[key] = value
+        // Never copy SUPABASE_*: those variables belong to a different project.
+        const forwarded = key.startsWith('AUTH_') || key.startsWith('APP_SUPABASE_') || key === 'VITE_SUPABASE_URL'
+        if (forwarded && process.env[key] === undefined) process.env[key] = value
       }
       server.middlewares.use(async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
         const name = /^\/api\/([a-z-]+)$/.exec((req.url ?? '').split('?')[0])?.[1]
@@ -37,10 +40,18 @@ function apiDevServer(env: Record<string, string>): Plugin {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  // VITE_* is the existing app connection and points to the project that owns public.tickets.
-  // The other variables belong to a different connected project and must not override it.
-  const supabaseUrl = env.VITE_SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL
-  const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY
+  // VITE_* is the application connection and must point to the project that owns public.tickets.
+  // The unprefixed SUPABASE_* and NEXT_PUBLIC_* variables belong to a different connected project and are
+  // never used as a fallback: a wrong or missing value stops the build instead of reaching another project.
+  const supabaseUrl = env.VITE_SUPABASE_URL
+  const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY
+  if (projectRefFromUrl(supabaseUrl) !== APPLICATION_PROJECT_REF) {
+    throw new Error(`VITE_SUPABASE_URL must be https://${APPLICATION_PROJECT_REF}.supabase.co`)
+  }
+  const anonClaims = supabaseAnonKey ? jwtClaims(supabaseAnonKey) : null
+  if (!supabaseAnonKey || (anonClaims && typeof anonClaims.ref === 'string' && anonClaims.ref !== APPLICATION_PROJECT_REF)) {
+    throw new Error('VITE_SUPABASE_ANON_KEY is missing or belongs to a different Supabase project')
+  }
 
   return {
   plugins: [react(), apiDevServer(env)],

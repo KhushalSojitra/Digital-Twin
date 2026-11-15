@@ -3,7 +3,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 export type ApiRequest = IncomingMessage & { body?: unknown }
 export type ApiResponse = ServerResponse
 
-const MAX_BODY_BYTES = 4096
+// Workflow action notes can be a few thousand characters, which may be several bytes each.
+const MAX_BODY_BYTES = 16384
 
 export function firstHeader(req: IncomingMessage, name: string): string | undefined {
   const value = req.headers[name]
@@ -73,9 +74,14 @@ export function serializeCookie(name: string, value: string, settings: CookieSet
 
 const V0_PREVIEW_HOST = /^[a-z0-9-]+\.v0\.build$/
 
-function isDeployedOnVercel(): boolean {
-  const vercelEnv = process.env.VERCEL_ENV
-  return vercelEnv === 'production' || vercelEnv === 'preview'
+/**
+ * The v0 preview proxy is only trusted by a development server. Any hosted runtime (anything Vercel
+ * sets VERCEL / VERCEL_ENV for, including `vercel dev`) or NODE_ENV=production turns the trust off,
+ * so a production build can never accept a *.v0.build origin.
+ */
+export function isPreviewOriginTrustAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.VERCEL_ENV || env.VERCEL) return false
+  return env.NODE_ENV !== 'production'
 }
 
 function parseOrigin(value: string | undefined): URL | null {
@@ -97,7 +103,7 @@ function parseOrigin(value: string | undefined): URL | null {
  *    *.v0.build preview is reported as "same-site", so it is rejected).
  */
 function isTrustedV0Preview(req: IncomingMessage, origin: URL): boolean {
-  if (isDeployedOnVercel()) return false
+  if (!isPreviewOriginTrustAllowed()) return false
   if (origin.protocol !== 'https:' || origin.port !== '' || !V0_PREVIEW_HOST.test(origin.hostname)) return false
   if (firstHeader(req, 'sec-fetch-site') !== 'same-origin') return false
   const referer = parseOrigin(firstHeader(req, 'referer'))

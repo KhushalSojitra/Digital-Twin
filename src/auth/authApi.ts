@@ -47,6 +47,17 @@ export type TicketTypeAction =
   | { action: 'delete'; key: string }
   | { action: 'apply'; ticketId: string; typeKey: string }
   | { action: 'change'; ticketId: string; typeKey: string; reason: string }
+  | { action: 'workflow'; ticketId: string; actionId: string; assignee?: string | null; note?: string | null }
+  | { action: 'history'; ticketId: string }
+  | { action: 'status' }
+
+export interface TicketTypeServerStatus {
+  configured: boolean
+  projectRef: string | null
+  problem: string | null
+  migrated: boolean
+  revision: number | null
+}
 
 /** Sends a ticket type mutation with the session cookie and CSRF token; the server decides who is acting. */
 export async function postTicketTypeAction(body: TicketTypeAction): Promise<unknown> {

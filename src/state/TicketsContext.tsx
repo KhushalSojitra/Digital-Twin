@@ -165,11 +165,11 @@ function databaseStatus(status: Ticket['status']): string {
 
 function databaseRowForTicket(ticket: Ticket, includeIdentity = false): DatabaseRow {
   return {
-    ...(includeIdentity ? { id: ticket.id, ticket_id: ticket.id, created_at: ticket.createdAt } : {}),
+    // The status follows the workflow state and is only ever changed by the server, so it is sent on creation only.
+    ...(includeIdentity ? { id: ticket.id, ticket_id: ticket.id, created_at: ticket.createdAt, status: databaseStatus(ticket.status) } : {}),
     title: ticket.title,
     description: ticket.description,
     priority: ticket.priority,
-    status: databaseStatus(ticket.status),
     reporter: ticket.creator,
     assignee: ticket.assignee || 'Unassigned',
     camera_name: ticket.cameraId ?? 'Earth',
@@ -633,14 +633,14 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     if (!ticketsRef.current.some((ticket) => ticket.id === id)) return Promise.reject(new Error('Ticket not found'))
     const previousWrite = writeQueues.current.get(id) ?? Promise.resolve()
     const run = previousWrite.catch(() => undefined).then(async () => {
-      const { data, error } = await supabase.rpc('apply_workflow_action', {
-        p_ticket_id: id,
-        p_action_id: actionId,
-        p_changed_by: input.by,
-        p_new_assignee: input.assignee ?? null,
-        p_note: input.note ?? null,
+      // The server runs the action as the signed-in user; the browser has no database permission for it.
+      const data = await postTicketTypeAction({
+        action: 'workflow',
+        ticketId: id,
+        actionId,
+        assignee: input.assignee ?? null,
+        note: input.note ?? null,
       })
-      if (error) throw new Error(error.message)
       const saved = ticketFromDatabase(Array.isArray(data) ? data[0] : data)
       const next = ticketsRef.current.map((ticket) => ticket.id === id ? saved : ticket)
       ticketsRef.current = next

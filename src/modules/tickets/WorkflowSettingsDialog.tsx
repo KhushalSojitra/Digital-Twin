@@ -136,7 +136,7 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey,
           borderColor: isViewed ? 'primary.main' : 'divider',
           borderRadius: '12px',
           px: 1.25,
-          py: 1,
+          py: 0.875,
           '&:hover': { bgcolor: 'action.hover' },
           '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
         }}
@@ -150,109 +150,91 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey,
     )
   }
 
-  const renderSection = (id: string, title: string, items: TicketTypeDef[], action?: React.ReactNode) => (
+  const renderSection = (id: string, title: string, items: TicketTypeDef[]) => (
     <Box component="section" aria-labelledby={id}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 30, mb: 1 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
         <Typography id={id} variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>
           {title}
         </Typography>
         <Chip size="small" variant="outlined" label={items.length} />
-        {action}
       </Box>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>{items.map(renderType)}</Box>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>{items.map(renderType)}</Box>
     </Box>
   )
 
   const listPane = (
     <Box
       sx={{
-        width: { xs: '100%', sm: 280 },
+        width: { xs: '100%', sm: 220 },
         flexShrink: 0,
-        overflowY: 'auto',
+        boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
-        gap: 2,
+        gap: 1.5,
         p: { xs: 1.5, sm: 2 },
         borderRight: { sm: 1 },
         borderColor: 'divider',
       }}
     >
       {renderSection('system-types-heading', 'System Ticket Types', systemTypes)}
-      {renderSection(
-        'custom-types-heading',
-        'Custom Ticket Types',
-        customTypes,
-        canAdminister && typesAvailable ? (
-          <Button size="small" startIcon={<AddRoundedIcon />} disabled={busy} onClick={() => choose({ kind: 'new' })}>
-            Create
-          </Button>
-        ) : undefined,
-      )}
-      {customTypes.length === 0 && (
-        <Typography variant="body2" color="text.secondary" sx={{ border: 1, borderColor: 'divider', borderStyle: 'dashed', borderRadius: '12px', p: 1.5, mt: -1 }}>
-          No custom ticket types yet.
-        </Typography>
+      {customTypes.length > 0 && renderSection('custom-types-heading', 'Custom Ticket Types', customTypes)}
+      {canAdminister && typesAvailable && (
+        <Button variant="contained" fullWidth startIcon={<AddRoundedIcon />} disabled={busy} onClick={() => choose({ kind: 'new' })}>
+          Ticket Type
+        </Button>
       )}
     </Box>
   )
 
-  const controls = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, px: { xs: 1.5, sm: 2 }, pt: 1.5 }}>
+  const info: string[] = []
+  if (!creating && current?.description) info.push(current.description)
+  info.push(
+    onSelectType
+      ? 'The new ticket starts on the workflow of the ticket type you choose.'
+      : 'Tickets keep the workflow they started with. Changes here apply to tickets created later.',
+  )
+  info.push('To Do, In Progress and Done are always part of the workflow.')
+  if (current?.isSystem) info.push('System ticket types are built in and cannot be changed.')
+  if (current && !current.config) info.push('This ticket type was created before configurable options existed. Its tickets keep their current workflow.')
+  if (typesAvailable && !canAdminister) info.push('Only administrators can create or change custom ticket types. You can view how each one is configured.')
+
+  const actions =
+    current && (onSelectType || editable) ? (
+      <>
+        {onSelectType && selectedTypeKey !== current.key && (
+          <Button size="small" variant="contained" disabled={busy} onClick={() => onSelectType(current.key)}>
+            Use for this ticket
+          </Button>
+        )}
+        {editable && (
+          <Button size="small" color="error" startIcon={<DeleteOutlineRoundedIcon />} disabled={busy} onClick={() => setDeleting(current)}>
+            Delete
+          </Button>
+        )}
+      </>
+    ) : undefined
+
+  const detailPane = (
+    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       {isXs && (
-        <Box>
+        <Box sx={{ px: 1.5, pt: 1 }}>
           <Button size="small" startIcon={<ArrowBackRoundedIcon />} onClick={() => setShowDetail(false)}>
             Ticket types
           </Button>
         </Box>
       )}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>
-          {creating ? 'New ticket type' : (current?.label ?? 'Ticket type')}
-        </Typography>
-        {current && selectedTypeKey === current.key && <Chip size="small" color="primary" icon={<CheckCircleRoundedIcon />} label="This ticket" />}
-        {current?.isSystem && <Chip size="small" variant="outlined" icon={<LockOutlinedIcon />} label="System" />}
-        <Box sx={{ flex: 1 }} />
-        {onSelectType && current && selectedTypeKey !== current.key && (
-          <Button size="small" variant="contained" disabled={busy} onClick={() => onSelectType(current.key)}>
-            Use for this ticket
-          </Button>
-        )}
-        {editable && current && (
-          <Button size="small" color="error" startIcon={<DeleteOutlineRoundedIcon />} disabled={busy} onClick={() => setDeleting(current)}>
-            Delete
-          </Button>
-        )}
-      </Box>
-      <Typography variant="caption" color="text.secondary">
-        {onSelectType
-          ? 'The new ticket starts on the workflow of the ticket type you choose.'
-          : 'Tickets keep the workflow they started with. Changes here apply to tickets created later.'}
-      </Typography>
-      {!typesAvailable && !loading && (
-        <Alert severity="warning" variant="outlined">
-          Custom ticket types need the latest database migration (supabase/ticket_workflow.sql). Built-in types use the default workflow until then.
-        </Alert>
-      )}
-      {typesAvailable && !canAdminister && (
-        <Alert severity="info" variant="outlined">
-          Only administrators can create or change custom ticket types. You can view how each one is configured.
-        </Alert>
-      )}
-    </Box>
-  )
-
-  const detailPane = (
-    <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      {controls}
       {creating || current ? (
         <TicketTypeConfigEditor
           key={`${creating ? 'new' : current?.key}-${editorVersion}`}
+          title={creating ? 'New ticket type' : (current?.label ?? 'Ticket type')}
+          info={info}
           initialName={creating ? '' : (current?.label ?? '')}
           initialDescription={creating ? '' : (current?.description ?? '')}
           initialConfig={creating ? DEFAULT_CONFIG : (current?.config ?? null)}
           readOnly={creating ? !canAdminister : !editable}
           saving={busy}
           error={failure}
+          actions={actions}
           onCancel={resetEditor}
           onSave={save}
         />
@@ -271,11 +253,11 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey,
         onClose={close}
         fullWidth
         fullScreen={isXs}
-        maxWidth="lg"
+        maxWidth="md"
         sx={{ zIndex: (t) => t.zIndex.modal + 30 }}
-        slotProps={{ paper: { sx: { ...dialogPaperSx, height: isXs ? '100%' : 'min(640px, 86dvh)' } } }}
+        slotProps={{ paper: { sx: { ...dialogPaperSx, height: isXs ? '100%' : 'auto' } } }}
       >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1.5, pr: 1 }}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1.25, pr: 1 }}>
           <Typography variant="h6" component="span" sx={{ flex: 1, minWidth: 0 }}>
             Flow Configuration
           </Typography>
@@ -283,7 +265,12 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey,
             <CloseRoundedIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
-        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', borderTop: 1, borderColor: 'divider' }}>
+        {!typesAvailable && !loading && (
+          <Alert severity="warning" variant="outlined" sx={{ mx: 2, mb: 1, py: 0 }}>
+            Custom ticket types need the latest database migration (supabase/ticket_workflow.sql). Built-in types use the default workflow until then.
+          </Alert>
+        )}
+        <Box sx={{ flex: 1, minHeight: { sm: 360 }, display: 'flex', borderTop: 1, borderColor: 'divider', overflowY: 'auto' }}>
           {(!isXs || !showDetail) && listPane}
           {(!isXs || showDetail) && detailPane}
         </Box>

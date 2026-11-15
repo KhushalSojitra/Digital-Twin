@@ -1,5 +1,39 @@
+import { existsSync } from 'node:fs'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import path from 'node:path'
 import react from '@vitejs/plugin-react'
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
+
+// Serves the root /api functions during `vite dev`/preview; Vercel runs them natively once deployed.
+function apiDevServer(env: Record<string, string>): Plugin {
+  return {
+    name: 'oomnieye-api-dev-server',
+    apply: 'serve',
+    configureServer(server) {
+      for (const [key, value] of Object.entries(env)) {
+        if (key.startsWith('AUTH_') && process.env[key] === undefined) process.env[key] = value
+      }
+      server.middlewares.use(async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+        const name = /^\/api\/([a-z-]+)$/.exec((req.url ?? '').split('?')[0])?.[1]
+        const file = name ? path.join(server.config.root, 'api', `${name}.ts`) : null
+        if (!name || !file || !existsSync(file)) return next()
+        try {
+          const mod = (await server.ssrLoadModule(`/api/${name}.ts`)) as {
+            default: (req: IncomingMessage, res: ServerResponse) => Promise<void>
+          }
+          await mod.default(req, res)
+        } catch (error) {
+          server.config.logger.error(`API ${name} failed: ${error instanceof Error ? error.message : 'unknown error'}`)
+          if (!res.headersSent) {
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ code: 'server_error', error: 'Something went wrong. Please try again.' }))
+          }
+        }
+      })
+    },
+  }
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -9,7 +43,7 @@ export default defineConfig(({ mode }) => {
   const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY
 
   return {
-  plugins: [react()],
+  plugins: [react(), apiDevServer(env)],
   define: {
     'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(supabaseUrl),
     'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(supabaseAnonKey),

@@ -1,10 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { authenticate, type User } from './users'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { fetchSession, postAuth, type AuthResult, type Session } from './authApi'
+import type { User } from './users'
 
-export interface Session {
-  user: User
-  signedInAt: string
-}
+export type { Session }
 
 interface AuthState {
   sessions: Session[]
@@ -12,6 +10,8 @@ interface AuthState {
 }
 
 interface AuthValue extends AuthState {
+  /** False until the first server session check completes. */
+  ready: boolean
   currentUser: User | null
   login: (username: string, password: string) => Promise<{ ok: true } | { ok: false; error: string }>
   switchAccount: (userId: string) => void
@@ -19,63 +19,89 @@ interface AuthValue extends AuthState {
   signOutAll: () => void
 }
 
-const STORAGE_KEY = 'oomnieye.auth'
+const LEGACY_STORAGE_KEY = 'oomnieye.auth'
+const EMPTY_STATE: AuthState = { sessions: [], activeUserId: null }
 
 const AuthContext = createContext<AuthValue | null>(null)
 
-function readState(): AuthState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { sessions: [], activeUserId: null }
-    const parsed = JSON.parse(raw) as AuthState
-    if (!Array.isArray(parsed.sessions)) return { sessions: [], activeUserId: null }
-    return parsed
-  } catch {
-    return { sessions: [], activeUserId: null }
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>(readState)
+  const [state, setState] = useState<AuthState>(EMPTY_STATE)
+  const [ready, setReady] = useState(false)
+  const requestId = useRef(0)
+
+  const apply = useCallback((result: AuthResult) => {
+    if (result.ok) setState({ sessions: result.state.sessions, activeUserId: result.state.activeUserId })
+    return result
+  }, [])
+
+  const refresh = useCallback(async () => {
+    const id = ++requestId.current
+    const result = await fetchSession()
+    if (id === requestId.current && result.ok) apply(result)
+    return result
+  }, [apply])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  }, [state])
+    // Sessions used to be stored (and trusted) client-side; discard anything left over.
+    try {
+      localStorage.removeItem(LEGACY_STORAGE_KEY)
+    } catch {
+      // Storage may be unavailable; nothing to clean up.
+    }
+    void refresh().finally(() => setReady(true))
+  }, [refresh])
 
-  const login = useCallback<AuthValue['login']>(async (username, password) => {
-    // Simulated network round-trip so the sign-in button shows real feedback.
-    await new Promise((r) => setTimeout(r, 650))
-    const user = authenticate(username, password)
-    if (!user) return { ok: false, error: 'Incorrect username or password.' }
-    setState((prev) => {
-      const others = prev.sessions.filter((s) => s.user.id !== user.id)
-      return {
-        sessions: [...others, { user, signedInAt: new Date().toISOString() }],
-        activeUserId: user.id,
-      }
-    })
-    return { ok: true }
-  }, [])
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [refresh])
 
-  const switchAccount = useCallback((userId: string) => {
-    setState((prev) => (prev.sessions.some((s) => s.user.id === userId) ? { ...prev, activeUserId: userId } : prev))
-  }, [])
+  const login = useCallback<AuthValue['login']>(
+    async (username, password) => {
+      requestId.current += 1
+      const result = apply(await postAuth('/api/login', { username, password }))
+      return result.ok ? { ok: true } : { ok: false, error: result.error }
+    },
+    [apply],
+  )
 
-  const signOut = useCallback((userId?: string) => {
-    setState((prev) => {
-      const target = userId ?? prev.activeUserId
-      const sessions = prev.sessions.filter((s) => s.user.id !== target)
-      const activeUserId = prev.activeUserId === target ? (sessions.at(-1)?.user.id ?? null) : prev.activeUserId
-      return { sessions, activeUserId }
-    })
-  }, [])
+  const switchAccount = useCallback(
+    (userId: string) => {
+      setState((prev) => (prev.sessions.some((s) => s.user.id === userId) ? { ...prev, activeUserId: userId } : prev))
+      requestId.current += 1
+      void postAuth('/api/switch', { userId }).then((result) => (result.ok ? apply(result) : refresh()))
+    },
+    [apply, refresh],
+  )
 
-  const signOutAll = useCallback(() => setState({ sessions: [], activeUserId: null }), [])
+  const signOut = useCallback(
+    (userId?: string) => {
+      let target: string | null = null
+      setState((prev) => {
+        target = userId ?? prev.activeUserId
+        const sessions = prev.sessions.filter((s) => s.user.id !== target)
+        const activeUserId = prev.activeUserId === target ? (sessions.at(-1)?.user.id ?? null) : prev.activeUserId
+        return { sessions, activeUserId }
+      })
+      requestId.current += 1
+      void postAuth('/api/logout', userId ? { userId } : {}).then((result) => (result.ok ? apply(result) : refresh()))
+    },
+    [apply, refresh],
+  )
+
+  const signOutAll = useCallback(() => {
+    setState(EMPTY_STATE)
+    requestId.current += 1
+    void postAuth('/api/logout', { all: true }).then((result) => (result.ok ? apply(result) : refresh()))
+  }, [apply, refresh])
 
   const value = useMemo<AuthValue>(() => {
     const currentUser = state.sessions.find((s) => s.user.id === state.activeUserId)?.user ?? null
-    return { ...state, currentUser, login, switchAccount, signOut, signOutAll }
-  }, [state, login, switchAccount, signOut, signOutAll])
+    return { ...state, ready, currentUser, login, switchAccount, signOut, signOutAll }
+  }, [state, ready, login, switchAccount, signOut, signOutAll])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

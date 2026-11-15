@@ -9,15 +9,11 @@ export interface User {
   avatarColor: string
 }
 
-interface Credential extends User {
-  password: string
-}
-
-const DIRECTORY: Credential[] = [
+// Display-only directory. Credentials live on the server (see /api) and are never shipped to the browser.
+export const DEMO_USERS: User[] = [
   {
     id: 'u-admin',
     username: 'admin',
-    password: 'Admin@123',
     displayName: 'Ava Sharma',
     role: 'Administrator',
     email: 'ava.sharma@oomnieye.io',
@@ -26,7 +22,6 @@ const DIRECTORY: Credential[] = [
   {
     id: 'u-operator',
     username: 'operator',
-    password: 'Operator@123',
     displayName: 'Michael Reed',
     role: 'Operator',
     email: 'michael.reed@oomnieye.io',
@@ -35,7 +30,6 @@ const DIRECTORY: Credential[] = [
   {
     id: 'u-viewer',
     username: 'viewer',
-    password: 'Viewer@123',
     displayName: 'Sarah Wilson',
     role: 'Viewer',
     email: 'sarah.wilson@oomnieye.io',
@@ -43,13 +37,4 @@ const DIRECTORY: Credential[] = [
   },
 ]
 
-export const DEMO_ACCOUNTS = DIRECTORY.map(({ username, password, role }) => ({ username, password, role }))
-
-export const DEMO_USERS: User[] = DIRECTORY.map(({ password: _password, ...user }) => user)
-
-export function authenticate(username: string, password: string): User | null {
-  const match = DIRECTORY.find((u) => u.username.toLowerCase() === username.trim().toLowerCase() && u.password === password)
-  if (!match) return null
-  const { password: _pw, ...user } = match
-  return user
-}
+export const DEMO_ACCOUNTS = DEMO_USERS.map(({ username, role }) => ({ username, role }))

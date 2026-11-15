@@ -16,7 +16,8 @@ import Administration from './modules/admin/Administration'
 import { MODULES } from './layout/modules'
 
 function RequireAuth() {
-  const { currentUser } = useAuth()
+  const { currentUser, ready } = useAuth()
+  if (!ready) return null
   if (!currentUser) return <Navigate to="/login" replace />
   return <Outlet />
 }

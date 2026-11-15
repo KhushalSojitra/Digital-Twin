@@ -64,9 +64,9 @@ export default function LoginPage() {
     navigate('/earth', { replace: true })
   }
 
-  const fillDemo = (u: string, p: string) => {
+  const fillDemo = (u: string) => {
     setUsername(u)
-    setPassword(p)
+    setPassword('')
     setError(null)
   }
 
@@ -210,7 +210,7 @@ export default function LoginPage() {
 
           <Box>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-              Demo accounts — tap to fill
+              Demo accounts — tap to fill username
             </Typography>
             <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
               {DEMO_ACCOUNTS.map((a) => (
@@ -219,7 +219,7 @@ export default function LoginPage() {
                   size="small"
                   variant="outlined"
                   label={`${a.username} · ${a.role}`}
-                  onClick={() => fillDemo(a.username, a.password)}
+                  onClick={() => fillDemo(a.username)}
                 />
               ))}
             </Stack>

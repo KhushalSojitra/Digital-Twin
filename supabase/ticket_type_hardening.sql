@@ -24,12 +24,12 @@
 --   1. Ticket Type on the ticket (tickets.ticket_type_key) and an audit trail (ticket_type_changes) that
 --      browsers can no longer read.
 --   2. Browsers can no longer change ticket_type_key, workflow_version_id, workflow_state, status or
---      completed_at, and can no longer write ticket types or workflow templates/versions. System
+--      completed_at, cannot alter ticket histories, and cannot write ticket types or workflow templates/versions. System
 --      templates and versions are immutable for everyone.
 --   3. Every mutating function (ticket types, apply/change type, workflow actions, save_workflow_template)
 --      is executable by the service role only. The API derives the actor and role from the signed session.
 --   4. Changing a ticket's type reconciles it with the new workflow: newly required approvals become
---      pending, completed_at and all history are preserved.
+--      pending, completed_at and all history are preserved. Permanent deletion keeps only a minimal audit record.
 
 begin;
 set local lock_timeout = '10s';
@@ -119,7 +119,7 @@ begin
     select p.oid::regprocedure::text as obj, p.proacl as acl
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
-      and p.proname in ('apply_workflow_action', 'apply_ticket_type_workflow', 'create_ticket_type', 'update_ticket_type', 'delete_ticket_type', 'save_workflow_template', 'change_ticket_state')
+      and p.proname in ('apply_workflow_action', 'apply_ticket_type_workflow', 'create_ticket_type', 'update_ticket_type', 'delete_ticket_type', 'save_workflow_template', 'change_ticket_state', 'activate_workflow_template', 'delete_workflow_template')
   loop
     insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
     values ('ticket_type_hardening_v3', 'function', r.obj, '*', '{}');

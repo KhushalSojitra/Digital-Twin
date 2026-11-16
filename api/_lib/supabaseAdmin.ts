@@ -119,7 +119,7 @@ export async function getTicketAttachmentObjectPaths(ticketId: string): Promise<
         const markerIndex = parsed.pathname.indexOf(marker)
         if (markerIndex < 0) continue
         const segments = parsed.pathname.slice(markerIndex + marker.length).split('/')
-        const visibility = ['public', 'sign', 'authenticated'].includes(segments[0]) ? segments.shift() : null
+        if (['public', 'sign', 'authenticated'].includes(segments[0])) segments.shift()
         const bucket = segments.shift()
         if (bucket !== 'ticket-attachments' || segments.length === 0) continue
         const path = segments.map((part) => decodeURIComponent(part)).join('/')

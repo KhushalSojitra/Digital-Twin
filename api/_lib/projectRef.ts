@@ -1,3 +1,4 @@
+import { Buffer } from 'buffer'
 /** The only Supabase project this application may talk to (it owns public.tickets). */
 export const APPLICATION_PROJECT_REF = 'okkgnwiqcupflocoobes'
 

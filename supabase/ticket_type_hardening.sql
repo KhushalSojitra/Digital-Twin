@@ -1497,10 +1497,15 @@ as $$
               where n.nspname = 'public' and p.proname in ('apply_workflow_action', 'change_ticket_state')
                 and (has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('authenticated', p.oid, 'execute'))),
     'browser_can_read_type_changes', has_table_privilege('anon', 'public.ticket_type_changes', 'select')
-      or has_table_privilege('authenticated', 'public.ticket_type_changes', 'select'),
-    'anon_can_read_tickets', has_table_privilege('anon', 'public.tickets', 'select'),
+      or has_table_privilege('authenticated', 'public.ticket_type_changes', 'select')
+      or has_any_column_privilege('anon', 'public.ticket_type_changes', 'select')
+      or has_any_column_privilege('authenticated', 'public.ticket_type_changes', 'select'),
+    'anon_can_read_tickets', has_table_privilege('anon', 'public.tickets', 'select')
+      or has_any_column_privilege('anon', 'public.tickets', 'select'),
     'browser_can_write_tickets', has_table_privilege('anon', 'public.tickets', 'insert,update,delete')
-      or has_table_privilege('authenticated', 'public.tickets', 'insert,update,delete'),
+      or has_table_privilege('authenticated', 'public.tickets', 'insert,update,delete')
+      or has_any_column_privilege('anon', 'public.tickets', 'insert,update,references')
+      or has_any_column_privilege('authenticated', 'public.tickets', 'insert,update,references'),
     'anon_can_access_history', has_table_privilege('anon', 'public.ticket_state_history', 'select,insert,update,delete,truncate,references,trigger')
       or has_table_privilege('anon', 'public.ticket_assignment_history', 'select,insert,update,delete,truncate,references,trigger')
       or has_any_column_privilege('anon', 'public.ticket_state_history', 'select,insert,update,references')

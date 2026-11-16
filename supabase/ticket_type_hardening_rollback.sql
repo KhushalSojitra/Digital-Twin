@@ -597,7 +597,7 @@ begin
 
   -- no data changed
   foreach v_name in array array['tickets', 'ticket_types', 'workflow_templates', 'workflow_versions', 'ticket_state_history',
-                                'ticket_assignment_history', 'ticket_type_changes', 'ticket_type_migration_backup'] loop
+                                'ticket_assignment_history', 'ticket_type_changes', 'ticket_type_migration_backup', 'ticket_deletion_audit'] loop
     execute format('select count(*) from public.%I', v_name) into v_n;
     if v_n::text <> current_setting('oomnieye.rb_count_' || v_name) then
       raise exception 'Rollback postflight failed: the row count of % changed (% before, % after)',

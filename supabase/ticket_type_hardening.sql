@@ -1509,6 +1509,10 @@ as $$
       or has_table_privilege('authenticated', 'public.ticket_assignment_history', 'select,insert,update,delete,truncate,references,trigger')
       or has_any_column_privilege('authenticated', 'public.ticket_state_history', 'select,insert,update,references')
       or has_any_column_privilege('authenticated', 'public.ticket_assignment_history', 'select,insert,update,references'),
+    'anon_can_access_deletion_audit', has_table_privilege('anon', 'public.ticket_deletion_audit', 'select,insert,update,delete,truncate,references,trigger')
+      or has_any_column_privilege('anon', 'public.ticket_deletion_audit', 'select,insert,update,references'),
+    'authenticated_can_access_deletion_audit', has_table_privilege('authenticated', 'public.ticket_deletion_audit', 'select,insert,update,delete,truncate,references,trigger')
+      or has_any_column_privilege('authenticated', 'public.ticket_deletion_audit', 'select,insert,update,references'),
     'anon_can_run_legacy_workflow_admin',
       exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
               where n.nspname = 'public' and p.proname in ('apply_ticket_type_workflow','create_ticket_type','update_ticket_type',

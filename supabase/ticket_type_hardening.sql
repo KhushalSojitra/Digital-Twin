@@ -90,6 +90,11 @@ begin
       raise exception 'public.ticket_state_history has no column %; run supabase/ticket_workflow.sql first', v_name;
     end if;
   end loop;
+  foreach v_name in array array['ticket_id', 'from_assignee', 'to_assignee', 'changed_by', 'changed_at', 'action_label', 'note'] loop
+    if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'ticket_assignment_history' and column_name = v_name) then
+      raise exception 'public.ticket_assignment_history has no column %; run supabase/ticket_workflow.sql first', v_name;
+    end if;
+  end loop;
 end;
 $pre$;
 

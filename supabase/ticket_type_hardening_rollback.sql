@@ -567,6 +567,9 @@ begin
   if to_regclass('public.ticket_type_changes_ticket_idx') is null then
     raise exception 'Rollback postflight failed: the ticket_type_changes index is missing';
   end if;
+  if to_regclass('public.ticket_deletion_audit_ticket_idx') is null then
+    raise exception 'Rollback postflight failed: the ticket_deletion_audit ticket index is missing';
+  end if;
   foreach v_name in array array['ticket_type_changes', 'ticket_type_migration_backup', 'ticket_deletion_audit'] loop
     if not (select relrowsecurity from pg_class where oid = to_regclass('public.' || v_name)) then
       raise exception 'Rollback postflight failed: RLS is not enabled on %', v_name;

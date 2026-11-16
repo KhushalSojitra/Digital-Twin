@@ -291,12 +291,12 @@ priv_rows(section, item, expected, actual, status) as (
 -- table-level REVOKE does not remove column-level grants
 colpriv_rows(section, item, expected, actual, status) as (
   select '07 privileges', 'column-level grants on ' || c.relname::text,
-         'none (a table-level REVOKE in the migration does not remove them)',
+         'the migration explicitly revokes browser column grants and snapshots history grants',
          (select count(*) from pg_attribute a
            where a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped and a.attacl is not null)::text || ' column(s) with their own grants',
          case when exists (select 1 from pg_attribute a
                            where a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped and a.attacl is not null)
-              then 'REVIEW' else 'OK' end
+              then 'INFO' else 'OK' end
   from watched w
   join pg_class c on c.oid = to_regclass('public.' || w.name)
 ),
@@ -305,14 +305,13 @@ colpriv_rows(section, item, expected, actual, status) as (
 writer_rows(section, item, expected, actual, status) as (
   select '08 other ticket writers',
          'public.' || p.proname::text || '(' || pg_get_function_identity_arguments(p.oid) || ')',
-         'review: a SECURITY INVOKER function that browsers can run and that changes protected ticket columns will be blocked',
+         'review: any browser-executable function that writes protected ticket columns; SECURITY DEFINER functions bypass the table guard',
          'security ' || case when p.prosecdef then 'definer' else 'invoker' end
            || '; anon execute=' || has_function_privilege('anon'::name, p.oid, 'execute')::text
            || '; authenticated execute=' || has_function_privilege('authenticated'::name, p.oid, 'execute')::text
            || '; mentions protected columns='
            || (p.prosrc ~* '(workflow_state|workflow_version_id|completed_at|ticket_type_key|status)')::text,
-         case when not p.prosecdef
-                   and (has_function_privilege('anon'::name, p.oid, 'execute') or has_function_privilege('authenticated'::name, p.oid, 'execute'))
+         case when (has_function_privilege('anon'::name, p.oid, 'execute') or has_function_privilege('authenticated'::name, p.oid, 'execute'))
                    and p.prosrc ~* '(workflow_state|workflow_version_id|completed_at|ticket_type_key|status)'
               then 'REVIEW' else 'INFO' end
   from pg_proc p

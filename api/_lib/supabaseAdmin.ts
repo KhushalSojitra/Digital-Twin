@@ -70,6 +70,99 @@ export function describeAdminConfig(): { configured: boolean; projectRef: string
     : { configured: false, projectRef: null, problem: config.problem }
 }
 
+/** Reads only the stored comment attachment URLs for one ticket, before its permanent deletion. */
+export async function getTicketAttachmentObjectPaths(ticketId: string): Promise<string[]> {
+  const config = readAdminConfig()
+  if (!config.ok) {
+    console.error('Supabase admin configuration refused:', config.problem)
+    throw new SupabaseAdminError('Ticket management is not configured on the server.', 503, 'not_configured')
+  }
+
+  const endpoint = new URL('/rest/v1/tickets', config.url)
+  endpoint.searchParams.set('id', `eq.${ticketId}`)
+  endpoint.searchParams.set('select', 'replies')
+
+  let response: Response
+  try {
+    response = await fetch(endpoint, {
+      method: 'GET',
+      redirect: 'error',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      headers: { Accept: 'application/json', apikey: config.key, Authorization: `Bearer ${config.key}` },
+    })
+  } catch {
+    throw new SupabaseAdminError('The ticket attachments could not be checked. Please try again.', 502, 'unreachable')
+  }
+  if (!response.ok) {
+    console.error('Supabase attachment lookup failed:', response.status)
+    throw new SupabaseAdminError('The ticket attachments could not be checked. Please try again.', 502, 'attachment_lookup_failed')
+  }
+
+  const rows: unknown = await response.json()
+  if (!Array.isArray(rows) || rows.length === 0) return []
+  const replies = (rows[0] as { replies?: unknown } | null)?.replies
+  if (!Array.isArray(replies)) return []
+
+  const paths = new Set<string>()
+  for (const reply of replies) {
+    if (typeof reply !== 'object' || reply === null) continue
+    const attachments = (reply as { attachments?: unknown }).attachments
+    if (!Array.isArray(attachments)) continue
+    for (const attachment of attachments) {
+      const storedUrl = (attachment as { url?: unknown } | null)?.url
+      if (typeof storedUrl !== 'string') continue
+      try {
+        const parsed = new URL(storedUrl)
+        const marker = '/storage/v1/object/'
+        const markerIndex = parsed.pathname.indexOf(marker)
+        if (markerIndex < 0) continue
+        const segments = parsed.pathname.slice(markerIndex + marker.length).split('/')
+        const visibility = ['public', 'sign', 'authenticated'].includes(segments[0]) ? segments.shift() : null
+        const bucket = visibility ? segments.shift() : segments.shift()
+        if (bucket !== 'ticket-attachments' || segments.length === 0) continue
+        const path = segments.map((part) => decodeURIComponent(part)).join('/')
+        if (!path.startsWith(`${ticketId}/`) || path.split('/').some((part) => part === '.' || part === '..')) continue
+        paths.add(path)
+      } catch {
+        // Ignore malformed or external URLs; only known objects inside this ticket's folder are eligible.
+      }
+    }
+  }
+  return [...paths]
+}
+
+/** Removes only the attachment objects found in that ticket's own stored replies. */
+export async function removeTicketAttachmentObjects(paths: string[]): Promise<void> {
+  if (paths.length === 0) return
+  const config = readAdminConfig()
+  if (!config.ok) {
+    console.error('Supabase admin configuration refused:', config.problem)
+    throw new SupabaseAdminError('Ticket management is not configured on the server.', 503, 'not_configured')
+  }
+
+  let response: Response
+  try {
+    response = await fetch(`${config.url}/storage/v1/object/ticket-attachments`, {
+      method: 'DELETE',
+      redirect: 'error',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        apikey: config.key,
+        Authorization: `Bearer ${config.key}`,
+      },
+      body: JSON.stringify({ prefixes: paths }),
+    })
+  } catch {
+    throw new SupabaseAdminError('The ticket was deleted, but its stored attachments could not be cleaned up.', 502, 'storage_cleanup_failed')
+  }
+  if (!response.ok) {
+    console.error('Supabase ticket attachment cleanup failed:', response.status)
+    throw new SupabaseAdminError('The ticket was deleted, but its stored attachments could not be cleaned up.', 502, 'storage_cleanup_failed')
+  }
+}
+
 /** Calls a PostgREST function with the service role. Only ever used with identities taken from the signed session. */
 export async function callAdminRpc(fn: string, args: Record<string, unknown>): Promise<unknown> {
   const config = readAdminConfig()

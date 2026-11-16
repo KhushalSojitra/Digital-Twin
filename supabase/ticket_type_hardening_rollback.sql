@@ -35,15 +35,15 @@
 --   * public.ticket_type_changes (+ its index)                - audit trail. It stays LOCKED: RLS on, no
 --     browser privileges, SELECT for service_role only. Rollback re-asserts this.
 --   * public.ticket_deletion_audit                             - minimal permanent-deletion audit; retained and locked.
-   * public.ticket_state_history and ticket_assignment_history - intentionally remain locked after rollback; the old
-     browser policies and grants are NOT restored because they allowed history tampering.
-   * public.ticket_type_migration_backup                     - the snapshot; kept so this script can be re-run
+--   * public.ticket_state_history and ticket_assignment_history - intentionally remain locked after rollback; the old
+--     browser policies and grants are NOT restored because they allowed history tampering.
+--   * public.ticket_type_migration_backup                     - the snapshot; kept so this script can be re-run
 --     and the restore can be re-checked. Also kept locked.
 --   * Legacy tickets that the migration initialised (workflow_version_id, workflow_state and ticket_type_key
 --     set where all were empty, step 6b). They are NOT reset: they stay on their workflow, and their
 --     ticket_type_changes audit row (changed_by 'migration') records the original type and that they had no state.
---   * tickets, ticket_state_history, ticket_assignment_history, history_log: untouched. Ticket states and
---     history entries written by change_ticket_type_secure stay; ticket_type_changes records the previous type
+----   * tickets, history_log and history rows are not rewritten by rollback. Ticket states and history entries
+--     written by change_ticket_type_secure stay; ticket_type_changes records the previous type
 --     and state of every change.
 --   * Seeded default ticket types, templates and versions (standard, financial, maintenance) and any template
 --     or version the seed step created or repaired. The migration stores no row snapshot of them, so what the
@@ -160,7 +160,7 @@ begin
   end if;
 
   foreach v_name in array array['tickets', 'ticket_types', 'workflow_templates', 'workflow_versions', 'ticket_state_history',
-                                'ticket_assignment_history', 'ticket_type_changes', 'ticket_type_migration_backup'] loop
+                                'ticket_assignment_history', 'ticket_type_changes', 'ticket_type_migration_backup', 'ticket_deletion_audit'] loop
     execute format('select count(*) from public.%I', v_name) into v_n;
     perform set_config('oomnieye.rb_count_' || v_name, v_n::text, true);
   end loop;
@@ -581,6 +581,20 @@ begin
     end loop;
   end loop;
 
+  -- History remains locked after rollback: do not restore the original browser write policies.
+  if exists (select 1 from pg_policies where schemaname = 'public'
+             and tablename in ('ticket_state_history', 'ticket_assignment_history')) then
+    raise exception 'Rollback postflight failed: a browser policy was restored on a history table';
+  end if;
+  foreach v_role in array array['anon', 'authenticated'] loop
+    if has_table_privilege(v_role::name, 'public.ticket_state_history', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+       or has_table_privilege(v_role::name, 'public.ticket_assignment_history', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+       or has_any_column_privilege(v_role::name, 'public.ticket_state_history', 'SELECT,INSERT,UPDATE,REFERENCES')
+       or has_any_column_privilege(v_role::name, 'public.ticket_assignment_history', 'SELECT,INSERT,UPDATE,REFERENCES') then
+      raise exception 'Rollback postflight failed: % regained access to ticket history tables', v_role;
+    end if;
+  end loop;
+
   -- no data changed
   foreach v_name in array array['tickets', 'ticket_types', 'workflow_templates', 'workflow_versions', 'ticket_state_history',
                                 'ticket_assignment_history', 'ticket_type_changes', 'ticket_type_migration_backup'] loop
@@ -607,4 +621,5 @@ select 'rollback complete' as result,
        (select count(*) from public.tickets where ticket_type_key is not null) as tickets_with_ticket_type_key,
        (select count(*) from public.ticket_type_changes) as ticket_type_changes_kept,
        (select count(*) from public.ticket_types where is_system) as system_ticket_types_kept,
-       (select count(*) from public.ticket_type_migration_backup) as snapshot_rows_kept;
+       (select count(*) from public.ticket_type_migration_backup) as snapshot_rows_kept,
+       (select count(*) from public.ticket_deletion_audit) as deletion_audit_rows_kept;

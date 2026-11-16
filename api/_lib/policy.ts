@@ -10,6 +10,7 @@ export type TicketOperation =
   | 'followers'
   | 'change_type'
   | 'manage_types'
+  | 'read_status'
 
 /**
  * Which roles may call which operation. These rules mirror the database functions, which check them again.
@@ -25,6 +26,7 @@ const ALLOWED_ROLES: Record<TicketOperation, readonly Role[]> = {
   followers: ['Administrator', 'Operator', 'Viewer'],
   change_type: ['Administrator', 'Operator'],
   manage_types: ['Administrator', 'Operator'],
+  read_status: ['Administrator', 'Operator', 'Viewer'],
 }
 
 export function roleMayRun(role: string, operation: TicketOperation): boolean {

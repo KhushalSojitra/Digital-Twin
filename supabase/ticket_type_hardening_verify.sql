@@ -88,11 +88,21 @@ where t.table_schema = 'public'
   and t.table_name in ('ticket_state_history', 'ticket_assignment_history')
 order by t.table_name;
 
--- K. Permanent deletion audit is retained but not browser-readable or writable.
-select (select relrowsecurity from pg_class where oid = 'public.ticket_deletion_audit'::regclass) as rls_enabled,
-       has_table_privilege('anon', 'public.ticket_deletion_audit', 'select,insert,update,delete') as anon_access,
-       has_table_privilege('authenticated', 'public.ticket_deletion_audit', 'select,insert,update,delete') as authenticated_access,
-       (select count(*) from public.ticket_deletion_audit) as retained_deletion_audit_rows;
+-- K. Permanent deletion audit. Before migration this table is absent; after migration it must be RLS-locked.
+select to_regclass('public.ticket_deletion_audit') is not null as table_exists,
+       case when to_regclass('public.ticket_deletion_audit') is not null
+            then (select relrowsecurity from pg_class where oid = to_regclass('public.ticket_deletion_audit'))
+            else null end as rls_enabled,
+       case when to_regclass('public.ticket_deletion_audit') is not null
+            then has_table_privilege('anon', to_regclass('public.ticket_deletion_audit')::oid, 'select,insert,update,delete,truncate,references,trigger')
+            else null end as anon_any_access,
+       case when to_regclass('public.ticket_deletion_audit') is not null
+            then has_table_privilege('authenticated', to_regclass('public.ticket_deletion_audit')::oid, 'select,insert,update,delete,truncate,references,trigger')
+            else null end as authenticated_any_access;
 
--- L. The status function should report revision 3 and every browser-security flag false.
-select public.ticket_type_hardening_status() as hardening_status;
+-- L. Before migration the status function is absent; after migration it must report revision 3
+--    and every browser-security flag false.
+select to_regprocedure('public.ticket_type_hardening_status()') is not null as status_function_installed,
+       case when to_regprocedure('public.ticket_type_hardening_status()') is not null
+            then query_to_xml('select public.ticket_type_hardening_status() as hardening_status', false, true, '')
+            else null end as hardening_status;

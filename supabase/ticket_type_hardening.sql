@@ -1434,7 +1434,6 @@ $$;
 create table if not exists public.ticket_deletion_audit (
   id uuid primary key default gen_random_uuid(),
   ticket_id text not null,
-  ticket_title text not null,
   deleted_by text not null,
   deleted_role text not null,
   deleted_at timestamptz not null default now()
@@ -1460,8 +1459,8 @@ begin
   if not found then
     raise exception 'Ticket not found';
   end if;
-  insert into public.ticket_deletion_audit (ticket_id, ticket_title, deleted_by, deleted_role, deleted_at)
-  values (v_ticket.id::text, coalesce(v_ticket.title, '(untitled)'), v_by, p_role, now());
+  insert into public.ticket_deletion_audit (ticket_id, deleted_by, deleted_role, deleted_at)
+  values (v_ticket.id::text, v_by, p_role, now());
   delete from public.tickets where id = v_ticket.id;
 end;
 $body$;

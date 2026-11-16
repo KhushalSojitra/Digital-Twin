@@ -75,8 +75,10 @@ export default route('POST', async (ctx) => {
               status?.authenticated_can_access_history,
               status?.anon_can_run_legacy_workflow_admin,
               status?.authenticated_can_run_legacy_workflow_admin,
+              status?.anon_can_access_deletion_audit,
+              status?.authenticated_can_access_deletion_audit,
             ]
-            securityVerified = securityFlags.length === 8 && securityFlags.every((flag) => flag === false)
+            securityVerified = securityFlags.length === 10 && securityFlags.every((flag) => flag === false)
           } catch (error) {
             if (!(error instanceof SupabaseAdminError) || error.code !== 'function_missing') throw error
           }

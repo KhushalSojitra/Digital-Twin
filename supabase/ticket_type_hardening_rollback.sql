@@ -120,13 +120,13 @@ begin
 
   select count(distinct captured_at),
          count(distinct object_name) filter (where object_type = 'table'
-           and object_name in ('ticket_types', 'workflow_templates', 'workflow_versions')),
+           and object_name in ('ticket_types', 'workflow_templates', 'workflow_versions', 'ticket_state_history', 'ticket_assignment_history')),
          count(*) filter (where object_type = 'function' and grantee = '*')
   into v_captures, v_tables, v_functions
   from public.ticket_type_migration_backup
   where migration = 'ticket_type_hardening_v3';
 
-  if v_tables < 3 or v_functions = 0 then
+  if v_tables < 5 or v_functions = 0 then
     raise exception 'The migration snapshot is missing or incomplete (tables %, functions %), so privileges cannot be restored safely. Nothing was changed.', v_tables, v_functions;
   end if;
   if v_captures <> 1 then

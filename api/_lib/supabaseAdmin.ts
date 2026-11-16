@@ -113,12 +113,14 @@ export async function getTicketAttachmentObjectPaths(ticketId: string): Promise<
       if (typeof storedUrl !== 'string') continue
       try {
         const parsed = new URL(storedUrl)
+        // Never interpret an arbitrary/external URL as an object in this project's bucket.
+        if (parsed.origin !== config.url) continue
         const marker = '/storage/v1/object/'
         const markerIndex = parsed.pathname.indexOf(marker)
         if (markerIndex < 0) continue
         const segments = parsed.pathname.slice(markerIndex + marker.length).split('/')
         const visibility = ['public', 'sign', 'authenticated'].includes(segments[0]) ? segments.shift() : null
-        const bucket = visibility ? segments.shift() : segments.shift()
+        const bucket = segments.shift()
         if (bucket !== 'ticket-attachments' || segments.length === 0) continue
         const path = segments.map((part) => decodeURIComponent(part)).join('/')
         if (!path.startsWith(`${ticketId}/`) || path.split('/').some((part) => part === '.' || part === '..')) continue

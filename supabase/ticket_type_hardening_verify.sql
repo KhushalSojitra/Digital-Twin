@@ -5,7 +5,7 @@
 select table_name
 from information_schema.tables
 where table_schema = 'public'
-  and table_name in ('tickets', 'ticket_types', 'workflow_templates', 'workflow_versions', 'ticket_state_history', 'ticket_assignment_history')
+  and table_name in ('tickets', 'ticket_types', 'workflow_templates', 'workflow_versions', 'ticket_state_history', 'ticket_assignment_history', 'ticket_deletion_audit')
 order by table_name;
 
 -- B. Who can execute what. After the migration every anon / authenticated column must be false.
@@ -16,7 +16,7 @@ select p.oid::regprocedure::text as function,
        p.prosecdef as security_definer
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public'
-  and (p.proname in ('apply_workflow_action', 'apply_ticket_type_workflow', 'create_ticket_type', 'update_ticket_type', 'delete_ticket_type', 'save_workflow_template', 'change_ticket_state')
+  and (p.proname in ('apply_workflow_action', 'apply_ticket_type_workflow', 'create_ticket_type', 'update_ticket_type', 'delete_ticket_type', 'save_workflow_template', 'change_ticket_state', 'activate_workflow_template', 'delete_workflow_template')
        or p.proname like '%\_secure' escape '\')
 order by 1;
 
@@ -28,7 +28,7 @@ select t.table_name,
        has_table_privilege('anon', 'public.' || t.table_name, 'delete') as anon_delete
 from information_schema.tables t
 where t.table_schema = 'public'
-  and t.table_name in ('ticket_types', 'workflow_templates', 'workflow_versions', 'ticket_type_changes', 'ticket_type_migration_backup', 'tickets')
+  and t.table_name in ('ticket_types', 'workflow_templates', 'workflow_versions', 'ticket_type_changes', 'ticket_type_migration_backup', 'tickets', 'ticket_state_history', 'ticket_assignment_history', 'ticket_deletion_audit')
 order by 1;
 
 -- D. Protection triggers (expect four rows after the migration)
@@ -75,3 +75,24 @@ select count(*) filter (where to_jsonb(t) ->> 'ticket_type_key' is not null) as 
        count(*) filter (where to_jsonb(t) ->> 'ticket_type_key' is null) as without_ticket_type_key,
        count(*) filter (where workflow_version_id is null) as without_workflow_version
 from public.tickets t;
+
+-- J. History tables must be inaccessible to both browser roles: no table/column grants and no policies.
+select t.table_name,
+       has_table_privilege('anon', 'public.' || t.table_name, 'select,insert,update,delete,truncate,references,trigger') as anon_any_privilege,
+       has_table_privilege('authenticated', 'public.' || t.table_name, 'select,insert,update,delete,truncate,references,trigger') as authenticated_any_privilege,
+       has_any_column_privilege('anon', 'public.' || t.table_name, 'select,insert,update,references') as anon_any_column_privilege,
+       has_any_column_privilege('authenticated', 'public.' || t.table_name, 'select,insert,update,references') as authenticated_any_column_privilege,
+       (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = t.table_name) as policy_count
+from information_schema.tables t
+where t.table_schema = 'public'
+  and t.table_name in ('ticket_state_history', 'ticket_assignment_history')
+order by t.table_name;
+
+-- K. Permanent deletion audit is retained but not browser-readable or writable.
+select (select relrowsecurity from pg_class where oid = 'public.ticket_deletion_audit'::regclass) as rls_enabled,
+       has_table_privilege('anon', 'public.ticket_deletion_audit', 'select,insert,update,delete') as anon_access,
+       has_table_privilege('authenticated', 'public.ticket_deletion_audit', 'select,insert,update,delete') as authenticated_access,
+       (select count(*) from public.ticket_deletion_audit) as retained_deletion_audit_rows;
+
+-- L. The status function should report revision 3 and every browser-security flag false.
+select public.ticket_type_hardening_status() as hardening_status;

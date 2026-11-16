@@ -5,6 +5,8 @@ export const DB_TOKEN_TTL_SECONDS = 600
 export interface DbTokenIdentity {
   id: string
   role: string
+  /** Must match the existing user_name value used by user_preferences and ticket_reads. */
+  userName: string
 }
 
 function base64url(value: string | Buffer): string {
@@ -18,9 +20,9 @@ export function subjectFor(userId: string): string {
 }
 
 /**
- * Short-lived Supabase JWT for the signed-in user. It carries the `authenticated` role, which row level
- * security allows to READ tickets only: every ticket write is refused for it by privileges, policies and a
- * trigger, and goes through the API instead. It proves "signed in", never "which actions are allowed".
+ * Short-lived Supabase JWT for the signed-in user. It carries the `authenticated` role.
+ * The app_user_name claim is signed by the server and is used only to scope per-user rows;
+ * it is not a source of role authorization.
  */
 export function mintDbToken(identity: DbTokenIdentity, secret: string, now: number): { token: string; expiresAt: number } {
   const iat = Math.floor(now / 1000)
@@ -35,6 +37,7 @@ export function mintDbToken(identity: DbTokenIdentity, secret: string, now: numb
       exp,
       app_user: identity.id,
       app_role: identity.role,
+      app_user_name: identity.userName,
     }),
   )
   const signature = createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url')

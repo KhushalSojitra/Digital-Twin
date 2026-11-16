@@ -1,4 +1,4 @@
--- OominiEye: ticket type hardening (revision 2).
+-- OominiEye: ticket type hardening (revision 3).
 --
 -- NOT APPLIED AUTOMATICALLY. Run it once, as a single script, in the SQL editor of the Supabase project
 -- okkgnwiqcupflocoobes (the project behind VITE_SUPABASE_URL). Check the project ref in the browser URL
@@ -111,7 +111,7 @@ do $snapshot$
 declare
   r record;
 begin
-  if exists (select 1 from public.ticket_type_migration_backup where migration = 'ticket_type_hardening_v2') then
+  if exists (select 1 from public.ticket_type_migration_backup where migration = 'ticket_type_hardening_v3') then
     return;
   end if;
 
@@ -122,13 +122,13 @@ begin
       and p.proname in ('apply_workflow_action', 'apply_ticket_type_workflow', 'create_ticket_type', 'update_ticket_type', 'delete_ticket_type', 'save_workflow_template', 'change_ticket_state')
   loop
     insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
-    values ('ticket_type_hardening_v2', 'function', r.obj, '*', '{}');
+    values ('ticket_type_hardening_v3', 'function', r.obj, '*', '{}');
     if r.acl is null then
       insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
-      values ('ticket_type_hardening_v2', 'function', r.obj, 'public', array['EXECUTE']);
+      values ('ticket_type_hardening_v3', 'function', r.obj, 'public', array['EXECUTE']);
     end if;
     insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
-    select 'ticket_type_hardening_v2', 'function', r.obj,
+    select 'ticket_type_hardening_v3', 'function', r.obj,
            case when a.grantee = 0 then 'public' else (select rolname::text from pg_roles where oid = a.grantee) end,
            array_agg(a.privilege_type::text)
     from aclexplode(r.acl) a
@@ -141,12 +141,12 @@ begin
     select c.oid::regclass::text as obj, c.relacl as acl
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public' and c.relkind = 'r'
-      and c.relname in ('ticket_types', 'workflow_templates', 'workflow_versions', 'tickets', 'ticket_type_changes')
+      and c.relname in ('ticket_types', 'workflow_templates', 'workflow_versions', 'tickets', 'ticket_type_changes', 'ticket_state_history', 'ticket_assignment_history')
   loop
     insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
-    values ('ticket_type_hardening_v2', 'table', r.obj, '*', '{}');
+    values ('ticket_type_hardening_v3', 'table', r.obj, '*', '{}');
     insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
-    select 'ticket_type_hardening_v2', 'table', r.obj,
+    select 'ticket_type_hardening_v3', 'table', r.obj,
            case when a.grantee = 0 then 'public' else (select rolname::text from pg_roles where oid = a.grantee) end,
            array_agg(a.privilege_type::text)
     from aclexplode(r.acl) a
@@ -160,14 +160,14 @@ begin
   -- revoke. One 'column_capture' marker per table proves the capture happened; a table with no direct column
   -- grants has a marker and no 'column' rows. object_name is '<table>.<column>'.
   insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
-  select 'ticket_type_hardening_v2', 'column_capture', c.relname, '*', '{}'
+  select 'ticket_type_hardening_v3', 'column_capture', c.relname, '*', '{}'
   from pg_class c join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'public' and c.relkind in ('r', 'p')
     and c.relname in ('ticket_types', 'workflow_templates', 'workflow_versions')
   on conflict do nothing;
 
   insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
-  select 'ticket_type_hardening_v2', 'column', c.relname || '.' || a.attname, ro.rolname,
+  select 'ticket_type_hardening_v3', 'column', c.relname || '.' || a.attname, ro.rolname,
          array_agg(distinct acl.privilege_type::text order by acl.privilege_type::text)
   from pg_class c
   join pg_namespace n on n.oid = c.relnamespace
@@ -175,7 +175,7 @@ begin
   cross join lateral aclexplode(a.attacl) as acl
   join pg_roles ro on ro.oid = acl.grantee
   where n.nspname = 'public' and c.relkind in ('r', 'p')
-    and c.relname in ('ticket_types', 'workflow_templates', 'workflow_versions')
+    and c.relname in ('ticket_types', 'workflow_templates', 'workflow_versions', 'ticket_state_history', 'ticket_assignment_history')
     and a.attnum > 0 and not a.attisdropped
     and ro.rolname in ('anon', 'authenticated')
     and acl.privilege_type in ('INSERT', 'UPDATE')
@@ -185,7 +185,7 @@ begin
   -- Browser access to public.tickets (changed in section 6c): row level security state, every existing
   -- policy and every column-level grant of anon / authenticated. The table-level grants are in the 'table' rows above.
   insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
-  select 'ticket_type_hardening_v2', 'tickets_capture', 'tickets', '*',
+  select 'ticket_type_hardening_v3', 'tickets_capture', 'tickets', '*',
          array[case when c.relrowsecurity then 'RLS_ON' else 'RLS_OFF' end,
                case when c.relforcerowsecurity then 'FORCE_ON' else 'FORCE_OFF' end]
   from pg_class c
@@ -194,14 +194,14 @@ begin
 
   -- privileges = {command, permissive, roles (comma separated), USING expression, WITH CHECK expression}
   insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
-  select 'ticket_type_hardening_v2', 'tickets_policy', p.policyname::text, 'policy',
+  select 'ticket_type_hardening_v3', 'tickets_policy', p.policyname::text, 'policy',
          array[p.cmd::text, p.permissive::text, array_to_string(p.roles, ','), coalesce(p.qual, ''), coalesce(p.with_check, '')]
   from pg_policies p
   where p.schemaname = 'public' and p.tablename = 'tickets'
   on conflict do nothing;
 
   insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
-  select 'ticket_type_hardening_v2', 'tickets_column', a.attname::text, ro.rolname::text,
+  select 'ticket_type_hardening_v3', 'tickets_column', a.attname::text, ro.rolname::text,
          array_agg(distinct acl.privilege_type::text order by acl.privilege_type::text)
   from pg_attribute a
   cross join lateral aclexplode(a.attacl) as acl
@@ -210,6 +210,36 @@ begin
     and a.attnum > 0 and not a.attisdropped
     and ro.rolname in ('anon', 'authenticated')
   group by a.attname, ro.rolname
+  on conflict do nothing;
+
+  -- History table policies, RLS flags and column grants are captured before browser access is revoked.
+  insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
+  select 'ticket_type_hardening_v3', 'history_capture', c.relname, '*',
+         array[case when c.relrowsecurity then 'RLS_ON' else 'RLS_OFF' end,
+               case when c.relforcerowsecurity then 'FORCE_ON' else 'FORCE_OFF' end]
+  from pg_class c
+  where c.oid in (to_regclass('public.ticket_state_history'), to_regclass('public.ticket_assignment_history'))
+  on conflict do nothing;
+
+  insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
+  select 'ticket_type_hardening_v3', 'history_policy', p.tablename || '.' || p.policyname, 'policy',
+         array[p.cmd::text, p.permissive::text, array_to_string(p.roles, ','), coalesce(p.qual, ''), coalesce(p.with_check, '')]
+  from pg_policies p
+  where p.schemaname = 'public' and p.tablename in ('ticket_state_history', 'ticket_assignment_history')
+  on conflict do nothing;
+
+  insert into public.ticket_type_migration_backup (migration, object_type, object_name, grantee, privileges)
+  select 'ticket_type_hardening_v3', 'history_column', c.relname || '.' || a.attname, ro.rolname,
+         array_agg(distinct acl.privilege_type::text order by acl.privilege_type::text)
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  join pg_attribute a on a.attrelid = c.oid
+  cross join lateral aclexplode(a.attacl) acl
+  join pg_roles ro on ro.oid = acl.grantee
+  where n.nspname = 'public' and c.relname in ('ticket_state_history', 'ticket_assignment_history')
+    and a.attnum > 0 and not a.attisdropped
+    and ro.rolname in ('anon', 'authenticated')
+  group by c.relname, a.attname, ro.rolname
   on conflict do nothing;
 end;
 $snapshot$;
@@ -762,6 +792,29 @@ begin
 end;
 $tickets_privileges$;
 
+-- 6d. History is evidence, not browser-editable data. Keep all access behind server functions.
+do $history_lockdown$
+declare
+  v_table text;
+  v_column text;
+  v_policy text;
+begin
+  foreach v_table in array array['ticket_state_history', 'ticket_assignment_history'] loop
+    for v_policy in select policyname from pg_policies where schemaname = 'public' and tablename = v_table loop
+      execute format('drop policy %I on public.%I', v_policy, v_table);
+    end loop;
+    execute format('alter table public.%I enable row level security', v_table);
+    execute format('revoke all on table public.%I from public, anon, authenticated', v_table);
+    for v_column in
+      select a.attname from pg_attribute a
+      where a.attrelid = to_regclass('public.' || v_table) and a.attnum > 0 and not a.attisdropped
+    loop
+      execute format('revoke all (%1$I) on public.%2$I from public, anon, authenticated', v_column, v_table);
+    end loop;
+  end loop;
+end;
+$history_lockdown$;
+
 -- Small helper for the functions below: sets one key inside ptz_coordinates.metadata.
 create or replace function public.ticket_metadata_set(p_ptz jsonb, p_key text, p_value jsonb)
 returns jsonb
@@ -1216,6 +1269,9 @@ begin
   if not found then
     raise exception 'Ticket not found';
   end if;
+  if p_role = 'Operator' and v_ticket.assignee is distinct from v_by then
+    raise exception 'Operators may edit ticket details only when they are the current assignee' using errcode = '42501';
+  end if;
 
   v_ptz := v_ticket.ptz_coordinates;
   if p_additional is not null then
@@ -1374,21 +1430,41 @@ begin
 end;
 $$;
 
--- Deletes a ticket. History and audit tables are not touched by this function.
+-- Permanent deletion leaves a minimal, non-recoverable audit record (no ticket payload or FK).
+create table if not exists public.ticket_deletion_audit (
+  id uuid primary key default gen_random_uuid(),
+  ticket_id text not null,
+  ticket_title text not null,
+  deleted_by text not null,
+  deleted_role text not null,
+  deleted_at timestamptz not null default now()
+);
+create index if not exists ticket_deletion_audit_deleted_at_idx on public.ticket_deletion_audit (deleted_at desc);
+alter table public.ticket_deletion_audit enable row level security;
+revoke all on public.ticket_deletion_audit from public, anon, authenticated;
+grant select on public.ticket_deletion_audit to service_role;
+
+-- Permanently deletes the ticket. The separate audit record is retained.
 create or replace function public.delete_ticket_secure(p_ticket_id text, p_actor text, p_role text)
 returns void
 language plpgsql
 security definer
 set search_path = public, pg_temp
-as $$
+as $
+declare
+  v_ticket public.tickets%rowtype;
+  v_by text := nullif(trim(coalesce(p_actor, '')), '');
 begin
   perform public.assert_ticket_type_actor(p_actor, p_role, array['Administrator', 'Operator']);
-  delete from public.tickets where id::text = p_ticket_id;
+  select * into v_ticket from public.tickets where id::text = p_ticket_id for update;
   if not found then
     raise exception 'Ticket not found';
   end if;
+  insert into public.ticket_deletion_audit (ticket_id, ticket_title, deleted_by, deleted_role, deleted_at)
+  values (v_ticket.id::text, coalesce(v_ticket.title, '(untitled)'), v_by, p_role, now());
+  delete from public.tickets where id = v_ticket.id;
 end;
-$$;
+$;
 
 -- The audit trail of ticket type changes, for Administrators and Operators.
 create or replace function public.get_ticket_type_changes_secure(p_ticket_id text, p_actor text, p_role text)
@@ -1416,12 +1492,26 @@ security definer
 set search_path = public, pg_temp
 as $$
   select jsonb_build_object(
-    'revision', 2,
-    'browser_can_run_workflow_actions', has_function_privilege('anon', 'public.apply_workflow_action(text,text,text,text,text)', 'execute'),
-    'browser_can_read_type_changes', has_table_privilege('anon', 'public.ticket_type_changes', 'select'),
+    'revision', 3,
+    'browser_can_run_workflow_actions', has_function_privilege('anon', 'public.apply_workflow_action(text,text,text,text,text)', 'execute')
+      or has_function_privilege('authenticated', 'public.apply_workflow_action(text,text,text,text,text)', 'execute'),
+    'browser_can_read_type_changes', has_table_privilege('anon', 'public.ticket_type_changes', 'select')
+      or has_table_privilege('authenticated', 'public.ticket_type_changes', 'select'),
     'anon_can_read_tickets', has_table_privilege('anon', 'public.tickets', 'select'),
     'browser_can_write_tickets', has_table_privilege('anon', 'public.tickets', 'insert,update,delete')
-                              or has_table_privilege('authenticated', 'public.tickets', 'insert,update,delete')
+      or has_table_privilege('authenticated', 'public.tickets', 'insert,update,delete'),
+    'anon_can_access_history', has_table_privilege('anon', 'public.ticket_state_history', 'select,insert,update,delete')
+      or has_table_privilege('anon', 'public.ticket_assignment_history', 'select,insert,update,delete'),
+    'authenticated_can_access_history', has_table_privilege('authenticated', 'public.ticket_state_history', 'select,insert,update,delete')
+      or has_table_privilege('authenticated', 'public.ticket_assignment_history', 'select,insert,update,delete'),
+    'anon_can_run_legacy_workflow_admin',
+      has_function_privilege('anon', 'public.activate_workflow_template(uuid)', 'execute')
+      or has_function_privilege('anon', 'public.delete_workflow_template(uuid)', 'execute')
+      or has_function_privilege('anon', 'public.save_workflow_template(uuid,text,text,jsonb)', 'execute'),
+    'authenticated_can_run_legacy_workflow_admin',
+      has_function_privilege('authenticated', 'public.activate_workflow_template(uuid)', 'execute')
+      or has_function_privilege('authenticated', 'public.delete_workflow_template(uuid)', 'execute')
+      or has_function_privilege('authenticated', 'public.save_workflow_template(uuid,text,text,jsonb)', 'execute')
   );
 $$;
 
@@ -1449,7 +1539,7 @@ begin
   for r in
     select p.oid::regprocedure::text as sig, p.proname::text as name
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname in ('save_workflow_template', 'change_ticket_state', 'apply_workflow_action')
+    where n.nspname = 'public' and p.proname in ('save_workflow_template', 'change_ticket_state', 'apply_workflow_action', 'activate_workflow_template', 'delete_workflow_template')
   loop
     execute format('revoke execute on function %s from public, anon, authenticated', r.sig);
     if r.name = 'apply_workflow_action' then
@@ -1570,6 +1660,17 @@ begin
   if not (select relrowsecurity from pg_class where oid = 'public.tickets'::regclass) then
     raise exception 'Postflight failed: row level security is not enabled on public.tickets';
   end if;
+  foreach v_role in array array['anon', 'authenticated'] loop
+    if has_table_privilege(v_role, 'public.ticket_state_history', 'select,insert,update,delete,truncate,references,trigger')
+       or has_table_privilege(v_role, 'public.ticket_assignment_history', 'select,insert,update,delete,truncate,references,trigger')
+       or has_any_column_privilege(v_role, 'public.ticket_state_history', 'select,insert,update,references')
+       or has_any_column_privilege(v_role, 'public.ticket_assignment_history', 'select,insert,update,references')
+       or exists (select 1 from pg_policies where schemaname = 'public' and tablename in ('ticket_state_history','ticket_assignment_history')
+                  and v_role = any (roles::text[])) then
+      raise exception 'Postflight failed: % can still access ticket history tables', v_role;
+    end if;
+  end loop;
+
   if (select count(*) from pg_policies where schemaname = 'public' and tablename = 'tickets') <> 1
      or not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'tickets'
                     and policyname = 'tickets_read_signed_in' and cmd = 'SELECT' and roles = '{authenticated}') then
@@ -1589,8 +1690,12 @@ begin
       raise exception 'Postflight failed: % can read the audit trail or the migration backup', v_role;
     end if;
   end loop;
-  if exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'ticket_type_changes') then
-    raise exception 'Postflight failed: ticket_type_changes still has a row level security policy';
+  if exists (select 1 from pg_policies where schemaname = 'public' and tablename in ('ticket_type_changes','ticket_state_history','ticket_assignment_history')) then
+    raise exception 'Postflight failed: an audit or history table still has a browser policy';
+  end if;
+  if has_table_privilege('anon', 'public.ticket_deletion_audit', 'select,insert,update,delete')
+     or has_table_privilege('authenticated', 'public.ticket_deletion_audit', 'select,insert,update,delete') then
+    raise exception 'Postflight failed: browser roles can access the ticket deletion audit';
   end if;
 
   if (select count(*) from pg_trigger where not tgisinternal and tgname in (

@@ -1493,25 +1493,33 @@ set search_path = public, pg_temp
 as $$
   select jsonb_build_object(
     'revision', 3,
-    'browser_can_run_workflow_actions', has_function_privilege('anon', 'public.apply_workflow_action(text,text,text,text,text)', 'execute')
-      or has_function_privilege('authenticated', 'public.apply_workflow_action(text,text,text,text,text)', 'execute'),
+    'browser_can_run_workflow_actions',
+      exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname in ('apply_workflow_action', 'change_ticket_state')
+                and (has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('authenticated', p.oid, 'execute'))),
     'browser_can_read_type_changes', has_table_privilege('anon', 'public.ticket_type_changes', 'select')
       or has_table_privilege('authenticated', 'public.ticket_type_changes', 'select'),
     'anon_can_read_tickets', has_table_privilege('anon', 'public.tickets', 'select'),
     'browser_can_write_tickets', has_table_privilege('anon', 'public.tickets', 'insert,update,delete')
       or has_table_privilege('authenticated', 'public.tickets', 'insert,update,delete'),
-    'anon_can_access_history', has_table_privilege('anon', 'public.ticket_state_history', 'select,insert,update,delete')
-      or has_table_privilege('anon', 'public.ticket_assignment_history', 'select,insert,update,delete'),
-    'authenticated_can_access_history', has_table_privilege('authenticated', 'public.ticket_state_history', 'select,insert,update,delete')
-      or has_table_privilege('authenticated', 'public.ticket_assignment_history', 'select,insert,update,delete'),
+    'anon_can_access_history', has_table_privilege('anon', 'public.ticket_state_history', 'select,insert,update,delete,truncate,references,trigger')
+      or has_table_privilege('anon', 'public.ticket_assignment_history', 'select,insert,update,delete,truncate,references,trigger')
+      or has_any_column_privilege('anon', 'public.ticket_state_history', 'select,insert,update,references')
+      or has_any_column_privilege('anon', 'public.ticket_assignment_history', 'select,insert,update,references'),
+    'authenticated_can_access_history', has_table_privilege('authenticated', 'public.ticket_state_history', 'select,insert,update,delete,truncate,references,trigger')
+      or has_table_privilege('authenticated', 'public.ticket_assignment_history', 'select,insert,update,delete,truncate,references,trigger')
+      or has_any_column_privilege('authenticated', 'public.ticket_state_history', 'select,insert,update,references')
+      or has_any_column_privilege('authenticated', 'public.ticket_assignment_history', 'select,insert,update,references'),
     'anon_can_run_legacy_workflow_admin',
-      has_function_privilege('anon', 'public.activate_workflow_template(uuid)', 'execute')
-      or has_function_privilege('anon', 'public.delete_workflow_template(uuid)', 'execute')
-      or has_function_privilege('anon', 'public.save_workflow_template(uuid,text,text,jsonb)', 'execute'),
+      exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname in ('apply_ticket_type_workflow','create_ticket_type','update_ticket_type',
+                'delete_ticket_type','save_workflow_template','activate_workflow_template','delete_workflow_template')
+                and has_function_privilege('anon', p.oid, 'execute')),
     'authenticated_can_run_legacy_workflow_admin',
-      has_function_privilege('authenticated', 'public.activate_workflow_template(uuid)', 'execute')
-      or has_function_privilege('authenticated', 'public.delete_workflow_template(uuid)', 'execute')
-      or has_function_privilege('authenticated', 'public.save_workflow_template(uuid,text,text,jsonb)', 'execute')
+      exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname in ('apply_ticket_type_workflow','create_ticket_type','update_ticket_type',
+                'delete_ticket_type','save_workflow_template','activate_workflow_template','delete_workflow_template')
+                and has_function_privilege('authenticated', p.oid, 'execute'))
   );
 $$;
 
@@ -1666,7 +1674,7 @@ begin
        or has_any_column_privilege(v_role, 'public.ticket_state_history', 'select,insert,update,references')
        or has_any_column_privilege(v_role, 'public.ticket_assignment_history', 'select,insert,update,references')
        or exists (select 1 from pg_policies where schemaname = 'public' and tablename in ('ticket_state_history','ticket_assignment_history')
-                  and v_role = any (roles::text[])) then
+                   ) then
       raise exception 'Postflight failed: % can still access ticket history tables', v_role;
     end if;
   end loop;

@@ -11,7 +11,7 @@ export class SupabaseAdminError extends Error {
 }
 
 export type AdminConfig =
-  | { ok: true; url: string; key: string; projectRef: string }
+  | { ok: true; url: string; key: string; projectRef: string; problem?: string }
   | { ok: false; problem: string }
 
 const REQUEST_TIMEOUT_MS = 15000

@@ -32,7 +32,7 @@ grantees(rolname) as (
 
 watched(name) as (
   values ('tickets'), ('ticket_types'), ('workflow_templates'), ('workflow_versions'),
-         ('ticket_state_history'), ('ticket_assignment_history'), ('ticket_type_changes')
+         ('ticket_state_history'), ('ticket_assignment_history'), ('ticket_type_changes'), ('ticket_deletion_audit')
 ),
 
 -- 01 context ----------------------------------------------------------------------------------------------
@@ -58,7 +58,7 @@ role_rows(section, item, expected, actual, status) as (
 tables_expected(name, required) as (
   values ('tickets', true), ('ticket_types', true), ('workflow_templates', true), ('workflow_versions', true),
          ('ticket_state_history', true), ('ticket_assignment_history', true),
-         ('ticket_type_changes', false), ('ticket_type_migration_backup', false)
+         ('ticket_type_changes', false), ('ticket_type_migration_backup', false), ('ticket_deletion_audit', false)
 ),
 
 table_rows(section, item, expected, actual, status) as (
@@ -201,7 +201,7 @@ fn_overload_rows(section, item, expected, actual, status) as (
   join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public'
     and p.proname in ('apply_workflow_action', 'apply_ticket_type_workflow', 'create_ticket_type',
-                      'update_ticket_type', 'delete_ticket_type', 'save_workflow_template')
+                      'update_ticket_type', 'delete_ticket_type', 'save_workflow_template', 'activate_workflow_template', 'delete_workflow_template')
 ),
 
 fn_save_rows(section, item, expected, actual, status) as (

@@ -17,7 +17,8 @@
 --     INSERT/UPDATE grant to those roles on the three tables is revoked first, so the result equals the snapshot.
 --   * EXECUTE privileges of PUBLIC / anon / authenticated / service_role on the legacy functions:
 --     apply_workflow_action, apply_ticket_type_workflow, create_ticket_type, update_ticket_type,
---     delete_ticket_type, save_workflow_template, change_ticket_state (every overload recorded in the snapshot).
+--     delete_ticket_type, save_workflow_template, change_ticket_state, activate_workflow_template and
+--     delete_workflow_template (every overload recorded in the snapshot).
 --     The snapshot is taken after supabase/ticket_workflow.sql, so the four ticket-type functions that script
 --     creates are restored to service-role-only, exactly as that script left them.
 --
@@ -42,15 +43,15 @@
 --   * Legacy tickets that the migration initialised (workflow_version_id, workflow_state and ticket_type_key
 --     set where all were empty, step 6b). They are NOT reset: they stay on their workflow, and their
 --     ticket_type_changes audit row (changed_by 'migration') records the original type and that they had no state.
-----   * tickets, history_log and history rows are not rewritten by rollback. Ticket states and history entries
+--   * tickets, history_log and history rows are not rewritten by rollback. Ticket states and history entries
 --     written by change_ticket_type_secure stay; ticket_type_changes records the previous type
 --     and state of every change.
 --   * Seeded default ticket types, templates and versions (standard, financial, maintenance) and any template
 --     or version the seed step created or repaired. The migration stores no row snapshot of them, so what the
 --     seed inserted or updated cannot be told apart from what existed, and deleting them could orphan tickets.
 --     They are kept as they are.
---   * Column-level SELECT / REFERENCES grants and any PUBLIC column grants (the migration never changed them),
---     and all privileges on tickets, ticket_state_history, ... (never touched).
+----   * History-table policies and grants are intentionally not restored; the history tables remain inaccessible
+--     to browser roles. Other non-history table privileges not listed above are unchanged.
 --
 -- COLUMN GRANT SNAPSHOT REQUIREMENT
 --   Column grants can only be restored if the migration captured them before it revoked them: the snapshot must

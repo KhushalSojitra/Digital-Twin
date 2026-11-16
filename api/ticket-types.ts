@@ -48,7 +48,7 @@ export default route('POST', async (ctx) => {
 
   // Viewers are read-only for Ticket Types and ticket changes. Workflow actions are open to every role because
   // the database only lets the ticket's current assignee or reporter run them (see apply_workflow_action).
-  const operation = input.action === 'workflow' ? 'workflow' : input.action === 'change' ? 'change_type' : 'manage_types'
+  const operation = input.action === 'workflow' ? 'workflow' : input.action === 'change' ? 'change_type' : input.action === 'status' ? 'read_status' : 'manage_types'
   if (!roleMayRun(actor.role, operation)) {
     fail(ctx.res, 403, 'forbidden', 'Your role is not allowed to do this.')
     return
@@ -61,9 +61,10 @@ export default route('POST', async (ctx) => {
       case 'status': {
         const config = describeAdminConfig()
         let revision: number | null = null
+        let securityVerified = false
         if (config.configured) {
           try {
-            const status = (await callAdminRpc('ticket_type_hardening_status', {})) as { revision?: unknown } | null
+            const status = (await callAdminRpc('ticket_type_hardening_status', {})) as Record<string, unknown> | null
             revision = typeof status?.revision === 'number' ? status.revision : null
             const securityFlags = [
               status?.browser_can_run_workflow_actions,
@@ -75,7 +76,7 @@ export default route('POST', async (ctx) => {
               status?.anon_can_run_legacy_workflow_admin,
               status?.authenticated_can_run_legacy_workflow_admin,
             ]
-            var securityVerified = securityFlags.length === 8 && securityFlags.every((flag) => flag === false)
+            securityVerified = securityFlags.length === 8 && securityFlags.every((flag) => flag === false)
           } catch (error) {
             if (!(error instanceof SupabaseAdminError) || error.code !== 'function_missing') throw error
           }

@@ -1450,7 +1450,7 @@ returns void
 language plpgsql
 security definer
 set search_path = public, pg_temp
-as $
+as $body$
 declare
   v_ticket public.tickets%rowtype;
   v_by text := nullif(trim(coalesce(p_actor, '')), '');
@@ -1464,7 +1464,7 @@ begin
   values (v_ticket.id::text, coalesce(v_ticket.title, '(untitled)'), v_by, p_role, now());
   delete from public.tickets where id = v_ticket.id;
 end;
-$;
+$body$;
 
 -- The audit trail of ticket type changes, for Administrators and Operators.
 create or replace function public.get_ticket_type_changes_secure(p_ticket_id text, p_actor text, p_role text)
@@ -1634,7 +1634,7 @@ begin
   for r in
     select p.oid::regprocedure::text as sig
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname in ('save_workflow_template', 'change_ticket_state', 'apply_workflow_action')
+    where n.nspname = 'public' and p.proname in ('save_workflow_template', 'change_ticket_state', 'apply_workflow_action', 'activate_workflow_template', 'delete_workflow_template')
   loop
     foreach v_role in array array['anon', 'authenticated'] loop
       if has_function_privilege(v_role, r.sig, 'execute') then
@@ -1673,8 +1673,7 @@ begin
        or has_table_privilege(v_role, 'public.ticket_assignment_history', 'select,insert,update,delete,truncate,references,trigger')
        or has_any_column_privilege(v_role, 'public.ticket_state_history', 'select,insert,update,references')
        or has_any_column_privilege(v_role, 'public.ticket_assignment_history', 'select,insert,update,references')
-       or exists (select 1 from pg_policies where schemaname = 'public' and tablename in ('ticket_state_history','ticket_assignment_history')
-                   ) then
+       or exists (select 1 from pg_policies where schemaname = 'public' and tablename in ('ticket_state_history','ticket_assignment_history')) then
       raise exception 'Postflight failed: % can still access ticket history tables', v_role;
     end if;
   end loop;

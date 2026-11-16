@@ -1,3 +1,4 @@
+import { Buffer } from 'buffer'
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { getPublicUser } from './config.js'
 

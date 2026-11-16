@@ -26,10 +26,11 @@
 --   * Triggers: zz_guard_ticket_protected_fields (tickets), protect_system_ticket_types (ticket_types),
 --     guard_workflow_templates, guard_workflow_versions.
 --   * Functions: the four trigger functions, create/update/delete_ticket_type_secure, apply_ticket_type_secure,
---     change_ticket_type_secure, apply_workflow_action_secure, get_ticket_type_changes_secure,
+--     change_ticket_type_secure, apply_workflow_action_secure, get_ticket_type_changes_secure, delete_ticket_secure,
 --     ticket_type_hardening_status, reconcile_ticket_state, workflow_state_group, workflow_has_state,
 --     current_ticket_type_version, assert_ticket_type_actor, is_browser_role.
---   * Any RLS policy on ticket_type_changes and ticket_type_migration_backup (policies are not data).
+--   * RLS policies on ticket_type_changes and ticket_type_migration_backup; history-table policies are dropped
+--     and intentionally not restored (policies are not data).
 --
 -- INTENTIONALLY RETAINED (never deleted or rewritten, and the reason)
 --   * public.tickets.ticket_type_key and every value in it   - ticket data; the app reads it when present.
@@ -50,7 +51,7 @@
 --     or version the seed step created or repaired. The migration stores no row snapshot of them, so what the
 --     seed inserted or updated cannot be told apart from what existed, and deleting them could orphan tickets.
 --     They are kept as they are.
-----   * History-table policies and grants are intentionally not restored; the history tables remain inaccessible
+--   * History-table policies and grants are intentionally not restored; the history tables remain inaccessible
 --     to browser roles. Other non-history table privileges not listed above are unchanged.
 --
 -- COLUMN GRANT SNAPSHOT REQUIREMENT

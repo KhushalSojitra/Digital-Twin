@@ -34,7 +34,10 @@
 --   * public.tickets.ticket_type_key and every value in it   - ticket data; the app reads it when present.
 --   * public.ticket_type_changes (+ its index)                - audit trail. It stays LOCKED: RLS on, no
 --     browser privileges, SELECT for service_role only. Rollback re-asserts this.
---   * public.ticket_type_migration_backup                     - the snapshot; kept so this script can be re-run
+--   * public.ticket_deletion_audit                             - minimal permanent-deletion audit; retained and locked.
+   * public.ticket_state_history and ticket_assignment_history - intentionally remain locked after rollback; the old
+     browser policies and grants are NOT restored because they allowed history tampering.
+   * public.ticket_type_migration_backup                     - the snapshot; kept so this script can be re-run
 --     and the restore can be re-checked. Also kept locked.
 --   * Legacy tickets that the migration initialised (workflow_version_id, workflow_state and ticket_type_key
 --     set where all were empty, step 6b). They are NOT reset: they stay on their workflow, and their
@@ -103,7 +106,7 @@ declare
   v_column_tables int;
 begin
   foreach v_name in array array['tickets', 'ticket_types', 'workflow_templates', 'workflow_versions', 'ticket_state_history',
-                                'ticket_assignment_history', 'ticket_type_changes', 'ticket_type_migration_backup'] loop
+                                'ticket_assignment_history', 'ticket_type_changes', 'ticket_type_migration_backup', 'ticket_deletion_audit'] loop
     if to_regclass('public.' || v_name) is null then
       raise exception 'public.% is missing: the migration was not applied here, or this is the wrong database. Nothing was changed.', v_name;
     end if;
@@ -120,7 +123,7 @@ begin
          count(*) filter (where object_type = 'function' and grantee = '*')
   into v_captures, v_tables, v_functions
   from public.ticket_type_migration_backup
-  where migration = 'ticket_type_hardening_v2';
+  where migration = 'ticket_type_hardening_v3';
 
   if v_tables < 3 or v_functions = 0 then
     raise exception 'The migration snapshot is missing or incomplete (tables %, functions %), so privileges cannot be restored safely. Nothing was changed.', v_tables, v_functions;
@@ -136,7 +139,7 @@ begin
            and 'EXECUTE' = any (privileges))
   into v_open_tables, v_open_functions
   from public.ticket_type_migration_backup
-  where migration = 'ticket_type_hardening_v2';
+  where migration = 'ticket_type_hardening_v3';
 
   if v_open_tables = 0 and v_open_functions = 0
      and coalesce(current_setting('oomnieye.rollback_accept_snapshot', true), 'off') <> 'on' then
@@ -145,7 +148,7 @@ begin
 
   select count(distinct object_name) into v_column_tables
   from public.ticket_type_migration_backup
-  where migration = 'ticket_type_hardening_v2' and object_type = 'column_capture' and grantee = '*'
+  where migration = 'ticket_type_hardening_v3' and object_type = 'column_capture' and grantee = '*'
     and object_name in ('ticket_types', 'workflow_templates', 'workflow_versions');
   if v_column_tables = 3 then
     perform set_config('oomnieye.rb_column_mode', 'restore', true);
@@ -169,7 +172,7 @@ $pre$;
 do $pre_tickets$
 begin
   if exists (select 1 from public.ticket_type_migration_backup
-             where migration = 'ticket_type_hardening_v2' and object_type = 'tickets_capture' and object_name = 'tickets') then
+             where migration = 'ticket_type_hardening_v3' and object_type = 'tickets_capture' and object_name = 'tickets') then
     perform set_config('oomnieye.rb_tickets_mode', 'restore', true);
   elsif coalesce(current_setting('oomnieye.rollback_skip_tickets_access', true), 'off') = 'on' then
     perform set_config('oomnieye.rb_tickets_mode', 'skipped', true);
@@ -199,14 +202,14 @@ declare
 begin
   for r in
     select distinct object_name from public.ticket_type_migration_backup
-    where migration = 'ticket_type_hardening_v2' and object_type = 'table'
+    where migration = 'ticket_type_hardening_v3' and object_type = 'table'
       and object_name in ('ticket_types', 'workflow_templates', 'workflow_versions')
       and to_regclass('public.' || object_name) is not null
   loop
     execute format('revoke all on table public.%I from public, anon, authenticated', r.object_name);
     for g in
       select grantee, privileges from public.ticket_type_migration_backup
-      where migration = 'ticket_type_hardening_v2' and object_type = 'table' and object_name = r.object_name
+      where migration = 'ticket_type_hardening_v3' and object_type = 'table' and object_name = r.object_name
         and grantee in ('public', 'anon', 'authenticated') and cardinality(privileges) > 0
     loop
       execute format('grant %s on table public.%I to %s', array_to_string(g.privileges, ', '), r.object_name,
@@ -216,13 +219,13 @@ begin
 
   for r in
     select distinct object_name from public.ticket_type_migration_backup
-    where migration = 'ticket_type_hardening_v2' and object_type = 'function'
+    where migration = 'ticket_type_hardening_v3' and object_type = 'function'
       and to_regprocedure('public.' || object_name) is not null
   loop
     execute format('revoke all on function public.%s from public, anon, authenticated, service_role', r.object_name);
     for g in
       select grantee, privileges from public.ticket_type_migration_backup
-      where migration = 'ticket_type_hardening_v2' and object_type = 'function' and object_name = r.object_name
+      where migration = 'ticket_type_hardening_v3' and object_type = 'function' and object_name = r.object_name
         and grantee in ('public', 'anon', 'authenticated', 'service_role') and cardinality(privileges) > 0
     loop
       execute format('grant execute on function public.%s to %s', r.object_name,
@@ -268,7 +271,7 @@ begin
              substr(b.object_name, length(split_part(b.object_name, '.', 1)) + 2) as col,
              b.grantee, b.privileges
       from public.ticket_type_migration_backup b
-      where b.migration = 'ticket_type_hardening_v2' and b.object_type = 'column'
+      where b.migration = 'ticket_type_hardening_v3' and b.object_type = 'column'
         and b.grantee in ('anon', 'authenticated')
     ) s
     where s.tbl in ('ticket_types', 'workflow_templates', 'workflow_versions')
@@ -307,7 +310,7 @@ begin
   end loop;
   for r in
     select object_name, privileges as p from public.ticket_type_migration_backup
-    where migration = 'ticket_type_hardening_v2' and object_type = 'tickets_policy'
+    where migration = 'ticket_type_hardening_v3' and object_type = 'tickets_policy'
   loop
     execute format('create policy %I on public.tickets as %s for %s to %s%s%s',
       r.object_name, lower(r.p[2]), lower(r.p[1]),
@@ -317,7 +320,7 @@ begin
   end loop;
 
   select privileges into v_rls from public.ticket_type_migration_backup
-  where migration = 'ticket_type_hardening_v2' and object_type = 'tickets_capture' and object_name = 'tickets';
+  where migration = 'ticket_type_hardening_v3' and object_type = 'tickets_capture' and object_name = 'tickets';
   execute case when v_rls[1] = 'RLS_ON' then 'alter table public.tickets enable row level security'
                else 'alter table public.tickets disable row level security' end;
   execute case when v_rls[2] = 'FORCE_ON' then 'alter table public.tickets force row level security'
@@ -326,7 +329,7 @@ begin
   execute 'revoke all on table public.tickets from anon, authenticated';
   for r in
     select grantee, privileges from public.ticket_type_migration_backup
-    where migration = 'ticket_type_hardening_v2' and object_type = 'table' and object_name = 'tickets'
+    where migration = 'ticket_type_hardening_v3' and object_type = 'table' and object_name = 'tickets'
       and grantee in ('anon', 'authenticated') and cardinality(privileges) > 0
   loop
     execute format('grant %s on table public.tickets to %I', array_to_string(r.privileges, ', '), r.grantee);
@@ -337,7 +340,7 @@ begin
            exists (select 1 from pg_attribute a where a.attrelid = to_regclass('public.tickets') and a.attname = b.object_name
                    and a.attnum > 0 and not a.attisdropped) as col_exists
     from public.ticket_type_migration_backup b
-    where b.migration = 'ticket_type_hardening_v2' and b.object_type = 'tickets_column' and b.grantee in ('anon', 'authenticated')
+    where b.migration = 'ticket_type_hardening_v3' and b.object_type = 'tickets_column' and b.grantee in ('anon', 'authenticated')
   loop
     v_privs := array(select p from unnest(r.privileges) p where p in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES') order by p);
     if cardinality(v_privs) = 0 then
@@ -424,7 +427,7 @@ begin
       select b.object_name as obj, b.grantee, p as priv
       from public.ticket_type_migration_backup b
       cross join lateral unnest(b.privileges) as p
-      where b.migration = 'ticket_type_hardening_v2' and b.object_type = 'column'
+      where b.migration = 'ticket_type_hardening_v3' and b.object_type = 'column'
         and b.grantee in ('anon', 'authenticated') and p in ('INSERT', 'UPDATE')
         and exists (select 1 from pg_attribute a
                     where a.attrelid = to_regclass('public.' || split_part(b.object_name, '.', 1))
@@ -445,13 +448,13 @@ begin
   -- legacy function privileges match the snapshot
   for r in
     select distinct object_name from public.ticket_type_migration_backup
-    where migration = 'ticket_type_hardening_v2' and object_type = 'function'
+    where migration = 'ticket_type_hardening_v3' and object_type = 'function'
       and to_regprocedure('public.' || object_name) is not null
   loop
     foreach v_role in array array['anon', 'authenticated', 'service_role'] loop
       select exists (
         select 1 from public.ticket_type_migration_backup b
-        where b.migration = 'ticket_type_hardening_v2' and b.object_type = 'function' and b.object_name = r.object_name
+        where b.migration = 'ticket_type_hardening_v3' and b.object_type = 'function' and b.object_name = r.object_name
           and b.grantee in ('public', v_role) and cardinality(b.privileges) > 0
       ) into v_expected;
       if has_function_privilege(v_role::name, to_regprocedure('public.' || r.object_name)::oid, 'execute') <> v_expected then
@@ -463,14 +466,14 @@ begin
   -- table privileges match the snapshot, privilege by privilege
   for r in
     select distinct object_name from public.ticket_type_migration_backup
-    where migration = 'ticket_type_hardening_v2' and object_type = 'table'
+    where migration = 'ticket_type_hardening_v3' and object_type = 'table'
       and object_name in ('ticket_types', 'workflow_templates', 'workflow_versions')
   loop
     foreach v_role in array array['anon', 'authenticated'] loop
       foreach v_priv in array array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'] loop
         select exists (
           select 1 from public.ticket_type_migration_backup b
-          where b.migration = 'ticket_type_hardening_v2' and b.object_type = 'table' and b.object_name = r.object_name
+          where b.migration = 'ticket_type_hardening_v3' and b.object_type = 'table' and b.object_name = r.object_name
             and b.grantee in ('public', v_role) and v_priv = any (b.privileges)
         ) into v_expected;
         if has_table_privilege(v_role::name, to_regclass('public.' || r.object_name)::oid, v_priv) <> v_expected then
@@ -484,23 +487,23 @@ begin
   if current_setting('oomnieye.rb_tickets_mode') = 'restore' then
     if (select relrowsecurity from pg_class where oid = 'public.tickets'::regclass)
        is distinct from ((select privileges[1] from public.ticket_type_migration_backup
-                          where migration = 'ticket_type_hardening_v2' and object_type = 'tickets_capture') = 'RLS_ON') then
+                          where migration = 'ticket_type_hardening_v3' and object_type = 'tickets_capture') = 'RLS_ON') then
       raise exception 'Rollback postflight failed: RLS on public.tickets does not match the snapshot';
     end if;
     if exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'tickets' and policyname = 'tickets_read_signed_in')
-       and not exists (select 1 from public.ticket_type_migration_backup where migration = 'ticket_type_hardening_v2'
+       and not exists (select 1 from public.ticket_type_migration_backup where migration = 'ticket_type_hardening_v3'
                        and object_type = 'tickets_policy' and object_name = 'tickets_read_signed_in') then
       raise exception 'Rollback postflight failed: the migration policy tickets_read_signed_in is still present';
     end if;
     if (select count(*) from pg_policies where schemaname = 'public' and tablename = 'tickets')
-       <> (select count(*) from public.ticket_type_migration_backup where migration = 'ticket_type_hardening_v2' and object_type = 'tickets_policy') then
+       <> (select count(*) from public.ticket_type_migration_backup where migration = 'ticket_type_hardening_v3' and object_type = 'tickets_policy') then
       raise exception 'Rollback postflight failed: the policies on public.tickets do not match the snapshot';
     end if;
     foreach v_role in array array['anon', 'authenticated'] loop
       foreach v_priv in array array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'] loop
         select exists (
           select 1 from public.ticket_type_migration_backup b
-          where b.migration = 'ticket_type_hardening_v2' and b.object_type = 'table' and b.object_name = 'tickets'
+          where b.migration = 'ticket_type_hardening_v3' and b.object_type = 'table' and b.object_name = 'tickets'
             and b.grantee in ('public', v_role) and v_priv = any (b.privileges)
         ) into v_expected;
         if has_table_privilege(v_role::name, 'public.tickets'::regclass::oid, v_priv) <> v_expected then
@@ -519,7 +522,7 @@ begin
     expected as (
       select b.object_name as obj, b.grantee, p as priv
       from public.ticket_type_migration_backup b cross join lateral unnest(b.privileges) p
-      where b.migration = 'ticket_type_hardening_v2' and b.object_type = 'tickets_column'
+      where b.migration = 'ticket_type_hardening_v3' and b.object_type = 'tickets_column'
         and exists (select 1 from pg_attribute a where a.attrelid = 'public.tickets'::regclass and a.attname = b.object_name
                     and a.attnum > 0 and not a.attisdropped)
     ),
@@ -563,7 +566,7 @@ begin
   if to_regclass('public.ticket_type_changes_ticket_idx') is null then
     raise exception 'Rollback postflight failed: the ticket_type_changes index is missing';
   end if;
-  foreach v_name in array array['ticket_type_changes', 'ticket_type_migration_backup'] loop
+  foreach v_name in array array['ticket_type_changes', 'ticket_type_migration_backup', 'ticket_deletion_audit'] loop
     if not (select relrowsecurity from pg_class where oid = to_regclass('public.' || v_name)) then
       raise exception 'Rollback postflight failed: RLS is not enabled on %', v_name;
     end if;

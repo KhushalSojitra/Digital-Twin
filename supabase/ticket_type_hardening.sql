@@ -1439,6 +1439,7 @@ create table if not exists public.ticket_deletion_audit (
   deleted_at timestamptz not null default now()
 );
 create index if not exists ticket_deletion_audit_deleted_at_idx on public.ticket_deletion_audit (deleted_at desc);
+create index if not exists ticket_deletion_audit_ticket_idx on public.ticket_deletion_audit (ticket_id, deleted_at desc);
 alter table public.ticket_deletion_audit enable row level security;
 revoke all on public.ticket_deletion_audit from public, anon, authenticated;
 grant select on public.ticket_deletion_audit to service_role;

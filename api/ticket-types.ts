@@ -22,32 +22,6 @@ function configFrom(value: unknown): Record<string, boolean> | null {
   return config
 }
 
-/**
- * Runs the hardened (service-role only) database function. While the database update has not been
- * applied yet it falls back to the original function, so the application keeps working in the meantime.
- * `legacy` is null for operations that only exist after the update.
- */
-async function secureOrLegacy(
-  secure: () => Promise<unknown>,
-  legacy: (() => Promise<unknown>) | null,
-): Promise<unknown> {
-  try {
-    return await secure()
-  } catch (error) {
-    if (error instanceof SupabaseAdminError && error.code === 'function_missing') {
-      if (!legacy) {
-        throw new SupabaseAdminError(
-          'This needs the database update (supabase/ticket_type_hardening.sql) to be applied first.',
-          409,
-          'migration_required',
-        )
-      }
-      return legacy()
-    }
-    throw error
-  }
-}
-
 function statusFor(error: SupabaseAdminError): { code: string; status: number } {
   if (error.status === 503) return { code: 'not_configured', status: 503 }
   if (error.status === 409) return { code: 'migration_required', status: 409 }
@@ -91,11 +65,22 @@ export default route('POST', async (ctx) => {
           try {
             const status = (await callAdminRpc('ticket_type_hardening_status', {})) as { revision?: unknown } | null
             revision = typeof status?.revision === 'number' ? status.revision : null
+            const securityFlags = [
+              status?.browser_can_run_workflow_actions,
+              status?.browser_can_read_type_changes,
+              status?.anon_can_read_tickets,
+              status?.browser_can_write_tickets,
+              status?.anon_can_access_history,
+              status?.authenticated_can_access_history,
+              status?.anon_can_run_legacy_workflow_admin,
+              status?.authenticated_can_run_legacy_workflow_admin,
+            ]
+            var securityVerified = securityFlags.length === 8 && securityFlags.every((flag) => flag === false)
           } catch (error) {
             if (!(error instanceof SupabaseAdminError) || error.code !== 'function_missing') throw error
           }
         }
-        sendJson(ctx.res, 200, { data: { ...config, migrated: revision !== null, revision } })
+        sendJson(ctx.res, 200, { data: { ...config, migrated: revision === 3 && securityVerified === true, revision, securityVerified: securityVerified === true } })
         return
       }
       case 'create': {
@@ -103,10 +88,7 @@ export default route('POST', async (ctx) => {
         const description = text(input.description, 500)
         const config = configFrom(input.config)
         if (!label || description === null || !config) break
-        const data = await secureOrLegacy(
-          () => callAdminRpc('create_ticket_type_secure', { p_label: label, p_description: description, p_config: config, ...identity }),
-          () => callAdminRpc('create_ticket_type', { p_label: label, p_description: description, p_config: config }),
-        )
+        const data = await callAdminRpc('create_ticket_type_secure', { p_label: label, p_description: description, p_config: config, ...identity })
         sendJson(ctx.res, 200, { data })
         return
       }
@@ -116,20 +98,14 @@ export default route('POST', async (ctx) => {
         const description = text(input.description, 500)
         const config = configFrom(input.config)
         if (!key || !label || description === null || !config) break
-        const data = await secureOrLegacy(
-          () => callAdminRpc('update_ticket_type_secure', { p_key: key, p_label: label, p_description: description, p_config: config, ...identity }),
-          () => callAdminRpc('update_ticket_type', { p_key: key, p_label: label, p_description: description, p_config: config }),
-        )
+        const data = await callAdminRpc('update_ticket_type_secure', { p_key: key, p_label: label, p_description: description, p_config: config, ...identity })
         sendJson(ctx.res, 200, { data })
         return
       }
       case 'delete': {
         const key = text(input.key, 80)
         if (!key) break
-        await secureOrLegacy(
-          () => callAdminRpc('delete_ticket_type_secure', { p_key: key, ...identity }),
-          () => callAdminRpc('delete_ticket_type', { p_key: key }),
-        )
+        await callAdminRpc('delete_ticket_type_secure', { p_key: key, ...identity })
         sendJson(ctx.res, 200, { data: null })
         return
       }
@@ -138,10 +114,7 @@ export default route('POST', async (ctx) => {
         const typeKey = text(input.typeKey, 80)
         const reason = text(input.reason, 500)
         if (!ticketId || !typeKey || !reason || !reason.trim()) break
-        const data = await secureOrLegacy(
-          () => callAdminRpc('change_ticket_type_secure', { p_ticket_id: ticketId, p_new_type: typeKey, p_reason: reason, ...identity }),
-          null,
-        )
+        const data = await callAdminRpc('change_ticket_type_secure', { p_ticket_id: ticketId, p_new_type: typeKey, p_reason: reason, ...identity })
         sendJson(ctx.res, 200, { data })
         return
       }
@@ -152,20 +125,14 @@ export default route('POST', async (ctx) => {
         const note = input.note === undefined || input.note === null ? null : text(input.note, 2000)
         if (!ticketId || !actionId || !ACTION_ID.test(actionId) || (input.assignee != null && assignee === null) || (input.note != null && note === null)) break
         // No fallback to the legacy function: it must never run without the hardened participant checks.
-        const data = await secureOrLegacy(
-          () => callAdminRpc('apply_workflow_action_secure', { p_ticket_id: ticketId, p_action_id: actionId, p_new_assignee: assignee, p_note: note, ...identity }),
-          null,
-        )
+        const data = await callAdminRpc('apply_workflow_action_secure', { p_ticket_id: ticketId, p_action_id: actionId, p_new_assignee: assignee, p_note: note, ...identity })
         sendJson(ctx.res, 200, { data })
         return
       }
       case 'history': {
         const ticketId = text(input.ticketId, 120)
         if (!ticketId) break
-        const data = await secureOrLegacy(
-          () => callAdminRpc('get_ticket_type_changes_secure', { p_ticket_id: ticketId, ...identity }),
-          null,
-        )
+        const data = await callAdminRpc('get_ticket_type_changes_secure', { p_ticket_id: ticketId, ...identity })
         sendJson(ctx.res, 200, { data })
         return
       }

@@ -113,7 +113,14 @@ cols_expected(tbl, col, types, required) as (
     ('ticket_state_history', 'changed_at', array['timestamptz'], true),
     ('ticket_state_history', 'action_label', array['text', 'varchar'], true),
     ('ticket_state_history', 'note', array['text', 'varchar'], true),
-    ('ticket_state_history', 'workflow_version_id', array['*'], true)
+    ('ticket_state_history', 'workflow_version_id', array['*'], true),
+    ('ticket_assignment_history', 'ticket_id', array['*'], true),
+    ('ticket_assignment_history', 'from_assignee', array['text', 'varchar'], true),
+    ('ticket_assignment_history', 'to_assignee', array['text', 'varchar'], true),
+    ('ticket_assignment_history', 'changed_by', array['text', 'varchar'], true),
+    ('ticket_assignment_history', 'changed_at', array['timestamptz'], true),
+    ('ticket_assignment_history', 'action_label', array['text', 'varchar'], true),
+    ('ticket_assignment_history', 'note', array['text', 'varchar'], true)
 ),
 
 col_rows(section, item, expected, actual, status) as (

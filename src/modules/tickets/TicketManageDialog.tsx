@@ -3,8 +3,10 @@ import { usePreference } from '../../state/PreferencesContext'
 import {
   Badge,
   Box,
+  Button,
   ButtonBase,
   Checkbox,
+  CircularProgress,
   Dialog,
   Divider,
   FormControlLabel,
@@ -66,6 +68,7 @@ import {
 } from '../../data/tickets'
 import { formatDateTime } from '../../utils/format'
 import { useWorkflow } from '../../state/WorkflowContext'
+import { useTickets } from '../../state/TicketsContext'
 import { useTicketActions } from './WorkflowActions'
 import { dialogPaperSx } from '../../theme/hud'
 
@@ -148,6 +151,7 @@ export default function TicketManageDialog({
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
   const { stateLabel, actionsFor: workflowActionsFor } = useWorkflow()
+  const { loadStatus, loadError, reloadTickets } = useTickets()
   const ticketActions = useTicketActions(me)
   const [deleting, setDeleting] = useState<Ticket | null>(null)
   const [search, setSearch] = useState('')
@@ -633,9 +637,27 @@ export default function TicketManageDialog({
             ))}
           </TableBody>
         </Table>
-        {rows.length === 0 && (
+        {rows.length === 0 && loadStatus === 'loading' && (
+          <Stack role="status" spacing={1.5} sx={{ py: 5, alignItems: 'center' }}>
+            <CircularProgress size={22} aria-label="Loading tickets" />
+            <Typography variant="body2" color="text.secondary">
+              Loading tickets…
+            </Typography>
+          </Stack>
+        )}
+        {rows.length === 0 && loadStatus === 'error' && (
+          <Stack role="alert" spacing={1.5} sx={{ py: 5, px: 2, alignItems: 'center', textAlign: 'center' }}>
+            <Typography variant="body2" color="error">
+              Tickets could not be loaded{loadError ? `: ${loadError}` : '.'}
+            </Typography>
+            <Button size="small" variant="outlined" onClick={reloadTickets}>
+              Try again
+            </Button>
+          </Stack>
+        )}
+        {rows.length === 0 && (loadStatus === 'ready' || loadStatus === 'idle') && (
           <Typography variant="body2" color="text.secondary" sx={{ py: 5, textAlign: 'center' }}>
-            No tickets match these filters.
+            {tickets.length === 0 ? 'There are no tickets yet.' : 'No tickets match these filters.'}
           </Typography>
         )}
       </TableContainer>

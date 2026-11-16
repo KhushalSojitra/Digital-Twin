@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, useEffect, useRef, type ReactNode } from 'react'
 import { supabase } from '../supabaseClient'
+import { getDbToken, getDbTokenFailure } from '../dbToken'
+import { useAuth } from '../auth/AuthContext'
 import { postTicketAction, postTicketTypeAction, type TicketAction } from '../auth/authApi'
 import { ALL_DEVICES } from '../data/cameras'
 import {
@@ -37,8 +39,15 @@ export interface TicketDetailsPatch {
   creationSnapshot?: Snapshot
 }
 
+export type TicketsLoadStatus = 'idle' | 'loading' | 'ready' | 'error'
+
 interface TicketsValue {
   tickets: Ticket[]
+  /** 'idle' while signed out; 'error' (with loadError) when the database could not be read. */
+  loadStatus: TicketsLoadStatus
+  loadError: string | null
+  /** Reads the tickets again; used by the retry button after a failed load. */
+  reloadTickets: () => void
   addTicket: (input: TicketCreateInput) => Promise<Ticket>
   deleteTicket: (id: string) => Promise<void>
   toggleFollow: (id: string, person: string) => void
@@ -342,9 +351,16 @@ function ticketFromDatabase(value: unknown): Ticket {
 }
 
 export function TicketsProvider({ children }: { children: ReactNode }) {
+  const { currentUser } = useAuth()
+  const userId = currentUser?.id ?? null
   const [tickets, setTickets] = useState<Ticket[]>([])
+  const [loadStatus, setLoadStatus] = useState<TicketsLoadStatus>('idle')
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
   const ticketsRef = useRef<Ticket[]>([])
+  const savedWhileLoading = useRef(new Set<string>())
   const writeQueues = useRef(new Map<string, Promise<void>>())
+  const reloadTickets = useCallback(() => setReloadNonce((nonce) => nonce + 1), [])
 
   useEffect(() => {
     ticketsRef.current = tickets
@@ -365,6 +381,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   /** Stores the row the server returned (replacing the ticket if it is known, adding it otherwise). */
   const applySaved = useCallback((data: unknown): Ticket => {
     const saved = ticketFromDatabase(Array.isArray(data) ? data[0] : data)
+    savedWhileLoading.current.add(saved.id)
     const exists = ticketsRef.current.some((ticket) => ticket.id === saved.id)
     const next = exists
       ? ticketsRef.current.map((ticket) => ticket.id === saved.id ? saved : ticket)
@@ -408,19 +425,44 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     setTickets(next)
   }, [runForTicket])
   // 3. READ AND REALTIME SYNC
+  // Tickets can only be read with the signed-in user's database token, so reading starts when a user is
+  // signed in (not when the app first loads) and restarts when the account changes or the user retries.
   useEffect(() => {
+    ticketsRef.current = []
+    setTickets([])
+    setLoadError(null)
+    if (!userId) {
+      setLoadStatus('idle')
+      return
+    }
+
     let active = true
-    const loadInitialTickets = async () => {
+    setLoadStatus('loading')
+
+    const failLoad = (message: string) => {
+      console.error('Supabase ticket fetch error:', message)
+      setLoadError(message)
+      setLoadStatus('error')
+    }
+
+    const loadTickets = async () => {
+      savedWhileLoading.current.clear()
+      const token = await getDbToken()
+      if (!active) return
+      if (!token) {
+        failLoad(getDbTokenFailure() ?? 'Database access could not be authorised. Sign in again.')
+        return
+      }
+
       const { data, error } = await supabase
         .from('tickets')
         .select('*')
         .order('created_at', { ascending: false })
-
+      if (!active) return
       if (error) {
-        console.error('Supabase ticket fetch error:', error.message)
+        failLoad(error.message)
         return
       }
-      if (!active) return
 
       const fetchedTickets: Ticket[] = []
       for (const row of data ?? []) {
@@ -431,12 +473,19 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Supabase is the source of truth on every refresh. Replacing the collection here
-      // removes rows deleted elsewhere instead of merging stale client-only tickets back in.
-      const next = fetchedTickets.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      // Supabase is the source of truth. Replacing the collection removes rows deleted elsewhere; the only
+      // local rows kept are tickets this browser saved while the read was in flight, so a new ticket is not lost.
+      const fetchedIds = new Set(fetchedTickets.map((ticket) => ticket.id))
+      const justSaved = ticketsRef.current.filter((ticket) => savedWhileLoading.current.has(ticket.id) && !fetchedIds.has(ticket.id))
+      const next = [...fetchedTickets, ...justSaved].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       ticketsRef.current = next
       setTickets(next)
+      setLoadError(null)
+      setLoadStatus('ready')
     }
+
+    // The read does not wait for realtime: a realtime failure must not hide tickets that are in the database.
+    void loadTickets()
 
     const channel = supabase
       .channel('schema-db-changes')
@@ -514,7 +563,8 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
       )
       .subscribe((status, error) => {
         if (status === 'SUBSCRIBED') {
-          void loadInitialTickets()
+          // Closes the gap between the first read and the live feed starting.
+          void loadTickets()
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.error('Supabase ticket realtime subscription error:', error?.message ?? status)
         }
@@ -522,9 +572,9 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
 
     return () => {
       active = false
-      supabase.removeChannel(channel);
-    };
-  }, []);
+      void supabase.removeChannel(channel)
+    }
+  }, [userId, reloadNonce])
 
   // Every change below is made by the server as the signed-in user; the browser has no write access to tickets.
   const toggleFollow = useCallback((id: string, person: string) => {
@@ -601,8 +651,8 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   }, [send])
 
   const value = useMemo(
-    () => ({ tickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot }),
-    [tickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot],
+    () => ({ tickets, loadStatus, loadError, reloadTickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot }),
+    [tickets, loadStatus, loadError, reloadTickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot],
   )
 
   return <TicketsContext.Provider value={value}>{children}</TicketsContext.Provider>

@@ -2,7 +2,7 @@ import { getPublicUser } from './_lib/config.js'
 import { roleMayRun, type TicketOperation } from './_lib/policy.js'
 import { fail, route } from './_lib/route.js'
 import { sendJson } from './_lib/http.js'
-import { callAdminRpc, SupabaseAdminError } from './_lib/supabaseAdmin.js'
+import { callAdminRpc, getTicketAttachmentObjectPaths, removeTicketAttachmentObjects, SupabaseAdminError } from './_lib/supabaseAdmin.js'
 
 const PRIORITIES = ['critical', 'high', 'medium', 'low']
 const ID = /^[A-Za-z0-9_-]{1,120}$/
@@ -148,8 +148,18 @@ export default route(
           return
         }
         case 'delete': {
-          if (!ticketId) break
+          if (!ticketId || !ID.test(ticketId)) break
+          // Read the attachment object paths while the ticket row still exists.
+          const attachmentPaths = await getTicketAttachmentObjectPaths(ticketId)
           await callAdminRpc('delete_ticket_secure', { p_ticket_id: ticketId, ...identity })
+          // The database deletion is authoritative and permanent. Storage cleanup follows it; a cleanup
+          // failure is logged so the UI does not report a failed deletion after the ticket is already gone.
+          try {
+            await removeTicketAttachmentObjects(attachmentPaths)
+          } catch (cleanupError) {
+            console.error('Ticket deleted; attachment cleanup needs follow-up:', ticketId,
+              cleanupError instanceof Error ? cleanupError.message : 'unknown error')
+          }
           sendJson(ctx.res, 200, { data: null })
           return
         }

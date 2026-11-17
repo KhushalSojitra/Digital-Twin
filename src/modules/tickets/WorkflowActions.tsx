@@ -9,6 +9,8 @@ import { fieldSx } from './TicketCreateLayout'
 export interface RunOptions {
   /** Pre-filled note; when given it satisfies an action that requires one. */
   note?: string
+  /** Person the ticket should be assigned to, e.g. someone @mentioned in the comment. Skips the assignee prompt. */
+  assignee?: string
   /** Runs once the action has been saved. */
   onDone?: () => void | Promise<void>
   /** Runs when the attempt ends: saved, failed, or the prompt was cancelled. */
@@ -56,9 +58,11 @@ export function useTicketActions(me: string): TicketActions {
   const run = useCallback(
     (ticket: Ticket, action: WorkflowTransition, options?: RunOptions) => {
       const note = options?.note?.trim()
+      const assignee = options?.assignee?.trim()
       const needsNote = action.requireNote && !note
-      if (action.assign === 'pick' || action.assign === 'optional' || needsNote) setPending({ ticket, action, options })
-      else void submit(ticket, action, note ? { note } : {}, options)
+      const choosesAssignee = (action.assign === 'pick' || action.assign === 'optional') && !assignee
+      if (choosesAssignee || needsNote) setPending({ ticket, action, options })
+      else void submit(ticket, action, { ...(assignee ? { assignee } : {}), ...(note ? { note } : {}) }, options)
     },
     [submit],
   )
@@ -96,7 +100,7 @@ function ActionPrompt({
 }) {
   const { versionFor } = useWorkflow()
   const { ticket, action } = pending
-  const [assignee, setAssignee] = useState('')
+  const [assignee, setAssignee] = useState(pending.options?.assignee ?? '')
   const [note, setNote] = useState(pending.options?.note ?? '')
   const [busy, setBusy] = useState(false)
 
@@ -110,7 +114,7 @@ function ActionPrompt({
   const confirm = async () => {
     setBusy(true)
     await onSubmit(ticket, action, {
-      ...(choosesAssignee && assignee !== '' ? { assignee } : {}),
+      ...(assignee !== '' ? { assignee } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
     })
     setBusy(false)

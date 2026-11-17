@@ -587,7 +587,7 @@ begin
     if v_new is not null then
       v_assignee := v_new;
     end if;
-  elsif v_unassigned and v_new is not null then
+  elsif v_new is not null then
     v_assignee := v_new;
   end if;
 

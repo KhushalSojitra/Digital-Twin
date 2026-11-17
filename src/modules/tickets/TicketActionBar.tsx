@@ -8,6 +8,8 @@ import { useTickets } from '../../state/TicketsContext'
 import { uploadAttachments, useAttachments } from './attachments'
 import AttachmentPopover from './AttachmentPopover'
 import DocumentPreview from './DocumentPreview'
+import MentionField from './MentionField'
+import { findMentions } from './mentions'
 import type { Attachment } from './attachments'
 import type { RunOptions } from './WorkflowActions'
 
@@ -41,6 +43,7 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
 
   const comment = text.trim()
   const hasContent = comment !== '' || attachments.items.length > 0
+  const mentionedAssignee = findMentions(text).find((person) => person !== ticket.assignee)
 
   const reset = () => {
     setText('')
@@ -81,6 +84,7 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
     }
     onRun(ticket, action, {
       note: comment ? comment.slice(0, MAX_NOTE_LENGTH) : undefined,
+      assignee: mentionedAssignee,
       onDone: () => {
         if (comment || uploaded?.length) addComment(ticket.id, comment, me, uploaded)
         reset()
@@ -116,14 +120,18 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
         })}
       >
         <Avatar sx={{ width: 32, height: 32, fontSize: 11, fontWeight: 700, bgcolor: 'primary.main' }}>{initials(me)}</Avatar>
-        <InputBase
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Write a comment…"
-          disabled={busy}
-          slotProps={{ input: { 'aria-label': 'Write a comment' } }}
-          sx={{ flex: '1 1 160px', minWidth: 0, fontSize: 15 }}
-        />
+        <MentionField value={text} onValueChange={setText} disabled={busy} sx={{ flex: '1 1 160px', minWidth: 0, display: 'flex' }}>
+          {({ inputAria, ...field }) => (
+            <InputBase
+              {...field}
+              fullWidth
+              placeholder="Write a comment… use @ to mention"
+              disabled={busy}
+              slotProps={{ input: { 'aria-label': 'Write a comment', ...inputAria } }}
+              sx={{ fontSize: 15 }}
+            />
+          )}
+        </MentionField>
         <Tooltip title="Attach files">
           <IconButton
             onClick={(e) => setAttachAnchor(e.currentTarget)}
@@ -160,6 +168,11 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
           </>
         )}
       </Box>
+      {mentionedAssignee && actions.length > 0 && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+          The next action will assign this ticket to <strong>{mentionedAssignee}</strong>.
+        </Typography>
+      )}
       {error && (
         <Typography role="alert" color="error" variant="caption" sx={{ display: 'block', mt: 0.75 }}>
           {error}

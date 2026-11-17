@@ -9,6 +9,8 @@ import { useTickets } from '../../state/TicketsContext'
 import { loadStoredAttachment, resolveAttachmentUrl, uploadAttachments, useAttachments, type Attachment } from './attachments'
 import AttachmentPopover from './AttachmentPopover'
 import DocumentPreview from './DocumentPreview'
+import MentionField from './MentionField'
+import MentionText from './MentionText'
 
 /** Compact chat-style comment thread: others on the left, the current user on the right. */
 export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me: string }) {
@@ -106,7 +108,7 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
                               : 'rgba(0,0,0,0.045)',
                         })}
                       >
-                        {c.text}
+                        <MentionText text={c.text} />
                       </Typography>
                     )}
                     {c.attachments && c.attachments.length > 0 && (
@@ -141,14 +143,17 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
         sx={(t) => ({ alignItems: 'center', pt: 1.25, mt: 1.25, borderTop: `1px solid ${t.palette.divider}` })}
       >
         <Avatar sx={{ width: 32, height: 32, fontSize: 11, fontWeight: 700, bgcolor: 'primary.main' }}>{initials(me)}</Avatar>
-        <TextField
-          size="small"
-          fullWidth
-          placeholder="Write a comment..."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          slotProps={{ htmlInput: { 'aria-label': 'Write a comment' } }}
-        />
+        <MentionField value={text} onValueChange={setText} disabled={sending} sx={{ flex: 1, minWidth: 0 }}>
+          {({ inputAria, ...field }) => (
+            <TextField
+              {...field}
+              size="small"
+              fullWidth
+              placeholder="Write a comment... use @ to mention"
+              slotProps={{ htmlInput: { 'aria-label': 'Write a comment', ...inputAria } }}
+            />
+          )}
+        </MentionField>
         <Tooltip title="Attach files">
           <IconButton
             onClick={(e) => setAttachAnchor(e.currentTarget)}

@@ -15,6 +15,7 @@
     "@mui/icons-material": "^9.4.0",
     "@mui/material": "^9.4.0",
     "@supabase/supabase-js": "^2.45.0",
+    "lucide-react": "^1.74.0",
     "maplibre-gl": "^6.10.0",
     "pdfjs-dist": "^6.4.299",
     "react": "^19.2.8",

@@ -6,7 +6,6 @@ import {
   Dialog,
   IconButton,
   InputAdornment,
-  Menu,
   MenuItem,
   Stack,
   Tab,
@@ -17,7 +16,6 @@ import {
   type Theme,
 } from '@mui/material'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
-import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
 import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined'
 import TuneRoundedIcon from '@mui/icons-material/TuneRounded'
@@ -46,6 +44,7 @@ import { useTickets } from '../../state/TicketsContext'
 import { useWorkflow } from '../../state/WorkflowContext'
 import { useTicketActions } from './WorkflowActions'
 import TicketWorkflowButton from './TicketWorkflowButton'
+import TicketActionBar from './TicketActionBar'
 import TicketActivity from './TicketActivity'
 import TicketCommentThread from './TicketCommentThread'
 import TicketTeamPanel from './TicketTeamPanel'
@@ -318,9 +317,7 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
   const [dueDate, setDueDate] = useState(ticket.additional?.dueDate ?? '')
   const [dueTime, setDueTime] = useState(ticket.additional?.dueTime ?? '')
   const [snapshotDraft, setSnapshotDraft] = useState<Snapshot | null>(null)
-  const [statusAnchor, setStatusAnchor] = useState<HTMLElement | null>(null)
   const next = canChangeState ? ticketActions.actionsFor(ticket) : []
-  const canTransition = next.length > 0
   const currentStateLabel = stateLabel(ticket)
   const canOpenCamera = Boolean(onOpenCamera && (ticket.cameraId || ticket.siteId))
 
@@ -417,41 +414,22 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
           </Stack>
         )}
 
-        <Button
-          variant="outlined"
-          color="inherit"
-          disabled={!canTransition}
-          onClick={(e) => setStatusAnchor(e.currentTarget)}
-          aria-haspopup="menu"
-          aria-label={`Status ${currentStateLabel}${canTransition ? ', change status' : ''}`}
-          endIcon={canTransition ? <KeyboardArrowDownRoundedIcon /> : undefined}
-          startIcon={<Dot color={STATUS_COLOR[ticket.status]} ring />}
+        <Stack
+          direction="row"
+          spacing={0.9}
           sx={(t) => ({
+            alignItems: 'center',
+            px: 1.5,
             height: 40,
             flexShrink: 0,
             borderRadius: '10px',
-            textTransform: 'none',
-            fontWeight: 600,
-            borderColor: t.palette.divider,
-            '&.Mui-disabled': { color: t.palette.text.primary, borderColor: t.palette.divider },
+            color: `color-mix(in srgb, ${STATUS_COLOR[ticket.status]} 70%, ${t.palette.text.primary})`,
+            bgcolor: alpha(STATUS_COLOR[ticket.status], 0.16),
           })}
         >
-          {currentStateLabel}
-        </Button>
-        <Menu open={Boolean(statusAnchor)} anchorEl={statusAnchor} onClose={() => setStatusAnchor(null)} sx={{ zIndex: menuZ }}>
-          {next.map((action) => (
-            <MenuItem
-              key={action.id}
-              dense
-              onClick={() => {
-                setStatusAnchor(null)
-                ticketActions.run(ticket, action)
-              }}
-            >
-              {action.label}
-            </MenuItem>
-          ))}
-        </Menu>
+          <Dot color={STATUS_COLOR[ticket.status]} ring />
+          <Typography sx={{ fontSize: 14, fontWeight: 600, color: 'inherit' }}>{currentStateLabel}</Typography>
+        </Stack>
         {ticketActions.dialog}
 
         {canOpenCamera && (
@@ -580,6 +558,8 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
         {tab === 'comments' && <TicketCommentThread ticket={ticket} me={me} />}
         {tab === 'activity' && <TicketActivity ticket={ticket} />}
       </Box>
+
+      <TicketActionBar ticket={ticket} me={me} actions={next} onRun={ticketActions.run} hidden={tab === 'comments'} />
     </Box>
   )
 }

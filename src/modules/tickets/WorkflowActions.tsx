@@ -6,15 +6,25 @@ import { useTickets } from '../../state/TicketsContext'
 import { useWorkflow } from '../../state/WorkflowContext'
 import { fieldSx } from './TicketCreateLayout'
 
+export interface RunOptions {
+  /** Pre-filled note; when given it satisfies an action that requires one. */
+  note?: string
+  /** Runs once the action has been saved. */
+  onDone?: () => void | Promise<void>
+  /** Runs when the attempt ends: saved, failed, or the prompt was cancelled. */
+  onSettled?: () => void
+}
+
 interface Pending {
   ticket: Ticket
   action: WorkflowTransition
+  options?: RunOptions
 }
 
 interface TicketActions {
   /** Actions the ticket's workflow offers right now, or none when this user may not act. */
   actionsFor: (ticket: Ticket) => WorkflowTransition[]
-  run: (ticket: Ticket, action: WorkflowTransition) => void
+  run: (ticket: Ticket, action: WorkflowTransition, options?: RunOptions) => void
   /** Must be rendered once by the caller; hosts the assignee/note prompt and error toast. */
   dialog: ReactNode
 }
@@ -27,12 +37,15 @@ export function useTicketActions(me: string): TicketActions {
   const [error, setError] = useState<string | null>(null)
 
   const submit = useCallback(
-    async (ticket: Ticket, action: WorkflowTransition, extra: { assignee?: string; note?: string }) => {
+    async (ticket: Ticket, action: WorkflowTransition, extra: { assignee?: string; note?: string }, options?: RunOptions) => {
       try {
         await performAction(ticket.id, action.id, { by: me, ...extra })
         setPending(null)
+        await options?.onDone?.()
       } catch (failure) {
         setError(failure instanceof Error ? failure.message : 'The action could not be completed.')
+      } finally {
+        options?.onSettled?.()
       }
     },
     [performAction, me],
@@ -41,16 +54,30 @@ export function useTicketActions(me: string): TicketActions {
   const actionsFor = useCallback((ticket: Ticket) => (canAct(ticket, me) ? workflowActions(ticket) : []), [canAct, workflowActions, me])
 
   const run = useCallback(
-    (ticket: Ticket, action: WorkflowTransition) => {
-      if (action.assign === 'pick' || action.assign === 'optional' || action.requireNote) setPending({ ticket, action })
-      else void submit(ticket, action, {})
+    (ticket: Ticket, action: WorkflowTransition, options?: RunOptions) => {
+      const note = options?.note?.trim()
+      const needsNote = action.requireNote && !note
+      if (action.assign === 'pick' || action.assign === 'optional' || needsNote) setPending({ ticket, action, options })
+      else void submit(ticket, action, note ? { note } : {}, options)
     },
     [submit],
   )
 
+  const cancel = () => {
+    pending?.options?.onSettled?.()
+    setPending(null)
+  }
+
   const dialog = (
     <>
-      {pending && <ActionPrompt key={`${pending.ticket.id}:${pending.action.id}`} pending={pending} onCancel={() => setPending(null)} onSubmit={submit} />}
+      {pending && (
+        <ActionPrompt
+          key={`${pending.ticket.id}:${pending.action.id}`}
+          pending={pending}
+          onCancel={cancel}
+          onSubmit={(ticket, action, extra) => submit(ticket, action, extra, pending.options)}
+        />
+      )}
       <Snackbar open={Boolean(error)} autoHideDuration={5000} onClose={() => setError(null)} message={error ?? ''} sx={{ zIndex: (t) => t.zIndex.modal + 20 }} />
     </>
   )
@@ -70,7 +97,7 @@ function ActionPrompt({
   const { versionFor } = useWorkflow()
   const { ticket, action } = pending
   const [assignee, setAssignee] = useState('')
-  const [note, setNote] = useState('')
+  const [note, setNote] = useState(pending.options?.note ?? '')
   const [busy, setBusy] = useState(false)
 
   const definition = versionFor(ticket)?.definition

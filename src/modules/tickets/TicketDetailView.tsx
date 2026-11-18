@@ -25,10 +25,9 @@ import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded'
 import ConfirmationNumberRoundedIcon from '@mui/icons-material/ConfirmationNumberRounded'
 import CameraAltRoundedIcon from '@mui/icons-material/CameraAltRounded'
 import EditRoundedIcon from '@mui/icons-material/EditRounded'
+import { PriorityIndicator, StatusIndicator } from './TicketIndicators'
 import {
-  PRIORITY_COLOR,
   PRIORITY_LABEL,
-  STATUS_COLOR,
   TICKETING_SYSTEM,
   TICKET_SOURCE_LABEL,
   isCompleted,
@@ -78,20 +77,6 @@ const overlayButtonSx = {
   bgcolor: 'rgba(8, 12, 20, 0.5)',
   backdropFilter: 'blur(6px)',
   '&:hover': { bgcolor: 'rgba(8, 12, 20, 0.65)' },
-}
-
-function Dot({ color, ring }: { color: string; ring?: boolean }) {
-  return (
-    <Box
-      sx={{
-        width: 12,
-        height: 12,
-        borderRadius: '50%',
-        flexShrink: 0,
-        ...(ring ? { border: `2px solid ${color}` } : { bgcolor: color }),
-      }}
-    />
-  )
 }
 
 function formatDueDate(value: string) {
@@ -396,40 +381,10 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
             ))}
           </TextField>
         ) : (
-          <Stack
-            direction="row"
-            spacing={0.9}
-            sx={{
-              alignItems: 'center',
-              px: 1.5,
-              height: 40,
-              flexShrink: 0,
-              borderRadius: '10px',
-              border: `1px solid ${PRIORITY_COLOR[priority]}55`,
-              bgcolor: `${PRIORITY_COLOR[priority]}22`,
-            }}
-          >
-            <Dot color={PRIORITY_COLOR[priority]} />
-            <Typography sx={{ fontSize: 14, fontWeight: 600 }}>{PRIORITY_LABEL[priority]}</Typography>
-          </Stack>
+          <PriorityIndicator priority={priority} />
         )}
 
-        <Stack
-          direction="row"
-          spacing={0.9}
-          sx={(t) => ({
-            alignItems: 'center',
-            px: 1.5,
-            height: 40,
-            flexShrink: 0,
-            borderRadius: '10px',
-            color: `color-mix(in srgb, ${STATUS_COLOR[ticket.status]} 70%, ${t.palette.text.primary})`,
-            bgcolor: alpha(STATUS_COLOR[ticket.status], 0.16),
-          })}
-        >
-          <Dot color={STATUS_COLOR[ticket.status]} ring />
-          <Typography sx={{ fontSize: 14, fontWeight: 600, color: 'inherit' }}>{currentStateLabel}</Typography>
-        </Stack>
+        <StatusIndicator stateName={currentStateLabel} status={ticket.status} />
         {ticketActions.dialog}
 
         {canOpenCamera && (

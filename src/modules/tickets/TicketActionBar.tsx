@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { Avatar, Badge, Box, Button, IconButton, InputBase, Tooltip, Typography } from '@mui/material'
-import { ArrowRight, Check, Paperclip, Pause } from 'lucide-react'
+import { Avatar, Badge, Box, IconButton, InputBase, Tooltip, Typography } from '@mui/material'
+import { Paperclip } from 'lucide-react'
+import { actionLook, toneColor } from './TicketIndicators'
 import type { CommentAttachment, Ticket } from '../../data/tickets'
 import type { WorkflowTransition } from '../../data/workflows'
 import { initials } from '../../utils/format'
@@ -15,14 +16,6 @@ import type { RunOptions } from './WorkflowActions'
 
 /** The server stores a workflow note in at most this many characters. */
 const MAX_NOTE_LENGTH = 2000
-
-type ActionKind = 'complete' | 'hold' | 'pass'
-
-function kindOf(action: WorkflowTransition): ActionKind {
-  if (/hold|pause/i.test(action.label)) return 'hold'
-  if (/complete|done|finish|resolve|accept|approve/i.test(action.label)) return 'complete'
-  return 'pass'
-}
 
 interface Props {
   ticket: Ticket
@@ -149,19 +142,29 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
             <Box aria-hidden sx={{ width: '1px', height: 28, flexShrink: 0, bgcolor: 'divider' }} />
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
               {actions.map((action) => {
-                const kind = kindOf(action)
+                const { Icon, tone } = actionLook(action.label)
+                const color = toneColor(tone)
                 return (
-                  <Button
-                    key={action.id}
-                    variant={kind === 'complete' ? 'contained' : 'outlined'}
-                    color={kind === 'hold' ? 'warning' : 'primary'}
-                    disabled={busy}
-                    onClick={() => void runAction(action)}
-                    startIcon={kind === 'complete' ? <Check size={18} aria-hidden /> : kind === 'hold' ? <Pause size={18} aria-hidden /> : <ArrowRight size={18} aria-hidden />}
-                    sx={{ height: 40, borderRadius: '10px', px: 2, textTransform: 'none', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap' }}
-                  >
-                    {action.label}
-                  </Button>
+                  <Tooltip key={action.id} title={action.label}>
+                    <Box component="span" sx={{ display: 'inline-flex' }}>
+                      <IconButton
+                        aria-label={action.label}
+                        disabled={busy}
+                        onClick={() => void runAction(action)}
+                        sx={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: '12px',
+                          color: '#fff',
+                          bgcolor: color,
+                          '&:hover': { bgcolor: color, filter: 'brightness(1.12)' },
+                          '&.Mui-disabled': { color: '#fff', bgcolor: color, opacity: 0.4 },
+                        }}
+                      >
+                        <Icon size={24} strokeWidth={2.5} aria-hidden />
+                      </IconButton>
+                    </Box>
+                  </Tooltip>
                 )
               })}
             </Box>

@@ -5,6 +5,7 @@ import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineR
 import type { Ticket } from '../../data/tickets'
 import { formatDateTime, initials } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
+import ClampedComment from './ClampedComment'
 
 export default function TicketComments({ ticket, me }: { ticket: Ticket; me: string }) {
   const { addComment } = useTickets()
@@ -43,7 +44,11 @@ export default function TicketComments({ ticket, me }: { ticket: Ticket; me: str
                       {formatDateTime(c.at)}
                     </Typography>
                   </Stack>
-                  <Typography
+                  <ClampedComment
+                    text={c.text}
+                    by={c.by}
+                    at={c.at}
+                    mine={c.by === me}
                     sx={(t) => ({
                       fontSize: 13,
                       mt: 0.25,
@@ -52,9 +57,7 @@ export default function TicketComments({ ticket, me }: { ticket: Ticket; me: str
                       borderRadius: '10px',
                       bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
                     })}
-                  >
-                    {c.text}
-                  </Typography>
+                  />
                 </Box>
               </Stack>
             ))}

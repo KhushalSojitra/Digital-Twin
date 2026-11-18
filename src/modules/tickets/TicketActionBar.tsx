@@ -10,6 +10,8 @@ import { uploadAttachments, useAttachments } from './attachments'
 import AttachmentPopover from './AttachmentPopover'
 import DocumentPreview from './DocumentPreview'
 import MentionField from './MentionField'
+import { enterToSubmit } from './enterToSubmit'
+import { useMockVoiceInput, VoiceMicButton, VoiceStatus } from './VoiceInput'
 import { findMentions } from './mentions'
 import type { Attachment } from './attachments'
 import type { RunOptions } from './WorkflowActions'
@@ -33,6 +35,7 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
   const [error, setError] = useState('')
   const [attachAnchor, setAttachAnchor] = useState<HTMLElement | null>(null)
   const [previewing, setPreviewing] = useState<Attachment | null>(null)
+  const voice = useMockVoiceInput(text, setText, { disabled: busy, maxLength: MAX_NOTE_LENGTH })
 
   const primaryId = primaryActionId(actions)
   const comment = text.trim()
@@ -42,6 +45,7 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
   const mentionedAssignee = firstMention && firstMention !== ticket.assignee ? firstMention : undefined
 
   const reset = () => {
+    voice.cancel()
     setText('')
     attachments.items.forEach((item) => attachments.remove(item.id))
   }
@@ -105,7 +109,7 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
         onSubmit={(e: FormEvent) => void postComment(e)}
         sx={(t) => ({
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-end',
           flexWrap: 'wrap',
           gap: 1,
           px: 1.25,
@@ -115,19 +119,26 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
           '&:focus-within': { borderColor: t.palette.primary.main },
         })}
       >
-        <Avatar sx={{ width: 32, height: 32, fontSize: 11, fontWeight: 700, bgcolor: 'primary.main' }}>{initials(me)}</Avatar>
+        <VoiceStatus phase={voice.phase} sx={{ flexBasis: '100%' }} />
+        <Avatar sx={{ width: 32, height: 32, fontSize: 11, fontWeight: 700, bgcolor: 'primary.main', mb: 0.25 }}>{initials(me)}</Avatar>
         <MentionField value={text} onValueChange={setText} disabled={busy} sx={{ flex: '1 1 160px', minWidth: 0, display: 'flex' }}>
           {({ inputAria, ...field }) => (
             <InputBase
               {...field}
+              onKeyDown={enterToSubmit(field.onKeyDown)}
               fullWidth
+              multiline
+              minRows={2}
+              maxRows={5}
+              readOnly={voice.phase === 'typing'}
               placeholder="Write a comment… use @ to mention"
               disabled={busy}
-              slotProps={{ input: { 'aria-label': 'Write a comment', ...inputAria } }}
-              sx={{ fontSize: 15 }}
+              slotProps={{ input: { 'aria-label': 'Write a comment', maxLength: MAX_NOTE_LENGTH, ...inputAria } }}
+              sx={{ fontSize: 15, py: 0.25 }}
             />
           )}
         </MentionField>
+        <VoiceMicButton voice={voice} disabled={busy} />
         <Tooltip title="Attach files">
           <IconButton
             onClick={(e) => setAttachAnchor(e.currentTarget)}
@@ -143,7 +154,7 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
         {actions.length > 0 && (
           <>
             <Box aria-hidden sx={{ width: '1px', height: 28, flexShrink: 0, bgcolor: 'divider' }} />
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'flex-end' }}>
               {actions.map((action) => {
                 const { Icon, kind } = actionLook(action.label)
                 const primary = action.id === primaryId

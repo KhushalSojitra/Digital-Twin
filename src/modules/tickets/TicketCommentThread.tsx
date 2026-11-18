@@ -10,7 +10,9 @@ import { loadStoredAttachment, resolveAttachmentUrl, uploadAttachments, useAttac
 import AttachmentPopover from './AttachmentPopover'
 import DocumentPreview from './DocumentPreview'
 import MentionField from './MentionField'
-import MentionText from './MentionText'
+import ClampedComment from './ClampedComment'
+import { enterToSubmit } from './enterToSubmit'
+import { useMockVoiceInput, VoiceMicButton, VoiceStatus } from './VoiceInput'
 
 /** Compact chat-style comment thread: others on the left, the current user on the right. */
 export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me: string }) {
@@ -22,6 +24,7 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
   const [previewing, setPreviewing] = useState<Attachment | null>(null)
   const attachments = useAttachments()
   const endRef = useRef<HTMLDivElement>(null)
+  const voice = useMockVoiceInput(text, setText, { disabled: sending })
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' })
@@ -37,6 +40,7 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
     try {
       const uploaded = attachments.items.length ? await uploadAttachments(ticket.id, attachments.items) : undefined
       addComment(ticket.id, text.trim(), me, uploaded)
+      voice.cancel()
       setText('')
       attachments.items.forEach((item) => attachments.remove(item.id))
     } catch (error) {
@@ -92,24 +96,24 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
                       </Typography>
                     </Stack>
                     {c.text && (
-                      <Typography
+                      <ClampedComment
+                        text={c.text}
+                        by={c.by}
+                        at={c.at}
+                        mine={mine}
                         sx={(t) => ({
                           fontSize: 13.5,
                           mt: 0.25,
                           px: 1.25,
                           py: 0.85,
                           borderRadius: '12px',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
                           bgcolor: mine
                             ? alpha(t.palette.primary.main, t.palette.mode === 'dark' ? 0.2 : 0.12)
                             : t.palette.mode === 'dark'
                               ? 'rgba(255,255,255,0.06)'
                               : 'rgba(0,0,0,0.045)',
                         })}
-                      >
-                        <MentionText text={c.text} />
-                      </Typography>
+                      />
                     )}
                     {c.attachments && c.attachments.length > 0 && (
                       <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: 0.75, mt: 0.5, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
@@ -135,25 +139,33 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
         )}
       </Box>
 
+      <VoiceStatus phase={voice.phase} sx={{ mt: 1 }} />
       <Stack
         component="form"
         onSubmit={submit}
         direction="row"
         spacing={1}
-        sx={(t) => ({ alignItems: 'center', pt: 1.25, mt: 1.25, borderTop: `1px solid ${t.palette.divider}` })}
+        sx={(t) => ({ alignItems: 'flex-end', pt: 1.25, mt: 1.25, borderTop: `1px solid ${t.palette.divider}` })}
       >
-        <Avatar sx={{ width: 32, height: 32, fontSize: 11, fontWeight: 700, bgcolor: 'primary.main' }}>{initials(me)}</Avatar>
+        <Avatar sx={{ width: 32, height: 32, fontSize: 11, fontWeight: 700, bgcolor: 'primary.main', mb: 0.5 }}>{initials(me)}</Avatar>
         <MentionField value={text} onValueChange={setText} disabled={sending} sx={{ flex: 1, minWidth: 0 }}>
           {({ inputAria, ...field }) => (
             <TextField
               {...field}
+              onKeyDown={enterToSubmit(field.onKeyDown)}
               size="small"
               fullWidth
+              multiline
+              minRows={2}
+              maxRows={5}
               placeholder="Write a comment... use @ to mention"
-              slotProps={{ htmlInput: { 'aria-label': 'Write a comment', ...inputAria } }}
+              slotProps={{
+                htmlInput: { 'aria-label': 'Write a comment', maxLength: 2000, readOnly: voice.phase === 'typing', ...inputAria },
+              }}
             />
           )}
         </MentionField>
+        <VoiceMicButton voice={voice} disabled={sending} />
         <Tooltip title="Attach files">
           <IconButton
             onClick={(e) => setAttachAnchor(e.currentTarget)}

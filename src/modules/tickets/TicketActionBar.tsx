@@ -36,7 +36,9 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
 
   const comment = text.trim()
   const hasContent = comment !== '' || attachments.items.length > 0
-  const mentionedAssignee = findMentions(text).find((person) => person !== ticket.assignee)
+  // Only the first mention can take the ticket; mentioning the current assignee first leaves the assignee as is.
+  const firstMention = findMentions(text)[0]
+  const mentionedAssignee = firstMention && firstMention !== ticket.assignee ? firstMention : undefined
 
   const reset = () => {
     setText('')
@@ -173,7 +175,7 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
       </Box>
       {mentionedAssignee && actions.length > 0 && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
-          The next action will assign this ticket to <strong>{mentionedAssignee}</strong>.
+          Clicking an action will also assign this ticket to <strong>{mentionedAssignee}</strong>. Posting the comment alone will not.
         </Typography>
       )}
       {error && (

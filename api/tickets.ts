@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { getPublicUser } from './_lib/config.js'
 import { roleMayRun, type TicketOperation } from './_lib/policy.js'
 import { fail, route } from './_lib/route.js'
@@ -112,23 +113,20 @@ export default route(
           const body = text(input.text, 5000)
           const attachments = input.attachments === undefined || input.attachments === null ? [] : input.attachments
           if (!ticketId || body === null || !Array.isArray(attachments) || attachments.length > 20 || (!body.trim() && attachments.length === 0)) break
-          const commentId = input.commentId === undefined ? null : text(input.commentId, 120)
-          const replyTo = input.replyTo === undefined ? null : text(input.replyTo, 160)
-          if ((input.commentId !== undefined && !commentId?.match(ID)) || (input.replyTo !== undefined && !replyTo)) break
-          const base = { p_ticket_id: ticketId, p_text: body, p_attachments: attachments, ...identity }
-          let data: unknown
-          try {
-            data = await callAdminRpc('add_ticket_comment_secure', {
-              ...base,
-              ...(commentId ? { p_id: commentId } : {}),
-              ...(replyTo ? { p_reply_to: replyTo } : {}),
-            })
-          } catch (error) {
-            // Until comment_threading_patch.sql is applied the function only knows the original arguments:
-            // post the comment without its threading data rather than failing it.
-            if (!(error instanceof SupabaseAdminError) || error.code !== 'function_missing' || (!commentId && !replyTo)) throw error
-            data = await callAdminRpc('add_ticket_comment_secure', base)
-          }
+          // Every comment, plain or reply, gets an id; the browser sends one and the server fills it in otherwise.
+          const commentId = input.commentId === undefined || input.commentId === null ? randomUUID() : text(input.commentId, 120)
+          const replyTo = input.replyTo === undefined || input.replyTo === null ? null : text(input.replyTo, 160)
+          if (!commentId || !ID.test(commentId) || (input.replyTo != null && !replyTo)) break
+          // Errors (including a missing or mismatched database function) are not swallowed: they reach the
+          // catch below and are returned to the browser so the comment form can show them.
+          const data = await callAdminRpc('add_ticket_comment_secure', {
+            p_ticket_id: ticketId,
+            p_text: body,
+            p_attachments: attachments,
+            ...identity,
+            p_comment_id: commentId,
+            p_reply_to: replyTo,
+          })
           sendJson(ctx.res, 200, { data })
           return
         }

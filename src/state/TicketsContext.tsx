@@ -60,7 +60,7 @@ interface TicketsValue {
   addFollowers: (id: string, people: string[], by?: string) => void
   shareWith: (id: string, person: string, by?: string) => void
   removeFollower: (id: string, person: string, by?: string) => void
-  addComment: (id: string, text: string, by: string, attachments?: CommentAttachment[], thread?: CommentThreadInfo) => void
+  addComment: (id: string, text: string, by: string, attachments?: CommentAttachment[], thread?: CommentThreadInfo) => Promise<void>
   updateDetails: (id: string, patch: TicketDetailsPatch, by?: string) => void
   /** Runs one action of the ticket's workflow; rejects with the server's reason when it is not allowed. */
   performAction: (id: string, actionId: string, input: WorkflowActionInput) => Promise<void>
@@ -608,16 +608,21 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
       creationSnapshot: next.creationSnapshot ?? null,
     })
   }, [send])
-  const addComment = useCallback((id: string, text: string, _by: string, attachments?: CommentAttachment[], thread?: CommentThreadInfo) => {
-    send(id, {
-      action: 'comment',
-      ticketId: id,
-      text,
-      attachments: attachments ?? [],
-      commentId: thread?.id ?? crypto.randomUUID(),
-      ...(thread?.replyTo ? { replyTo: thread.replyTo } : {}),
-    })
-  }, [send])
+  // Unlike the other writes, a comment reports its failure to the caller so the form can show the error.
+  const addComment = useCallback((id: string, text: string, _by: string, attachments?: CommentAttachment[], thread?: CommentThreadInfo): Promise<void> =>
+    runForTicket(id, async () => {
+      applySaved(await postTicketAction({
+        action: 'comment',
+        ticketId: id,
+        text,
+        attachments: attachments ?? [],
+        commentId: thread?.id ?? crypto.randomUUID(),
+        ...(thread?.replyTo ? { replyTo: thread.replyTo } : {}),
+      }))
+    }).catch((error) => {
+      console.error(`Unable to save comment on ticket ${id}:`, error)
+      throw error instanceof Error ? error : new Error('The comment could not be saved.')
+    }), [runForTicket, applySaved])
   const performAction = useCallback((id: string, actionId: string, input: WorkflowActionInput): Promise<void> => {
     if (!ticketsRef.current.some((ticket) => ticket.id === id)) return Promise.reject(new Error('Ticket not found'))
     const previousWrite = writeQueues.current.get(id) ?? Promise.resolve()

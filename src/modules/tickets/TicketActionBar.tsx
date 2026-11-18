@@ -53,7 +53,7 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
   const upload = (): Promise<CommentAttachment[] | undefined> =>
     attachments.items.length ? uploadAttachments(ticket.id, attachments.items) : Promise.resolve(undefined)
 
-  const failure = (cause: unknown) => setError(cause instanceof Error ? cause.message : 'Attachment could not be uploaded.')
+  const failure = (cause: unknown) => setError(cause instanceof Error ? cause.message : 'The comment could not be saved.')
 
   const postComment = async (e: FormEvent) => {
     e.preventDefault()
@@ -61,7 +61,7 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
     setBusy(true)
     setError('')
     try {
-      addComment(ticket.id, comment, me, await upload())
+      await addComment(ticket.id, comment, me, await upload())
       reset()
     } catch (cause) {
       failure(cause)
@@ -86,7 +86,9 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
       note: comment ? comment.slice(0, MAX_NOTE_LENGTH) : undefined,
       assignee: mentionedAssignee,
       onDone: () => {
-        if (comment || uploaded?.length) addComment(ticket.id, comment, me, uploaded)
+        if (comment || uploaded?.length) {
+          addComment(ticket.id, comment, me, uploaded).catch((cause) => failure(cause))
+        }
         reset()
       },
       onSettled: () => setBusy(false),

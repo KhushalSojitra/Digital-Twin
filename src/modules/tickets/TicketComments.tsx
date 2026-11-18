@@ -11,11 +11,18 @@ export default function TicketComments({ ticket, me }: { ticket: Ticket; me: str
   const { addComment } = useTickets()
   const [text, setText] = useState('')
 
-  const submit = (e: FormEvent) => {
+  const [error, setError] = useState('')
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!text.trim()) return
-    addComment(ticket.id, text.trim(), me)
-    setText('')
+    setError('')
+    try {
+      await addComment(ticket.id, text.trim(), me)
+      setText('')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The comment could not be saved.')
+    }
   }
 
   return (
@@ -85,6 +92,11 @@ export default function TicketComments({ ticket, me }: { ticket: Ticket; me: str
             },
           }}
         />
+        {error && (
+          <Typography role="alert" color="error" variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+            {error}
+          </Typography>
+        )}
       </Box>
     </Box>
   )

@@ -143,7 +143,7 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
     setSendError('')
     try {
       const uploaded = attachments.items.length ? await uploadAttachments(ticket.id, attachments.items) : undefined
-      addComment(ticket.id, text.trim(), me, uploaded, {
+      await addComment(ticket.id, text.trim(), me, uploaded, {
         id: crypto.randomUUID(),
         ...(replyingTo ? { replyTo: replyingTo } : {}),
       })
@@ -152,7 +152,7 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
       setReplyingTo(null)
       attachments.items.forEach((item) => attachments.remove(item.id))
     } catch (error) {
-      setSendError(error instanceof Error ? error.message : 'Attachment could not be uploaded.')
+      setSendError(error instanceof Error ? error.message : 'The comment could not be saved.')
     } finally {
       setSending(false)
     }

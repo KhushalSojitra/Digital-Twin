@@ -7,7 +7,7 @@ drop function if exists public.add_ticket_comment_secure(text, text, jsonb, text
 
 create or replace function public.add_ticket_comment_secure(
   p_ticket_id text, p_text text, p_attachments jsonb, p_actor text, p_role text,
-  p_id text default null, p_reply_to text default null
+  p_comment_id text default null, p_reply_to text default null
 )
 returns public.tickets
 language plpgsql
@@ -18,7 +18,7 @@ declare
   v_ticket public.tickets%rowtype;
   v_by text := nullif(trim(coalesce(p_actor, '')), '');
   v_attachments jsonb := coalesce(p_attachments, '[]'::jsonb);
-  v_id text := coalesce(nullif(trim(coalesce(p_id, '')), ''), gen_random_uuid()::text);
+  v_id text := coalesce(nullif(trim(coalesce(p_comment_id, '')), ''), gen_random_uuid()::text);
   v_reply_to text := nullif(trim(coalesce(p_reply_to, '')), '');
   v_comment jsonb;
 begin

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Avatar, Badge, Box, IconButton, InputBase, Tooltip, Typography } from '@mui/material'
 import { Paperclip } from 'lucide-react'
-import { actionLook, toneColor } from './TicketIndicators'
+import { actionLook, DESTRUCTIVE_COLOR, ICON_SIZE, ICON_STROKE, primaryActionId, TOOLTIP_DELAY } from './TicketIndicators'
 import type { CommentAttachment, Ticket } from '../../data/tickets'
 import type { WorkflowTransition } from '../../data/workflows'
 import { initials } from '../../utils/format'
@@ -34,6 +34,7 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
   const [attachAnchor, setAttachAnchor] = useState<HTMLElement | null>(null)
   const [previewing, setPreviewing] = useState<Attachment | null>(null)
 
+  const primaryId = primaryActionId(actions)
   const comment = text.trim()
   const hasContent = comment !== '' || attachments.items.length > 0
   // Only the first mention can take the ticket; mentioning the current assignee first leaves the assignee as is.
@@ -144,26 +145,43 @@ export default function TicketActionBar({ ticket, me, actions, onRun, hidden }: 
             <Box aria-hidden sx={{ width: '1px', height: 28, flexShrink: 0, bgcolor: 'divider' }} />
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
               {actions.map((action) => {
-                const { Icon, tone } = actionLook(action.label)
-                const color = toneColor(tone)
+                const { Icon, kind } = actionLook(action.label)
+                const primary = action.id === primaryId
+                const hoverColor = (brand: string) => (kind === 'destructive' ? DESTRUCTIVE_COLOR : brand)
                 return (
-                  <Tooltip key={action.id} title={action.label}>
+                  <Tooltip key={action.id} title={action.label} enterDelay={TOOLTIP_DELAY}>
                     <Box component="span" sx={{ display: 'inline-flex' }}>
                       <IconButton
                         aria-label={action.label}
                         disabled={busy}
                         onClick={() => void runAction(action)}
-                        sx={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: '12px',
-                          color: '#fff',
-                          bgcolor: color,
-                          '&:hover': { bgcolor: color, filter: 'brightness(1.12)' },
-                          '&.Mui-disabled': { color: '#fff', bgcolor: color, opacity: 0.4 },
-                        }}
+                        sx={(t) => ({
+                          width: 34,
+                          height: 34,
+                          borderRadius: '8px',
+                          border: '1px solid',
+                          ...(primary
+                            ? {
+                                color: t.palette.primary.contrastText,
+                                bgcolor: t.palette.primary.main,
+                                borderColor: t.palette.primary.main,
+                                '&:hover': { bgcolor: t.palette.primary.dark, borderColor: t.palette.primary.dark },
+                              }
+                            : {
+                                color: t.palette.text.secondary,
+                                bgcolor: 'transparent',
+                                borderColor: t.palette.divider,
+                                '&:hover': {
+                                  bgcolor: t.palette.action.hover,
+                                  color: hoverColor(t.palette.primary.main),
+                                  borderColor: hoverColor(t.palette.primary.main),
+                                },
+                              }),
+                          '&.Mui-focusVisible': { outline: `2px solid ${t.palette.primary.main}`, outlineOffset: 2 },
+                          '&.Mui-disabled': { opacity: 0.45, color: primary ? t.palette.primary.contrastText : t.palette.text.secondary },
+                        })}
                       >
-                        <Icon size={24} strokeWidth={2.5} aria-hidden />
+                        <Icon size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden />
                       </IconButton>
                     </Box>
                   </Tooltip>

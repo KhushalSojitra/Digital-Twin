@@ -30,6 +30,12 @@ export interface WorkflowActionInput {
   note?: string
 }
 
+/** Optional threading data stored with a new comment inside tickets.replies. */
+export interface CommentThreadInfo {
+  id?: string
+  replyTo?: string
+}
+
 export interface TicketDetailsPatch {
   title: string
   description: string
@@ -54,7 +60,7 @@ interface TicketsValue {
   addFollowers: (id: string, people: string[], by?: string) => void
   shareWith: (id: string, person: string, by?: string) => void
   removeFollower: (id: string, person: string, by?: string) => void
-  addComment: (id: string, text: string, by: string, attachments?: CommentAttachment[]) => void
+  addComment: (id: string, text: string, by: string, attachments?: CommentAttachment[], thread?: CommentThreadInfo) => void
   updateDetails: (id: string, patch: TicketDetailsPatch, by?: string) => void
   /** Runs one action of the ticket's workflow; rejects with the server's reason when it is not allowed. */
   performAction: (id: string, actionId: string, input: WorkflowActionInput) => Promise<void>
@@ -207,7 +213,7 @@ function databaseRowForTicket(ticket: Ticket, includeIdentity = false): Database
       },
     },
     history_log: ticket.timeline,
-    replies: ticket.comments,
+    replies: ticket.comments.map(({ replyTo, ...comment }) => (replyTo ? { ...comment, reply_to: replyTo } : comment)),
   }
 }
 
@@ -255,6 +261,8 @@ function ticketFromDatabase(value: unknown): Ticket {
     ? row.replies.map((value) => {
         const comment = asDatabaseRow(value)
         return {
+          ...(typeof comment.id === 'string' && comment.id ? { id: comment.id } : {}),
+          ...(typeof comment.reply_to === 'string' && comment.reply_to ? { replyTo: comment.reply_to } : {}),
           at: stringValue(comment.at, createdAt),
           by: stringValue(comment.by, 'System'),
           text: typeof comment.text === 'string' ? comment.text : '',
@@ -600,8 +608,15 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
       creationSnapshot: next.creationSnapshot ?? null,
     })
   }, [send])
-  const addComment = useCallback((id: string, text: string, _by: string, attachments?: CommentAttachment[]) => {
-    send(id, { action: 'comment', ticketId: id, text, attachments: attachments ?? [] })
+  const addComment = useCallback((id: string, text: string, _by: string, attachments?: CommentAttachment[], thread?: CommentThreadInfo) => {
+    send(id, {
+      action: 'comment',
+      ticketId: id,
+      text,
+      attachments: attachments ?? [],
+      commentId: thread?.id ?? crypto.randomUUID(),
+      ...(thread?.replyTo ? { replyTo: thread.replyTo } : {}),
+    })
   }, [send])
   const performAction = useCallback((id: string, actionId: string, input: WorkflowActionInput): Promise<void> => {
     if (!ticketsRef.current.some((ticket) => ticket.id === id)) return Promise.reject(new Error('Ticket not found'))

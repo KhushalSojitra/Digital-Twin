@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from 'react'
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Avatar, Box, Dialog, DialogContent, DialogTitle, IconButton, Tooltip, Typography, type SxProps, type Theme } from '@mui/material'
 import { Maximize2, X } from 'lucide-react'
 import { formatDateTime, initials } from '../../utils/format'
@@ -11,10 +11,16 @@ interface Props {
   mine?: boolean
   /** Bubble styling supplied by the list that renders the comment. */
   sx?: SxProps<Theme>
+  /** Rendered above the text inside the bubble (for example a quoted reply). */
+  header?: ReactNode
+  /** Rendered between the text and the footer (for example attachment chips). */
+  extra?: ReactNode
+  /** Rendered at the bottom-right of the bubble (for example the time). */
+  footer?: ReactNode
 }
 
 /** A comment bubble clamped to two lines; longer comments get an expand icon that opens the full text. */
-export default function ClampedComment({ text, by, at, mine, sx }: Props) {
+export default function ClampedComment({ text, by, at, mine, sx, header, extra, footer }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null)
   const [truncated, setTruncated] = useState(false)
   const [open, setOpen] = useState(false)
@@ -33,21 +39,26 @@ export default function ClampedComment({ text, by, at, mine, sx }: Props) {
   return (
     <>
       <Box sx={[{ typography: 'body2', maxWidth: '100%' }, ...(Array.isArray(sx) ? sx : [sx])]}>
-        <Box
-          ref={bodyRef}
-          sx={{
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-          }}
-        >
-          <MentionText text={text} />
-        </Box>
-        {truncated && (
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.25 }}>
+        {header}
+        {text && (
+          <Box
+            ref={bodyRef}
+            sx={{
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            <MentionText text={text} />
+          </Box>
+        )}
+        {extra}
+        {(truncated || footer) && (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 0.25 }}>
+            {truncated ? (
             <Tooltip title="View full comment">
               <IconButton
                 size="small"
@@ -65,6 +76,10 @@ export default function ClampedComment({ text, by, at, mine, sx }: Props) {
                 <Maximize2 size={14} strokeWidth={2} aria-hidden />
               </IconButton>
             </Tooltip>
+            ) : (
+              <span />
+            )}
+            {footer}
           </Box>
         )}
       </Box>

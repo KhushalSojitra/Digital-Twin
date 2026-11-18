@@ -62,7 +62,7 @@ export interface TicketTypeServerStatus {
 export type TicketAction =
   | { action: 'create'; typeKey: string; ticket: Record<string, unknown> }
   | { action: 'details'; ticketId: string; title: string; description: string; priority: string; additional: unknown; creationSnapshot: unknown }
-  | { action: 'comment'; ticketId: string; text: string; attachments: unknown[] }
+  | { action: 'comment'; ticketId: string; text: string; attachments: unknown[]; commentId?: string; replyTo?: string }
   | { action: 'followers'; ticketId: string; op: 'toggle' | 'add' | 'remove' | 'share'; people: string[] }
   | { action: 'snapshot'; ticketId: string; slot: 'before' | 'after'; snapshot: unknown }
   | { action: 'delete'; ticketId: string }

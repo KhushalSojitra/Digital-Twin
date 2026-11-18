@@ -53,6 +53,10 @@ export interface CommentAttachment {
 }
 
 export interface TicketComment {
+  /** Absent on entries written before comment threading; they render as standalone bubbles. */
+  id?: string
+  /** Id (or legacy key) of the comment this one replies to. */
+  replyTo?: string
   at: string
   by: string
   text: string

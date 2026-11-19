@@ -183,6 +183,9 @@ interface Props {
 
 const popoverZ = (t: { zIndex: { modal: number } }) => t.zIndex.modal + 6
 
+/** Inbox and Related are decided by the database, so they match on ticket id only, without the caller's filters. */
+const isInboxScope = (scope: TicketScope) => scope === 'inbox' || scope === 'related'
+
 export default function TicketManageDialog({
   open,
   tickets,
@@ -202,7 +205,7 @@ export default function TicketManageDialog({
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
   const { stateLabel, actionsFor: workflowActionsFor } = useWorkflow()
-  const { loadStatus, loadError, reloadTickets } = useTickets()
+  const { tickets: allTickets, loadStatus, loadError, reloadTickets } = useTickets()
   const ticketActions = useTicketActions(me)
   const [deleting, setDeleting] = useState<Ticket | null>(null)
   const [search, setSearch] = useState('')
@@ -260,9 +263,12 @@ export default function TicketManageDialog({
   const scopeCounts = useMemo(
     () =>
       Object.fromEntries(
-        SCOPES.map((s) => [s.id, queried.filter((t) => matchesScope(t, s.id, me, scopeContext)).length]),
+        SCOPES.map((s) => [
+          s.id,
+          (isInboxScope(s.id) ? allTickets : queried).filter((t) => matchesScope(t, s.id, me, scopeContext)).length,
+        ]),
       ) as Record<TicketScope, number>,
-    [queried, me, scopeContext],
+    [queried, allTickets, me, scopeContext],
   )
 
   const sortValue = (t: Ticket, id: ColumnId): string | number => {
@@ -291,7 +297,7 @@ export default function TicketManageDialog({
   }
 
   const rows = useMemo(() => {
-    const scoped = queried.filter((t) => matchesScope(t, scope, me, scopeContext))
+    const scoped = (isInboxScope(scope) ? allTickets : queried).filter((t) => matchesScope(t, scope, me, scopeContext))
     if (!sort) {
       // The Inbox lists the most recently updated waiting tickets first.
       return scope === 'inbox' ? [...scoped].sort((a, b) => inbox.inboxOrder(a.id) - inbox.inboxOrder(b.id)) : scoped
@@ -305,7 +311,7 @@ export default function TicketManageDialog({
     })
     // sortValue reads workflow labels, which change with the workflow context
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queried, scope, me, sort, stateLabel, workflowActionsFor, scopeContext, inbox])
+  }, [queried, allTickets, scope, me, sort, stateLabel, workflowActionsFor, scopeContext, inbox])
 
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
   const currentPage = Math.min(page, pageCount)

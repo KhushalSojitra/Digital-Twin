@@ -73,18 +73,37 @@ export function applyTicketQuery(tickets: Ticket[], { tab, search, filters: f, m
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority])
 }
 
-export type TicketScope = 'all' | 'assigned_me' | 'reported_me' | 'unassigned' | 'unassigned_reported_me'
+export type TicketScope =
+  | 'all'
+  | 'inbox'
+  | 'assigned_me'
+  | 'reported_me'
+  | 'unassigned'
+  | 'unassigned_reported_me'
+  | 'related'
 
 export const SCOPES: { id: TicketScope; label: string }[] = [
   { id: 'all', label: 'All' },
+  { id: 'inbox', label: 'Inbox' },
   { id: 'assigned_me', label: 'Assigned to Me' },
   { id: 'reported_me', label: 'Reported by Me' },
   { id: 'unassigned', label: 'Unassigned' },
   { id: 'unassigned_reported_me', label: 'Unassigned & Reported by Me' },
+  { id: 'related', label: 'Related to Me' },
 ]
 
-export function matchesScope(t: Ticket, scope: TicketScope, me: string) {
+/** Ticket ids the signed-in user is involved in, supplied by the database for the Inbox and Related views. */
+export interface ScopeContext {
+  inboxIds: ReadonlySet<string>
+  relatedIds: ReadonlySet<string>
+}
+
+export function matchesScope(t: Ticket, scope: TicketScope, me: string, context?: ScopeContext) {
   switch (scope) {
+    case 'inbox':
+      return context?.inboxIds.has(t.id) ?? false
+    case 'related':
+      return context?.relatedIds.has(t.id) ?? false
     case 'assigned_me':
       return t.assignee === me
     case 'reported_me':

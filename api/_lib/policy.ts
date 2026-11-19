@@ -8,6 +8,7 @@ export type TicketOperation =
   | 'snapshot'
   | 'comment'
   | 'followers'
+  | 'inbox'
   | 'change_type'
   | 'manage_types'
   | 'read_status'
@@ -24,6 +25,7 @@ const ALLOWED_ROLES: Record<TicketOperation, readonly Role[]> = {
   snapshot: ['Administrator', 'Operator'],
   comment: ['Administrator', 'Operator', 'Viewer'],
   followers: ['Administrator', 'Operator', 'Viewer'],
+  inbox: ['Administrator', 'Operator', 'Viewer'],
   change_type: ['Administrator', 'Operator'],
   manage_types: ['Administrator', 'Operator'],
   read_status: ['Administrator', 'Operator', 'Viewer'],

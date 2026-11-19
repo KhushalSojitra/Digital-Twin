@@ -1,5 +1,8 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { usePreference } from '../../state/PreferencesContext'
+import { useInbox } from '../../state/InboxContext'
+import { RELATED_LABEL } from '../../data/inbox'
+import WaitingDot, { WAITING_COLOR } from './WaitingDot'
 import {
   Badge,
   Box,
@@ -106,6 +109,51 @@ const COLUMNS: ColumnDef[] = [
   { id: 'completedOn', label: 'Completed On', defaultVisible: false, width: 140 },
 ]
 
+/** Why a ticket is in the Inbox: who mentioned, replied to or assigned it, with a one-line preview. */
+function InboxReasonLine({ ticketId }: { ticketId: string }) {
+  const { reasonFor } = useInbox()
+  const reason = reasonFor(ticketId)
+  if (!reason) return null
+  const full = reason.preview ? `${reason.label} · ${reason.preview}` : reason.label
+  return (
+    <Typography noWrap title={full} sx={{ fontSize: 12, color: 'text.secondary', mt: 0.25 }}>
+      <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>
+        {reason.label}
+      </Box>
+      {reason.preview ? ` · ${reason.preview}` : ''}
+    </Typography>
+  )
+}
+
+/** The ways the signed-in user is involved in a ticket (creator, assignee, watcher, ...). */
+function RelatedChips({ ticketId }: { ticketId: string }) {
+  const { relatedReasons } = useInbox()
+  const reasons = relatedReasons(ticketId)
+  if (reasons.length === 0) return null
+  return (
+    <Stack direction="row" spacing={0.5} sx={{ mt: 0.5, flexWrap: 'wrap', rowGap: 0.5 }}>
+      {reasons.map((reason) => (
+        <Box
+          key={reason}
+          component="span"
+          sx={(th) => ({
+            px: 0.75,
+            borderRadius: '999px',
+            fontSize: 11,
+            fontWeight: 600,
+            lineHeight: '18px',
+            color: 'text.secondary',
+            border: `1px solid ${th.palette.divider}`,
+            bgcolor: 'action.hover',
+          })}
+        >
+          {RELATED_LABEL[reason]}
+        </Box>
+      ))}
+    </Stack>
+  )
+}
+
 const DEFAULT_VISIBLE = COLUMNS.filter((c) => c.defaultVisible).map((c) => c.id)
 const PAGE_SIZES = [5, 10, 25, 50]
 
@@ -129,6 +177,8 @@ interface Props {
   onGoToLocation?: (ticket: Ticket) => void
   /** Opens the camera a ticket was raised on; only offered for camera-associated tickets. */
   onGoToCamera?: (ticket: Ticket) => void
+  /** Switches the view (e.g. to Inbox from the bell); each new nonce applies once. */
+  scopeRequest?: { scope: TicketScope; nonce: number } | null
 }
 
 const popoverZ = (t: { zIndex: { modal: number } }) => t.zIndex.modal + 6
@@ -147,6 +197,7 @@ export default function TicketManageDialog({
   onHistory,
   onGoToLocation,
   onGoToCamera,
+  scopeRequest,
 }: Props) {
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
@@ -173,6 +224,21 @@ export default function TicketManageDialog({
   )
   const [pageSize, setPageSize] = usePreference<number>('manage.pageSize', 10, (v) => PAGE_SIZES.includes(v))
   const [page, setPage] = useState(1)
+  const inbox = useInbox()
+  const scopeContext = useMemo(
+    () => ({ inboxIds: inbox.inboxTicketIds, relatedIds: inbox.relatedTicketIds }),
+    [inbox.inboxTicketIds, inbox.relatedTicketIds],
+  )
+
+  const requestedScope = scopeRequest?.scope
+  const requestNonce = scopeRequest?.nonce
+  useEffect(() => {
+    if (requestedScope === undefined) return
+    setScope(requestedScope)
+    setPage(1)
+    // each request is applied once per nonce; the preference setter is stable enough to omit
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedScope, requestNonce])
 
   const nextActionLabel = (t: Ticket) => {
     const actions = workflowActionsFor(t)
@@ -192,8 +258,11 @@ export default function TicketManageDialog({
   }, [tickets, search, filters, me, stateLabel])
 
   const scopeCounts = useMemo(
-    () => Object.fromEntries(SCOPES.map((s) => [s.id, queried.filter((t) => matchesScope(t, s.id, me)).length])) as Record<TicketScope, number>,
-    [queried, me],
+    () =>
+      Object.fromEntries(
+        SCOPES.map((s) => [s.id, queried.filter((t) => matchesScope(t, s.id, me, scopeContext)).length]),
+      ) as Record<TicketScope, number>,
+    [queried, me, scopeContext],
   )
 
   const sortValue = (t: Ticket, id: ColumnId): string | number => {
@@ -222,8 +291,11 @@ export default function TicketManageDialog({
   }
 
   const rows = useMemo(() => {
-    const scoped = queried.filter((t) => matchesScope(t, scope, me))
-    if (!sort) return scoped
+    const scoped = queried.filter((t) => matchesScope(t, scope, me, scopeContext))
+    if (!sort) {
+      // The Inbox lists the most recently updated waiting tickets first.
+      return scope === 'inbox' ? [...scoped].sort((a, b) => inbox.inboxOrder(a.id) - inbox.inboxOrder(b.id)) : scoped
+    }
     const sign = sort.direction === 'asc' ? 1 : -1
     return [...scoped].sort((a, b) => {
       const av = sortValue(a, sort.id)
@@ -233,7 +305,7 @@ export default function TicketManageDialog({
     })
     // sortValue reads workflow labels, which change with the workflow context
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queried, scope, me, sort, stateLabel, workflowActionsFor])
+  }, [queried, scope, me, sort, stateLabel, workflowActionsFor, scopeContext, inbox])
 
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
   const currentPage = Math.min(page, pageCount)
@@ -266,18 +338,23 @@ export default function TicketManageDialog({
     switch (id) {
       case 'title':
         return (
-          <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
-            <ButtonBase
-              onClick={() => onOpen(t)}
-              sx={{ minWidth: 0, textAlign: 'left', fontSize: 13.5, fontWeight: 600, borderRadius: '4px', '&:hover': { color: 'primary.main' } }}
-              title={t.title}
-            >
-              <Typography noWrap sx={{ fontSize: 'inherit', fontWeight: 'inherit', color: 'inherit' }}>
-                {t.title}
-              </Typography>
-            </ButtonBase>
-            <TicketUpdateDot ticket={t} />
-          </Stack>
+          <Box sx={{ minWidth: 0 }}>
+            <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
+              <ButtonBase
+                onClick={() => onOpen(t)}
+                sx={{ minWidth: 0, textAlign: 'left', fontSize: 13.5, fontWeight: 600, borderRadius: '4px', '&:hover': { color: 'primary.main' } }}
+                title={t.title}
+              >
+                <Typography noWrap sx={{ fontSize: 'inherit', fontWeight: 'inherit', color: 'inherit' }}>
+                  {t.title}
+                </Typography>
+              </ButtonBase>
+              <WaitingDot ticketId={t.id} />
+              <TicketUpdateDot ticket={t} />
+            </Stack>
+            {scope === 'inbox' && <InboxReasonLine ticketId={t.id} />}
+            {scope === 'related' && <RelatedChips ticketId={t.id} />}
+          </Box>
         )
       case 'description':
         return (
@@ -486,7 +563,8 @@ export default function TicketManageDialog({
                   fontWeight: 600,
                   lineHeight: '18px',
                   textAlign: 'center',
-                  bgcolor: active ? 'rgba(255,255,255,0.22)' : 'action.selected',
+                  bgcolor: active ? 'rgba(255,255,255,0.22)' : s.id === 'inbox' && scopeCounts.inbox > 0 ? WAITING_COLOR : 'action.selected',
+                  color: !active && s.id === 'inbox' && scopeCounts.inbox > 0 ? '#1c1c1e' : undefined,
                 }}
               >
                 {scopeCounts[s.id]}
@@ -607,7 +685,11 @@ export default function TicketManageDialog({
                 {shownColumns.map((c, index) => (
                   <TableCell
                     key={c.id}
-                    sx={{ py: 1.125, pl: index === 0 ? { xs: 1.5, sm: 2.5 } : 1.5, maxWidth: c.width ? c.width + 80 : undefined }}
+                    sx={{
+                      py: 1.125,
+                      pl: index === 0 ? { xs: 1.5, sm: 2.5 } : 1.5,
+                      maxWidth: c.id === 'title' && (scope === 'inbox' || scope === 'related') ? 400 : c.width ? c.width + 80 : undefined,
+                    }}
                   >
                     {cell(t, c.id)}
                   </TableCell>
@@ -657,7 +739,13 @@ export default function TicketManageDialog({
         )}
         {rows.length === 0 && (loadStatus === 'ready' || loadStatus === 'idle') && (
           <Typography variant="body2" color="text.secondary" sx={{ py: 5, textAlign: 'center' }}>
-            {tickets.length === 0 ? 'There are no tickets yet.' : 'No tickets match these filters.'}
+            {tickets.length === 0
+              ? 'There are no tickets yet.'
+              : scope === 'inbox'
+                ? 'You are all caught up. Nothing is waiting on you.'
+                : scope === 'related'
+                  ? 'No tickets are related to you yet.'
+                  : 'No tickets match these filters.'}
           </Typography>
         )}
       </TableContainer>

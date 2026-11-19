@@ -67,6 +67,17 @@ export type TicketAction =
   | { action: 'snapshot'; ticketId: string; slot: 'before' | 'after'; snapshot: unknown }
   | { action: 'delete'; ticketId: string }
 
+export type InboxAction =
+  | { action: 'inbox'; includeResolved?: boolean; limit?: number }
+  | { action: 'inbox_count' }
+  | { action: 'inbox_tickets' }
+  | { action: 'related_tickets' }
+
+/** Reads the signed-in user's inbox and related tickets; the server decides who is asking. */
+export function postInboxAction(body: InboxAction): Promise<unknown> {
+  return postSigned('/api/tickets', body)
+}
+
 /** Sends a ticket type mutation with the session cookie and CSRF token; the server decides who is acting. */
 export function postTicketTypeAction(body: TicketTypeAction): Promise<unknown> {
   return postSigned('/api/ticket-types', body)
@@ -105,7 +116,20 @@ async function postSigned(path: '/api/ticket-types' | '/api/tickets', body: unkn
   throw new Error('Something went wrong. Please try again.')
 }
 
-export async function postAuth(path: '/api/login' | '/api/logout' | '/api/switch', body: unknown): Promise<AuthResult> {
+let authInFlight: Promise<unknown> = Promise.resolve()
+
+/** Resolves once any sign-in, sign-out or account switch has reached the server, so reads run as the right user. */
+export function whenAuthSettled(): Promise<void> {
+  return authInFlight.then(() => undefined)
+}
+
+export function postAuth(path: '/api/login' | '/api/logout' | '/api/switch', body: unknown): Promise<AuthResult> {
+  const run = runAuth(path, body)
+  authInFlight = run.catch(() => undefined)
+  return run
+}
+
+async function runAuth(path: '/api/login' | '/api/logout' | '/api/switch', body: unknown): Promise<AuthResult> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (!csrfToken) {
       const refreshed = await fetchSession()

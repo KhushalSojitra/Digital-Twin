@@ -55,6 +55,10 @@ export default route(
       snapshot: 'snapshot',
       comment: 'comment',
       followers: 'followers',
+      inbox: 'inbox',
+      inbox_count: 'inbox',
+      inbox_tickets: 'inbox',
+      related_tickets: 'inbox',
     }
     const operation = typeof input.action === 'string' ? operations[input.action] : undefined
     if (!operation) {
@@ -140,6 +144,36 @@ export default route(
             p_people: list,
             ...identity,
           })
+          sendJson(ctx.res, 200, { data })
+          return
+        }
+        // Inbox reads. The database creates and resolves inbox items and watchers; the app only reads them,
+        // always as the signed-in user taken from the session.
+        case 'inbox': {
+          const includeResolved = input.includeResolved === true
+          const limit = typeof input.limit === 'number' && Number.isInteger(input.limit) && input.limit >= 1 && input.limit <= 500
+            ? input.limit
+            : 100
+          const data = await callAdminRpc('get_inbox_secure', {
+            ...identity,
+            p_include_resolved: includeResolved,
+            p_limit: limit,
+          })
+          sendJson(ctx.res, 200, { data })
+          return
+        }
+        case 'inbox_count': {
+          const data = await callAdminRpc('inbox_count_secure', { ...identity })
+          sendJson(ctx.res, 200, { data })
+          return
+        }
+        case 'inbox_tickets': {
+          const data = await callAdminRpc('inbox_tickets_secure', { ...identity })
+          sendJson(ctx.res, 200, { data })
+          return
+        }
+        case 'related_tickets': {
+          const data = await callAdminRpc('related_tickets_secure', { ...identity })
           sendJson(ctx.res, 200, { data })
           return
         }

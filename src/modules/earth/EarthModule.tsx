@@ -16,7 +16,7 @@ import TicketMenu from '../tickets/TicketMenu'
 import TicketManageDialog from '../tickets/TicketManageDialog'
 import TicketEditorDialog from '../tickets/TicketEditorDialog'
 import { TicketMarkerActionsProvider } from '../tickets/TicketMarkerMenu'
-import { applyTicketQuery } from '../tickets/ticketFilters'
+import { applyTicketQuery, type TicketScope } from '../tickets/ticketFilters'
 import { useTicketQuery } from '../../state/TicketQueryContext'
 
 export default function EarthModule() {
@@ -45,6 +45,7 @@ export default function EarthModule() {
   const [editorTab, setEditorTab] = useState<'details' | 'activity'>('details')
   const [editorOpen, setEditorOpen] = useState(Boolean(shared))
   const [manageOpen, setManageOpen] = useState(false)
+  const [scopeRequest, setScopeRequest] = useState<{ scope: TicketScope; nonce: number } | null>(null)
   const [showImprovements, setShowImprovements] = useState(false)
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; nonce: number } | null>(() =>
     shared ? { lat: shared.lat, lng: shared.lng, nonce: Date.now() } : null,
@@ -110,7 +111,15 @@ export default function EarthModule() {
   }
 
   useEffect(() => {
-    if (params.has('ticket')) setParams({}, { replace: true })
+    if (!params.has('ticket') && !params.has('inbox')) return
+    if (params.has('inbox')) {
+      setScopeRequest({ scope: 'inbox', nonce: Date.now() })
+      setManageOpen(true)
+    }
+    const next = new URLSearchParams(params)
+    next.delete('ticket')
+    next.delete('inbox')
+    setParams(next, { replace: true })
   }, [params, setParams])
 
   const glass = hudSurface(theme)
@@ -270,6 +279,7 @@ export default function EarthModule() {
           onFiltersChange={setFilters}
           me={me}
           canEdit={canEdit}
+          scopeRequest={scopeRequest}
           onClose={() => setManageOpen(false)}
           onOpen={(t) => {
             setSelectedTicketId(t.id)

@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient'
 import { getDbToken, getDbTokenFailure } from '../dbToken'
 import { useAuth } from '../auth/AuthContext'
 import { postTicketAction, postTicketTypeAction, type TicketAction } from '../auth/authApi'
+import { requestInboxRefresh } from '../data/inbox'
 import { ALL_DEVICES } from '../data/cameras'
 import {
   DEFAULT_SNAPSHOT_CONFIG,
@@ -619,6 +620,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         commentId: thread?.id ?? crypto.randomUUID(),
         ...(thread?.replyTo ? { replyTo: thread.replyTo } : {}),
       }))
+      requestInboxRefresh()
     }).catch((error) => {
       console.error(`Unable to save comment on ticket ${id}:`, error)
       throw error instanceof Error ? error : new Error('The comment could not be saved.')
@@ -639,6 +641,7 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
       const next = ticketsRef.current.map((ticket) => ticket.id === id ? saved : ticket)
       ticketsRef.current = next
       setTickets(next)
+      requestInboxRefresh()
     })
     const write = run.catch((error) => console.error(`Unable to run action ${actionId} on ticket ${id}:`, error))
     writeQueues.current.set(id, write)

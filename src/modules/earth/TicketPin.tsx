@@ -3,6 +3,7 @@ import { STATUS_COLOR, type Ticket } from '../../data/tickets'
 import { useWorkflow } from '../../state/WorkflowContext'
 import TicketHoverCopy from '../tickets/TicketHoverCopy'
 import TicketUpdateDot from '../tickets/TicketUpdateDot'
+import WaitingDot from '../tickets/WaitingDot'
 import TicketGlyph from '../../components/TicketGlyph'
 import { useTicketQuery } from '../../state/TicketQueryContext'
 import { useTicketMarkerMenu } from '../tickets/TicketMarkerMenu'
@@ -68,6 +69,7 @@ export default function TicketPin({ ticket, selected, onClick }: Props) {
       )}
       <TicketGlyph color={color} size={px} selected={selected} critical={ticket.priority === 'critical'} />
       <TicketUpdateDot ticket={ticket} sx={{ position: 'absolute', top: -2, right: -2, zIndex: 3 }} />
+      <WaitingDot ticketId={ticket.id} animate sx={{ position: 'absolute', top: -2, left: -2, zIndex: 3 }} />
     </Box>
   )
 

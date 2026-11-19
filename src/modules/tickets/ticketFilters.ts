@@ -88,7 +88,6 @@ export const SCOPES: { id: TicketScope; label: string }[] = [
   { id: 'assigned_me', label: 'Assigned to Me' },
   { id: 'reported_me', label: 'Reported by Me' },
   { id: 'unassigned', label: 'Unassigned' },
-  { id: 'unassigned_reported_me', label: 'Unassigned & Reported by Me' },
   { id: 'related', label: 'Related to Me' },
 ]
 

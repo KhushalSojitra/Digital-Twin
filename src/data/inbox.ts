@@ -105,7 +105,9 @@ function parseRelated(row: Record<string, unknown>): RelatedTicket | null {
 }
 
 function dataOf(response: unknown): unknown {
-  return record(response)?.data
+  // postSigned() already unwraps { data }, so only unwrap again if a wrapper is still present.
+  const r = record(response)
+  return r && 'data' in r ? r.data : response
 }
 
 export async function fetchInboxCount(): Promise<number> {

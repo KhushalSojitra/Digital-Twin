@@ -34,7 +34,6 @@ import PersonAddAltRoundedIcon from '@mui/icons-material/PersonAddAltRounded'
 import CheckRoundedIcon from '@mui/icons-material/CheckRounded'
 import { useAuth } from '../auth/AuthContext'
 import { useThemeMode } from '../theme/ThemeModeContext'
-import { useInbox } from '../state/InboxContext'
 import { LogoMark, Wordmark } from '../components/Logo'
 import CameraDropdown from './CameraDropdown'
 import { MODULES } from './modules'
@@ -50,7 +49,6 @@ export default function AppShell() {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const { mode, toggleMode } = useThemeMode()
   const { currentUser, sessions, switchAccount, signOut, signOutAll } = useAuth()
-  const inbox = useInbox()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -181,12 +179,9 @@ export default function AppShell() {
                 {mode === 'dark' ? <LightModeRoundedIcon /> : <DarkModeRoundedIcon />}
               </IconButton>
             </Tooltip>
-            <Tooltip title={inbox.count > 0 ? `Inbox · ${inbox.count} waiting on you` : 'Inbox'}>
-              <IconButton
-                onClick={() => navigate('/earth?inbox=1')}
-                aria-label={inbox.count > 0 ? `Inbox, ${inbox.count} ticket${inbox.count === 1 ? '' : 's'} waiting on you` : 'Inbox, nothing waiting'}
-              >
-                <Badge badgeContent={inbox.count} max={9} color="error" overlap="circular" invisible={inbox.count === 0}>
+            <Tooltip title="Alerts">
+              <IconButton onClick={() => navigate('/alerts')} aria-label="Alerts">
+                <Badge badgeContent={2} color="primary" overlap="circular">
                   <NotificationsRoundedIcon />
                 </Badge>
               </IconButton>

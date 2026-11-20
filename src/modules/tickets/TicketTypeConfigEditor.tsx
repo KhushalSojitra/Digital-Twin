@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react'
-import { Box, Button, Checkbox, TextField, Typography } from '@mui/material'
+import { Box, Button, Checkbox, MenuItem, TextField, Typography } from '@mui/material'
+import { DIRECTORY } from '../../auth/users'
 import { CONFIG_OPTIONS, DEFAULT_CONFIG, type TicketTypeConfig } from '../../data/ticketTypes'
 import { fieldSx } from './TicketCreateLayout'
 import InfoTip from './InfoTip'
@@ -41,7 +42,8 @@ export default function TicketTypeConfigEditor({
   const [description, setDescription] = useState(initialDescription)
   const [config, setConfig] = useState<TicketTypeConfig>(initialConfig ?? DEFAULT_CONFIG)
   const dirty =
-    name !== initialName || description !== initialDescription || CONFIG_OPTIONS.some(({ key }) => config[key] !== (initialConfig ?? DEFAULT_CONFIG)[key])
+    name !== initialName || description !== initialDescription || (CONFIG_OPTIONS.some(({ key }) => config[key] !== (initialConfig ?? DEFAULT_CONFIG)[key])
+      || (config.preApprover ?? null) !== ((initialConfig ?? DEFAULT_CONFIG).preApprover ?? null))
   const ready = name.trim() !== '' && dirty
 
   return (
@@ -121,6 +123,26 @@ export default function TicketTypeConfigEditor({
             )
           })}
         </Box>
+
+        {config.preApproval && (
+          <TextField
+            select
+            size="small"
+            label="Pre-approver"
+            value={config.preApprover ?? ''}
+            disabled={readOnly}
+            onChange={(e) => setConfig((prev) => ({ ...prev, preApprover: e.target.value || null }))}
+            slotProps={{ inputLabel: { shrink: true }, select: { displayEmpty: true } }}
+            sx={fieldSx}
+          >
+            <MenuItem value="">Top of hierarchy (default)</MenuItem>
+            {DIRECTORY.map((user) => (
+              <MenuItem key={user.id} value={user.id}>
+                {user.displayName}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
 
         {error && (
           <Typography role="alert" variant="body2" color="error" sx={{ wordBreak: 'break-word' }}>

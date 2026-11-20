@@ -11,14 +11,18 @@ export interface TicketTypeConfig {
   onHold: boolean
   allowReopen: boolean
   allowPassOn: boolean
+  /** User id of who pre-approves; null = the top of the hierarchy (Director). */
+  preApprover?: string | null
 }
 
-export const CONFIG_OPTIONS: { key: keyof TicketTypeConfig; label: string; description: string }[] = [
+type ConfigFlag = Exclude<keyof TicketTypeConfig, 'preApprover'>
+
+export const CONFIG_OPTIONS: { key: ConfigFlag; label: string; description: string }[] = [
   { key: 'preApproval', label: 'Pre-approval', description: 'The ticket must be approved before work can start.' },
   { key: 'postApproval', label: 'Post-approval', description: 'Completed work waits for approval before the ticket is Done.' },
   { key: 'onHold', label: 'On Hold / Resume', description: 'Work in progress can be put on hold and resumed later.' },
-  { key: 'allowReopen', label: 'Allow Reopen', description: 'Done tickets can be reopened with a new assignee.' },
-  { key: 'allowPassOn', label: 'Allow Pass On', description: 'The assignee can hand work to someone else straight away.' },
+  { key: 'allowReopen', label: 'Allow Reopen', description: 'Done tickets can be reopened by the reporter or the manager.' },
+  { key: 'allowPassOn', label: 'Allow Pass On', description: 'The assignee or the reporter can hand work to someone else. Without it, only the manager reassigns.' },
 ]
 
 export const DEFAULT_CONFIG: TicketTypeConfig = {
@@ -26,13 +30,14 @@ export const DEFAULT_CONFIG: TicketTypeConfig = {
   postApproval: false,
   onHold: true,
   allowReopen: true,
-  allowPassOn: true,
+  allowPassOn: false,
+  preApprover: null,
 }
 
 const BUILT_IN_CONFIG: Record<string, TicketTypeConfig> = {
   standard: DEFAULT_CONFIG,
-  financial: { preApproval: true, postApproval: true, onHold: true, allowReopen: true, allowPassOn: true },
-  maintenance: { preApproval: false, postApproval: true, onHold: true, allowReopen: true, allowPassOn: true },
+  financial: { preApproval: true, postApproval: true, onHold: true, allowReopen: true, allowPassOn: false, preApprover: null },
+  maintenance: { preApproval: false, postApproval: true, onHold: true, allowReopen: true, allowPassOn: false, preApprover: null },
 }
 
 /** A ticket type and the workflow every ticket of that type starts on. */
@@ -59,6 +64,7 @@ function parseConfig(value: unknown): TicketTypeConfig | null {
     onHold: raw.on_hold === true,
     allowReopen: raw.reopen === true,
     allowPassOn: raw.pass_on === true,
+    preApprover: typeof raw.pre_approver === 'string' && raw.pre_approver ? raw.pre_approver : null,
   }
 }
 
@@ -69,6 +75,7 @@ export function configToDatabase(config: TicketTypeConfig) {
     on_hold: config.onHold,
     reopen: config.allowReopen,
     pass_on: config.allowPassOn,
+    pre_approver: config.preApproval ? (config.preApprover ?? null) : null,
   }
 }
 
@@ -101,36 +108,38 @@ export function humanizeTypeKey(key: string) {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : key
 }
 
-/** Mirrors build_ticket_type_definition in supabase/ticket_workflow.sql; used to preview a configuration. */
+/** Mirrors build_ticket_type_definition in supabase/2026-11-20_02_permissions_approvals.sql; used to preview a configuration. */
 export function previewDefinition(config: TicketTypeConfig): WorkflowDefinition {
-  const states: WorkflowState[] = [{ key: 'todo', label: 'To Do', group: 'open' }]
+  const states: WorkflowState[] = []
   const transitions: WorkflowTransition[] = []
   const action = (id: string, label: string, from: string, to: string, assign: WorkflowTransition['assign'] = 'none', requireNote = false) =>
     transitions.push({ id, label, from: [from], to, assign, requireNote })
 
-  if (config.preApproval) {
-    states.push({ key: 'pending_approval', label: 'Pending Approval', group: 'open' }, { key: 'approved', label: 'Approved', group: 'open' })
-    action('submit_approval', 'Submit for Approval', 'todo', 'pending_approval')
-    action('approve', 'Approve', 'pending_approval', 'approved')
-    action('reject', 'Reject', 'pending_approval', 'todo', 'none', true)
-  }
-  states.push({ key: 'in_progress', label: 'In Progress', group: 'in_progress' })
+  if (config.preApproval) states.push({ key: 'pending_approval', label: 'Pending Approval', group: 'open' })
+  states.push({ key: 'todo', label: 'To Do', group: 'open' }, { key: 'in_progress', label: 'In Progress', group: 'in_progress' })
   if (config.onHold) states.push({ key: 'on_hold', label: 'On Hold', group: 'in_progress' })
   if (config.postApproval) states.push({ key: 'pending_post_approval', label: 'Pending Post-approval', group: 'in_progress' })
   states.push({ key: 'done', label: 'Done', group: 'done' })
+  if (config.preApproval) {
+    states.push({ key: 'rejected', label: 'Rejected', group: 'open' }, { key: 'closed', label: 'Closed', group: 'failed' })
+    action('approve', 'Approve', 'pending_approval', 'todo')
+    action('reject', 'Reject', 'pending_approval', 'rejected', 'reporter', true)
+    action('close', 'Close', 'rejected', 'closed')
+  }
 
-  action('start', 'Start Work', config.preApproval ? 'approved' : 'todo', 'in_progress', 'pick')
-  action('complete', config.postApproval ? 'Submit for Approval' : 'Complete Work', 'in_progress', config.postApproval ? 'pending_post_approval' : 'done')
+  action('assign', 'Assign', 'todo', 'todo', 'pick')
+  action('start', 'Start Work', 'todo', 'in_progress', 'optional')
+  action('complete', config.postApproval ? 'Submit for Approval' : 'Complete Work', 'in_progress', config.postApproval ? 'pending_post_approval' : 'done', 'none', true)
   if (config.postApproval) {
     action('approve_post', 'Approve', 'pending_post_approval', 'done')
-    action('reject_post', 'Reject', 'pending_post_approval', 'in_progress', 'optional', true)
+    action('reject_post', 'Reject', 'pending_post_approval', 'in_progress', 'none', true)
   }
   if (config.onHold) {
     action('hold', 'Put On Hold', 'in_progress', 'on_hold')
     action('resume', 'Resume Work', 'on_hold', 'in_progress', 'optional')
   }
   if (config.allowPassOn) action('pass_on', 'Pass On', 'in_progress', 'in_progress', 'pick', true)
-  if (config.allowReopen) action('reopen', 'Reopen', 'done', 'in_progress', 'pick')
+  if (config.allowReopen) action('reopen', 'Reopen', 'done', 'in_progress', 'optional')
 
-  return { initial: 'todo', states, transitions }
+  return { initial: config.preApproval ? 'pending_approval' : 'todo', states, transitions }
 }

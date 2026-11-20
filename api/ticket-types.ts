@@ -11,14 +11,18 @@ function text(value: unknown, max: number): string | null {
   return typeof value === 'string' && value.length <= max ? value : null
 }
 
-function configFrom(value: unknown): Record<string, boolean> | null {
+function configFrom(value: unknown): Record<string, boolean | string | null> | null {
   if (typeof value !== 'object' || value === null) return null
   const input = value as Record<string, unknown>
-  const config: Record<string, boolean> = {}
+  const config: Record<string, boolean | string | null> = {}
   for (const flag of FLAGS) {
     if (typeof input[flag] !== 'boolean') return null
     config[flag] = input[flag] as boolean
   }
+  // Optional pre-approver (a user id); the database ignores anything that is not an active user.
+  const preApprover = input.pre_approver
+  if (preApprover !== undefined && preApprover !== null && (typeof preApprover !== 'string' || preApprover.length > 64)) return null
+  config.pre_approver = typeof preApprover === 'string' && preApprover ? preApprover : null
   return config
 }
 

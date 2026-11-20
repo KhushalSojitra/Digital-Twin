@@ -45,8 +45,8 @@ export async function fetchSession(): Promise<AuthResult> {
 }
 
 export type TicketTypeAction =
-  | { action: 'create'; label: string; description: string; config: Record<string, boolean> }
-  | { action: 'update'; key: string; label: string; description: string; config: Record<string, boolean> }
+  | { action: 'create'; label: string; description: string; config: Record<string, boolean | string | null> }
+  | { action: 'update'; key: string; label: string; description: string; config: Record<string, boolean | string | null> }
   | { action: 'delete'; key: string }
   | { action: 'change'; ticketId: string; typeKey: string; reason: string }
   | { action: 'workflow'; ticketId: string; actionId: string; assignee?: string | null; note?: string | null }

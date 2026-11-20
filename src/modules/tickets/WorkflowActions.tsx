@@ -1,6 +1,8 @@
 import { useCallback, useState, type ReactNode } from 'react'
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Snackbar, Stack, TextField, Typography } from '@mui/material'
-import { ASSIGNEES, type Ticket } from '../../data/tickets'
+import { ASSIGNEES, isUnassigned, type Ticket } from '../../data/tickets'
+import { mayReassign } from '../../data/permissions'
+import { useAuth } from '../../auth/AuthContext'
 import { stateOf, type WorkflowTransition } from '../../data/workflows'
 import { useTickets } from '../../state/TicketsContext'
 import { useWorkflow } from '../../state/WorkflowContext'
@@ -33,7 +35,7 @@ interface TicketActions {
 
 /** Single place where every ticket surface runs workflow actions. */
 export function useTicketActions(me: string): TicketActions {
-  const { actionsFor: workflowActions, canAct } = useWorkflow()
+  const { actionsFor: workflowActions, mayRun } = useWorkflow()
   const { performAction } = useTickets()
   const [pending, setPending] = useState<Pending | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -53,14 +55,18 @@ export function useTicketActions(me: string): TicketActions {
     [performAction, me],
   )
 
-  const actionsFor = useCallback((ticket: Ticket) => (canAct(ticket, me) ? workflowActions(ticket) : []), [canAct, workflowActions, me])
+  const actionsFor = useCallback(
+    (ticket: Ticket) => workflowActions(ticket).filter((action) => mayRun(ticket, action.id, me)),
+    [mayRun, workflowActions, me],
+  )
 
   const run = useCallback(
     (ticket: Ticket, action: WorkflowTransition, options?: RunOptions) => {
       const note = options?.note?.trim()
       const assignee = options?.assignee?.trim()
       const needsNote = action.requireNote && !note
-      const choosesAssignee = (action.assign === 'pick' || action.assign === 'optional') && !assignee
+      // 'optional' only asks for a person when nobody is assigned yet.
+      const choosesAssignee = (action.assign === 'pick' || (action.assign === 'optional' && isUnassigned(ticket.assignee))) && !assignee
       if (choosesAssignee || needsNote) setPending({ ticket, action, options })
       else void submit(ticket, action, { ...(assignee ? { assignee } : {}), ...(note ? { note } : {}) }, options)
     },
@@ -107,8 +113,11 @@ function ActionPrompt({
   const definition = versionFor(ticket)?.definition
   const from = stateOf(definition, ticket.workflowState)?.label
   const to = stateOf(definition, action.to)?.label
-  const needsAssignee = action.assign === 'pick'
-  const choosesAssignee = needsAssignee || action.assign === 'optional'
+  const { currentUser } = useAuth()
+  const unassigned = isUnassigned(ticket.assignee)
+  const needsAssignee = action.assign === 'pick' || (action.assign === 'optional' && unassigned)
+  // Changing an existing assignee is the manager's call (or Pass On).
+  const choosesAssignee = needsAssignee || (action.assign === 'optional' && mayReassign(ticket, action.id, currentUser?.displayName ?? ''))
   const ready = (!needsAssignee || assignee !== '') && (!action.requireNote || note.trim() !== '')
 
   const confirm = async () => {
@@ -134,7 +143,7 @@ function ActionPrompt({
             <TextField
               select
               required={needsAssignee}
-              label={needsAssignee ? 'Pass work to' : 'Assignee (optional)'}
+              label={needsAssignee ? (unassigned ? 'Assign to' : 'Pass work to') : 'Assignee (optional)'}
               value={assignee}
               onChange={(e) => setAssignee(e.target.value)}
               slotProps={{ inputLabel: { shrink: true }, select: { MenuProps: { sx: { zIndex: (t) => t.zIndex.modal + 14 } }, displayEmpty: true } }}

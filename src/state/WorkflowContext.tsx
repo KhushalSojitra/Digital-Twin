@@ -1,3 +1,4 @@
+import { mayRunAction } from '../data/permissions'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '../supabaseClient'
 import { postTicketTypeAction } from '../auth/authApi'
@@ -44,8 +45,8 @@ interface WorkflowValue {
   stateLabel: (ticket: Pick<Ticket, 'workflowVersionId' | 'workflowState' | 'status'>) => string
   /** Actions the ticket's own workflow version offers from its current state. */
   actionsFor: (ticket: Pick<Ticket, 'workflowVersionId' | 'workflowState'>) => WorkflowTransition[]
-  /** Only the assignee and the reporter may change a ticket's state. */
-  canAct: (ticket: Pick<Ticket, 'assignee' | 'creator'>, me: string) => boolean
+  /** Whether `me` may run this action on the ticket (assignee, reporter, manager or approver rules). */
+  mayRun: (ticket: Pick<Ticket, 'assignee' | 'creator' | 'type'>, actionId: string, me: string) => boolean
 }
 
 const WorkflowContext = createContext<WorkflowValue | null>(null)
@@ -107,7 +108,7 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
 
   const saveTicketType = useCallback<WorkflowValue['saveTicketType']>(async (typeKey, label, description, config) => {
     let savedKey = typeKey ?? ''
-    const flags = configToDatabase(config) as Record<string, boolean>
+    const flags = configToDatabase(config)
     if (typeKey === null) {
       const data = await postTicketTypeAction({ action: 'create', label, description, config: flags })
       const created = parseTicketType((Array.isArray(data) ? data[0] : data) ?? {})
@@ -157,7 +158,8 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
       versionFor,
       stateLabel: (ticket) => stateOf(versionFor(ticket)?.definition, ticket.workflowState)?.label ?? STATUS_LABEL[ticket.status],
       actionsFor: (ticket) => actionsFrom(versionFor(ticket)?.definition, ticket.workflowState),
-      canAct: (ticket, me) => Boolean(me) && (ticket.assignee === me || ticket.creator === me),
+      mayRun: (ticket, actionId, me) =>
+        mayRunAction(ticket, actionId, me, ticketTypes.find((type) => type.key === ticket.type)?.config),
     }
   }, [templates, loading, refresh, ticketTypes, typesAvailable, saveTicketType, deleteTicketType])
 

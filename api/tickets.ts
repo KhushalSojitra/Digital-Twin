@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { getPublicUser, resolveUserRef } from './_lib/config.js'
+import { getPublicUser, listUsers, resolveUserRef } from './_lib/config.js'
 import { roleMayRun, type TicketOperation } from './_lib/policy.js'
 import { fail, route } from './_lib/route.js'
 import { sendJson } from './_lib/http.js'
@@ -60,6 +60,7 @@ export default route(
       inbox_count: 'inbox',
       inbox_tickets: 'inbox',
       related_tickets: 'inbox',
+      resolve_subtasks: 'workflow',
     }
     const operation = typeof input.action === 'string' ? operations[input.action] : undefined
     if (!operation) {
@@ -128,6 +129,15 @@ export default route(
           const commentId = input.commentId === undefined || input.commentId === null ? randomUUID() : text(input.commentId, 120)
           const replyTo = input.replyTo === undefined || input.replyTo === null ? null : text(input.replyTo, 160)
           if (!commentId || !ID.test(commentId) || (input.replyTo != null && !replyTo)) break
+          // Mentions are stored as user ids. The browser sends them; older clients only send text, so fall back
+          // to matching "@Display Name" in the text against the directory.
+          const sentMentions = input.mentions === undefined || input.mentions === null ? null : people(input.mentions)
+          if (input.mentions != null && !sentMentions) break
+          const lower = body.toLowerCase()
+          const mentionIds = (sentMentions ?? listUsers().filter((u) => lower.includes(`@${u.displayName.toLowerCase()}`)).map((u) => u.displayName))
+            .map(resolveUserRef)
+          const subtaskFor = input.subtaskFor === undefined || input.subtaskFor === null ? [] : people(input.subtaskFor)
+          if (!subtaskFor) break
           // Errors (including a missing or mismatched database function) are not swallowed: they reach the
           // catch below and are returned to the browser so the comment form can show them.
           const data = await callAdminRpc('add_ticket_comment_secure', {
@@ -137,6 +147,8 @@ export default route(
             ...identity,
             p_comment_id: commentId,
             p_reply_to: replyTo,
+            p_mentions: [...new Set(mentionIds)],
+            p_subtask_for: subtaskFor.map(resolveUserRef),
           })
           sendJson(ctx.res, 200, { data })
           return
@@ -181,6 +193,15 @@ export default route(
         }
         case 'related_tickets': {
           const data = await callAdminRpc('related_tickets_secure', { ...identity })
+          sendJson(ctx.res, 200, { data })
+          return
+        }
+        // Closing a main ticket: every open sub-task is marked complete or discarded first.
+        case 'resolve_subtasks': {
+          const decisions = object(input.decisions)
+          if (!ticketId || !decisions || Object.keys(decisions).length > 50
+              || !Object.entries(decisions).every(([key, value]) => ID.test(key) && (value === 'complete' || value === 'discard'))) break
+          const data = await callAdminRpc('resolve_open_subtasks_secure', { p_ticket_id: ticketId, p_decisions: decisions, ...identity })
           sendJson(ctx.res, 200, { data })
           return
         }

@@ -41,7 +41,9 @@ function isRelatedTo(ticket: Ticket, me: string): boolean {
 
 export function TicketReadsProvider({ children }: { children: ReactNode }) {
   const { currentUser } = useAuth()
+  // Rows are stored per user id; ticket fields (assignee, comment authors…) hold display names.
   const me = currentUser?.id ?? null
+  const myName = currentUser?.displayName ?? null
   const [seen, setSeen] = useState<{ user: string; at: Record<string, string> } | null>(null)
   const seenRef = useRef(seen)
   seenRef.current = seen
@@ -80,17 +82,17 @@ export function TicketReadsProvider({ children }: { children: ReactNode }) {
   }, [me])
 
   const hasUpdate = useCallback((ticket: Ticket) => {
-    if (!me || !seen || seen.user !== me || !isRelatedTo(ticket, me)) return false
-    const latest = latestOtherEventAt(ticket, me)
+    if (!me || !myName || !seen || seen.user !== me || !isRelatedTo(ticket, myName)) return false
+    const latest = latestOtherEventAt(ticket, myName)
     if (!latest) return false
     const lastSeen = seen.at[ticket.id] ?? seen.at[BASELINE_KEY]
     return Boolean(lastSeen) && latest > lastSeen
-  }, [me, seen])
+  }, [me, myName, seen])
 
   const markSeen = useCallback((ticket: Ticket) => {
     const current = seenRef.current
-    if (!me || !current || current.user !== me) return
-    const latest = latestOtherEventAt(ticket, me)
+    if (!me || !myName || !current || current.user !== me) return
+    const latest = latestOtherEventAt(ticket, myName)
     const previous = current.at[ticket.id] ?? current.at[BASELINE_KEY]
     if (!latest || (previous && latest <= previous)) return
     const now = new Date().toISOString()
@@ -102,7 +104,7 @@ export function TicketReadsProvider({ children }: { children: ReactNode }) {
       .then(({ error }) => {
         if (error) console.error(`Unable to save read state for ${ticket.id}:`, error.message)
       })
-  }, [me])
+  }, [me, myName])
 
   const value = useMemo(() => ({ hasUpdate, markSeen }), [hasUpdate, markSeen])
   return <TicketReadsContext.Provider value={value}>{children}</TicketReadsContext.Provider>

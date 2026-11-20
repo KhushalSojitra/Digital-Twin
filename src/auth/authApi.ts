@@ -1,5 +1,5 @@
 import { clearDbToken } from '../dbToken'
-import type { User } from './users'
+import { setDirectory, type User } from './users'
 
 export interface Session {
   user: User
@@ -10,6 +10,7 @@ export interface SessionState {
   csrfToken: string
   sessions: Session[]
   activeUserId: string | null
+  directory?: User[]
 }
 
 export type AuthResult = { ok: true; state: SessionState } | { ok: false; error: string; status: number }
@@ -22,6 +23,7 @@ async function parse(response: Response): Promise<{ state?: SessionState; error?
   try {
     const data = (await response.json()) as Partial<SessionState> & { error?: string; code?: string }
     if (response.ok && Array.isArray(data.sessions) && typeof data.csrfToken === 'string') {
+      if (Array.isArray(data.directory) && data.directory.length > 0) setDirectory(data.directory)
       return { state: data as SessionState }
     }
     return { error: data.error, code: data.code }

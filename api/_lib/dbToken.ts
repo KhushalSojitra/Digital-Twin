@@ -5,7 +5,7 @@ export const DB_TOKEN_TTL_SECONDS = 600
 export interface DbTokenIdentity {
   id: string
   role: string
-  /** Must match the existing user_name value used by user_preferences and ticket_reads. */
+  /** Stored in user_preferences.user_name and ticket_reads.user_name: the user id. */
   userName: string
 }
 

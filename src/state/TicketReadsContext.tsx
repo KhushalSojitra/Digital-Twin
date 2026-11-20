@@ -29,7 +29,7 @@ function isRelatedTo(ticket: Ticket, me: string): boolean {
 
 export function TicketReadsProvider({ children }: { children: ReactNode }) {
   const { currentUser } = useAuth()
-  const me = currentUser?.displayName ?? null
+  const me = currentUser?.id ?? null
   const [seen, setSeen] = useState<{ user: string; at: Record<string, string> } | null>(null)
   const seenRef = useRef(seen)
   seenRef.current = seen

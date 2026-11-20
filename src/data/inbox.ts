@@ -1,4 +1,5 @@
 import { postInboxAction } from '../auth/authApi'
+import { userName } from '../auth/users'
 
 export type InboxItemType = 'mention' | 'reply' | 'assignment'
 
@@ -72,7 +73,7 @@ function parseItem(row: Record<string, unknown>): InboxItem | null {
   if (!ticketId) return null
   return {
     id: str(row.id),
-    fromUser: str(row.from_user),
+    fromUser: userName(str(row.from_user)),
     ticketId,
     ticketTitle: str(row.ticket_title),
     type,

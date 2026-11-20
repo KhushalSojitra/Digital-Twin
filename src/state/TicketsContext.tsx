@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState, useEffect, u
 import { supabase } from '../supabaseClient'
 import { getDbToken, getDbTokenFailure } from '../dbToken'
 import { useAuth } from '../auth/AuthContext'
+import { userName } from '../auth/users'
 import { postTicketAction, postTicketTypeAction, type TicketAction } from '../auth/authApi'
 import { requestInboxRefresh } from '../data/inbox'
 import { ALL_DEVICES } from '../data/cameras'
@@ -131,7 +132,7 @@ function snapshotFromDatabase(value: unknown): Snapshot | undefined {
   return {
     src: snapshot.src,
     at: snapshot.at,
-    by: snapshot.by,
+    by: userName(snapshot.by),
     yaw: numberValue(snapshot.yaw, 0),
     pitch: numberValue(snapshot.pitch, 0),
     ...(typeof snapshot.cameraId === 'string' ? { cameraId: snapshot.cameraId } : {}),
@@ -265,7 +266,7 @@ function ticketFromDatabase(value: unknown): Ticket {
           ...(typeof comment.id === 'string' && comment.id ? { id: comment.id } : {}),
           ...(typeof comment.reply_to === 'string' && comment.reply_to ? { replyTo: comment.reply_to } : {}),
           at: stringValue(comment.at, createdAt),
-          by: stringValue(comment.by, 'System'),
+          by: userName(stringValue(comment.by, 'System')),
           text: typeof comment.text === 'string' ? comment.text : '',
           ...(attachmentsFromDatabase(comment.attachments) ? { attachments: attachmentsFromDatabase(comment.attachments) } : {}),
         }
@@ -278,7 +279,7 @@ function ticketFromDatabase(value: unknown): Ticket {
         const state = validStates.find((candidate) => candidate === event.state)
         return {
           at: stringValue(event.at, createdAt),
-          by: stringValue(event.by, 'System'),
+          by: userName(stringValue(event.by, 'System')),
           text: stringValue(event.text, ''),
           ...(state ? { state } : {}),
           ...(state && typeof event.label === 'string' && event.label ? { label: event.label } : {}),
@@ -316,15 +317,15 @@ function ticketFromDatabase(value: unknown): Ticket {
     cameraName,
     siteId,
     zone: stringValue(row.zone, stringValue(metadata.zone, 'Perimeter')),
-    assignee: stringValue(row.assignee, ''),
-    creator: stringValue(row.reporter, 'System'),
+    assignee: userName(stringValue(row.assignee, '')),
+    creator: userName(stringValue(row.reporter, 'System')),
     workflowVersionId: typeof row.workflow_version_id === 'string' ? row.workflow_version_id : undefined,
     workflowState: typeof row.workflow_state === 'string' ? row.workflow_state : undefined,
     platform,
     platformName: typeof row.platform_name === 'string'
       ? row.platform_name
       : typeof metadata.platformName === 'string' ? metadata.platformName : undefined,
-    followers: Array.isArray(row.followers) ? stringArray(row.followers) : stringArray(metadata.followers),
+    followers: (Array.isArray(row.followers) ? stringArray(row.followers) : stringArray(metadata.followers)).map(userName),
     comments,
     createdAt,
     updatedAt: createdAt,
@@ -333,7 +334,7 @@ function ticketFromDatabase(value: unknown): Ticket {
       : typeof metadata.completedAt === 'string' ? metadata.completedAt : undefined,
     completion: completion
       ? {
-          by: stringValue(completion.by, 'System'),
+          by: userName(stringValue(completion.by, 'System')),
           at: stringValue(completion.at, createdAt),
           notes: stringValue(completion.notes, ''),
         }

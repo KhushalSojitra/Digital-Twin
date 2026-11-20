@@ -1,4 +1,4 @@
-import { getPublicUser, getSessionSecret, getSessionTtlMs, type PublicUser } from './config.js'
+import { getPublicUser, getSessionSecret, getSessionTtlMs, listUsers, loadUsers, type PublicUser } from './config.js'
 import {
   BodyError,
   firstHeader,
@@ -38,6 +38,8 @@ export interface SessionView {
   csrfToken: string
   sessions: { user: PublicUser; signedInAt: string }[]
   activeUserId: string | null
+  /** Active user directory, for name display, pickers and @mentions. Sent only to signed-in browsers. */
+  directory: PublicUser[]
 }
 
 type Handler = (ctx: RouteContext) => Promise<void>
@@ -70,7 +72,7 @@ export function respondWithSession(ctx: RouteContext, nextState: SessionPayload,
     const user = getPublicUser(entry.u)
     return user ? [{ user, signedInAt: new Date(entry.iat).toISOString() }] : []
   })
-  const view: SessionView = { csrfToken: ctx.csrfToken, sessions, activeUserId: state.a }
+  const view: SessionView = { csrfToken: ctx.csrfToken, sessions, activeUserId: state.a, directory: sessions.length > 0 ? listUsers() : [] }
   sendJson(ctx.res, status, view)
 }
 
@@ -92,6 +94,14 @@ export function route(method: 'GET' | 'POST', handler: Handler, options: { maxBo
     }
 
     try {
+      // Users live in the database: load the directory before the session is checked against it.
+      try {
+        await loadUsers()
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : 'User directory unavailable')
+        fail(res, 503, 'users_unavailable', 'User accounts could not be loaded. Please try again.')
+        return
+      }
       const now = Date.now()
       const settings = getCookieSettings(req)
       const cookies = parseCookies(req.headers.cookie)

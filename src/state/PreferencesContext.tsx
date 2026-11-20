@@ -27,7 +27,7 @@ const PreferencesContext = createContext<PreferencesValue | null>(null)
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const { currentUser } = useAuth()
-  const me = currentUser?.displayName ?? null
+  const me = currentUser?.id ?? null
   const [state, setState] = useState<{ user: string; values: PreferenceValues } | null>(null)
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const pending = useRef<Record<string, PendingSave>>({})

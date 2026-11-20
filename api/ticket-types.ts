@@ -1,4 +1,4 @@
-import { getPublicUser } from './_lib/config.js'
+import { getPublicUser, resolveUserRef } from './_lib/config.js'
 import { roleMayRun } from './_lib/policy.js'
 import { fail, route } from './_lib/route.js'
 import { sendJson } from './_lib/http.js'
@@ -54,7 +54,7 @@ export default route('POST', async (ctx) => {
     return
   }
 
-  const identity = { p_actor: actor.displayName, p_role: actor.role }
+  const identity = { p_actor: actor.id, p_role: actor.role }
 
   try {
     switch (input.action) {
@@ -128,7 +128,7 @@ export default route('POST', async (ctx) => {
         const note = input.note === undefined || input.note === null ? null : text(input.note, 2000)
         if (!ticketId || !actionId || !ACTION_ID.test(actionId) || (input.assignee != null && assignee === null) || (input.note != null && note === null)) break
         // No fallback to the legacy function: it must never run without the hardened participant checks.
-        const data = await callAdminRpc('apply_workflow_action_secure', { p_ticket_id: ticketId, p_action_id: actionId, p_new_assignee: assignee, p_note: note, ...identity })
+        const data = await callAdminRpc('apply_workflow_action_secure', { p_ticket_id: ticketId, p_action_id: actionId, p_new_assignee: assignee === null ? null : resolveUserRef(assignee), p_note: note, ...identity })
         sendJson(ctx.res, 200, { data })
         return
       }

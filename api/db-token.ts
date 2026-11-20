@@ -20,7 +20,7 @@ export default route('GET', async (ctx) => {
     return
   }
   const { token, expiresAt } = mintDbToken(
-    { id: actor.id, role: actor.role, userName: actor.displayName },
+    { id: actor.id, role: actor.role, userName: actor.id },
     secret,
     ctx.now,
   )

@@ -1,14 +1,12 @@
-import { findAccountByUsername, getAccountPassword, getSessionTtlMs } from './_lib/config.js'
+import { getSessionTtlMs, verifyPassword } from './_lib/config.js'
 import { getClientIp } from './_lib/http.js'
 import { fail, respondWithSession, route } from './_lib/route.js'
-import { safeEqualStrings } from './_lib/tokens.js'
 
 const MAX_USERNAME_LENGTH = 64
 const MAX_PASSWORD_LENGTH = 256
 const MAX_FAILURES = 5
 const FAILURE_WINDOW_MS = 15 * 60 * 1000
 const MAX_TRACKED_KEYS = 1000
-const DUMMY_PASSWORD = 'not-a-real-password'
 
 // Best-effort throttle: state lives in one function instance, so it slows guessing but is not a global limit.
 const failures = new Map<string, { count: number; windowStart: number }>()
@@ -50,13 +48,10 @@ export default route('POST', async (ctx) => {
     return
   }
 
-  const account = findAccountByUsername(username)
-  const expected = account ? getAccountPassword(account) : null
-  // Always compare so a missing account or unset password takes the same path as a wrong password.
-  const passwordMatches = safeEqualStrings(input.password, expected ?? DUMMY_PASSWORD)
+  // The database compares the bcrypt hash; unknown users and wrong passwords take the same path.
+  const account = await verifyPassword(username, input.password)
 
-  if (!account || !expected || !passwordMatches) {
-    if (account && !expected) console.error(`Login unavailable: password env var for "${account.username}" is not set.`)
+  if (!account) {
     pruneFailures(now)
     const fresh = record && now - record.windowStart < FAILURE_WINDOW_MS ? record : { count: 0, windowStart: now }
     failures.set(throttleKey, { count: fresh.count + 1, windowStart: fresh.windowStart })

@@ -1,3 +1,5 @@
+import { callAdminRpc, readAdminConfig } from './supabaseAdmin.js'
+
 export type Role = 'Administrator' | 'Operator' | 'Viewer'
 
 export interface PublicUser {
@@ -7,64 +9,102 @@ export interface PublicUser {
   role: Role
   email: string
   avatarColor: string
+  team: string | null
+  /** Id of this user's manager; null for the top of the hierarchy. */
+  reportsTo: string | null
 }
 
-interface Account extends PublicUser {
-  passwordEnv: string
+interface UserRow {
+  id: string
+  username: string
+  display_name: string
+  role: Role
+  team: string | null
+  reports_to: string | null
+  email: string | null
+  avatar_color: string | null
 }
 
-// Profile data is not secret. Passwords are only ever read from environment variables.
-const ACCOUNTS: readonly Account[] = [
-  {
-    id: 'u-admin',
-    username: 'admin',
-    displayName: 'Ava Sharma',
-    role: 'Administrator',
-    email: 'ava.sharma@oomnieye.io',
-    avatarColor: '#0A84FF',
-    passwordEnv: 'AUTH_ADMIN_PASSWORD',
-  },
-  {
-    id: 'u-operator',
-    username: 'operator',
-    displayName: 'Michael Reed',
-    role: 'Operator',
-    email: 'michael.reed@oomnieye.io',
-    avatarColor: '#30D158',
-    passwordEnv: 'AUTH_OPERATOR_PASSWORD',
-  },
-  {
-    id: 'u-viewer',
-    username: 'viewer',
-    displayName: 'Sarah Wilson',
-    role: 'Viewer',
-    email: 'sarah.wilson@oomnieye.io',
-    avatarColor: '#FF9F0A',
-    passwordEnv: 'AUTH_VIEWER_PASSWORD',
-  },
-]
+const USERS_TTL_MS = 30_000
+const REQUEST_TIMEOUT_MS = 15_000
 
-function toPublic({ passwordEnv: _passwordEnv, ...user }: Account): PublicUser {
-  return user
+let cache: { at: number; users: PublicUser[] } | null = null
+
+function toPublic(row: UserRow): PublicUser {
+  return {
+    id: row.id,
+    username: row.username,
+    displayName: row.display_name,
+    role: row.role,
+    email: row.email ?? '',
+    avatarColor: row.avatar_color ?? '#0A84FF',
+    team: row.team,
+    reportsTo: row.reports_to,
+  }
 }
 
-export function findAccountByUsername(username: string): Account | undefined {
-  const needle = username.trim().toLowerCase()
-  return ACCOUNTS.find((a) => a.username === needle)
+/**
+ * Loads the active user directory from public.app_users (service role; the password hash is never selected).
+ * Cached briefly per function instance. Throws when the database cannot be reached and nothing is cached.
+ */
+export async function loadUsers(force = false): Promise<PublicUser[]> {
+  const now = Date.now()
+  if (!force && cache && now - cache.at < USERS_TTL_MS) return cache.users
+  const config = readAdminConfig()
+  if (!config.ok) {
+    if (cache) return cache.users
+    throw new Error(`User directory unavailable: ${config.problem}`)
+  }
+  const endpoint = new URL('/rest/v1/app_users', config.url)
+  endpoint.searchParams.set('select', 'id,username,display_name,role,team,reports_to,email,avatar_color')
+  endpoint.searchParams.set('active', 'eq.true')
+  endpoint.searchParams.set('order', 'created_at.asc')
+  try {
+    const response = await fetch(endpoint, {
+      redirect: 'error',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      headers: { Accept: 'application/json', apikey: config.key, Authorization: `Bearer ${config.key}` },
+    })
+    if (!response.ok) throw new Error(`status ${response.status}`)
+    const rows = (await response.json()) as UserRow[]
+    cache = { at: now, users: rows.map(toPublic) }
+    return cache.users
+  } catch (error) {
+    if (cache) return cache.users
+    throw new Error(`User directory unavailable: ${error instanceof Error ? error.message : 'unknown error'}`)
+  }
 }
 
+/** Synchronous lookup against the directory loaded for this request (see route()). */
 export function getPublicUser(id: string): PublicUser | null {
-  const account = ACCOUNTS.find((a) => a.id === id)
-  return account ? toPublic(account) : null
+  return cache?.users.find((u) => u.id === id) ?? null
 }
 
-export function toPublicUser(account: Account): PublicUser {
-  return toPublic(account)
+export function listUsers(): PublicUser[] {
+  return cache?.users ?? []
 }
 
-export function getAccountPassword(account: Account): string | null {
-  const value = process.env[account.passwordEnv]
-  return value ? value : null
+/**
+ * Turns whatever the browser sent for a person (id, display name or username) into the stored user id.
+ * 'Unassigned' stays as is; anything unknown is returned unchanged so the database can reject it.
+ */
+export function resolveUserRef(value: string): string {
+  const needle = value.trim()
+  if (!needle || needle.toLowerCase() === 'unassigned') return needle
+  const lower = needle.toLowerCase()
+  const user = listUsers().find((u) => u.id === needle || u.displayName.toLowerCase() === lower || u.username === lower)
+  return user ? user.id : needle
+}
+
+/** Checks a password in the database (bcrypt via pgcrypto). Returns the user, or null for any failure. */
+export async function verifyPassword(username: string, password: string): Promise<PublicUser | null> {
+  try {
+    const rows = (await callAdminRpc('verify_app_user_password', { p_username: username, p_password: password })) as UserRow[] | null
+    return Array.isArray(rows) && rows.length === 1 ? toPublic(rows[0]) : null
+  } catch (error) {
+    console.error('Password check failed:', error instanceof Error ? error.message : 'unknown error')
+    return null
+  }
 }
 
 const MIN_SECRET_LENGTH = 32

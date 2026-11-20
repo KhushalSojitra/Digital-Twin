@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { getPublicUser } from './_lib/config.js'
+import { getPublicUser, resolveUserRef } from './_lib/config.js'
 import { roleMayRun, type TicketOperation } from './_lib/policy.js'
 import { fail, route } from './_lib/route.js'
 import { sendJson } from './_lib/http.js'
@@ -47,7 +47,8 @@ export default route(
       return
     }
 
-    const identity = { p_actor: actor.displayName, p_role: actor.role }
+    // The database stores user ids: the actor is the id from the signed session.
+    const identity = { p_actor: actor.id, p_role: actor.role }
     const operations: Record<string, TicketOperation> = {
       create: 'create',
       details: 'details',
@@ -85,8 +86,14 @@ export default route(
           const coordinates = ticket ? object(ticket.ptz_coordinates) : null
           if (!ticket || !typeKey || !title?.trim() || description === null || !priority || !PRIORITIES.includes(priority)
               || assignee === null || cameraName === null || !id || !ID.test(id) || !coordinates) break
+          // People arrive as names from the browser; the database stores ids.
+          const metadata = object(coordinates.metadata)
+          const followerRefs = metadata ? people(metadata.followers ?? []) : []
+          const ptz = metadata && followerRefs
+            ? { ...coordinates, metadata: { ...metadata, followers: followerRefs.map(resolveUserRef) } }
+            : coordinates
           const data = await callAdminRpc('create_ticket_secure', {
-            p_ticket: { id, title, description, priority, assignee, camera_name: cameraName, ptz_coordinates: coordinates },
+            p_ticket: { id, title, description, priority, assignee: resolveUserRef(assignee), camera_name: cameraName, ptz_coordinates: ptz },
             p_type_key: typeKey,
             ...identity,
           })
@@ -141,7 +148,7 @@ export default route(
           const data = await callAdminRpc('update_ticket_followers_secure', {
             p_ticket_id: ticketId,
             p_op: op,
-            p_people: list,
+            p_people: list.map(resolveUserRef),
             ...identity,
           })
           sendJson(ctx.res, 200, { data })

@@ -1,4 +1,5 @@
 import { ALL_DEVICES, SITES, getSite, siteCenter, type CameraDevice } from './cameras'
+import { PEOPLE_NAMES } from '../auth/users'
 
 /** Where a ticket was raised. One unified ticket model; the source is the creation context. */
 export type TicketSource = 'EARTH' | 'CAMERA_360' | 'CAMERA_PTZ' | 'CAMERA_CCTV'
@@ -419,7 +420,8 @@ export const ZONES = [
   'Entrance',
 ]
 
-const PEOPLE = ['Ava Sharma', 'Michael Reed', 'Sarah Wilson']
+/** Live list of user display names from the database (see auth/users.ts). */
+const PEOPLE = PEOPLE_NAMES
 export const ASSIGNEES = PEOPLE
 
 /** Same value the database stores when a ticket has no owner. */

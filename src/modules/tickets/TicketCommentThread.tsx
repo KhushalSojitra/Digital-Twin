@@ -1,20 +1,15 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Avatar, Badge, Box, ButtonBase, Chip, IconButton, Stack, TextField, Tooltip, Typography } from '@mui/material'
-import SendRoundedIcon from '@mui/icons-material/SendRounded'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Avatar, Box, ButtonBase, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material'
 import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded'
 import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded'
 import ReplyRoundedIcon from '@mui/icons-material/ReplyRounded'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import type { CommentAttachment, Ticket, TicketComment } from '../../data/tickets'
 import { formatDateTime, initials } from '../../utils/format'
-import { useTickets } from '../../state/TicketsContext'
-import { loadStoredAttachment, resolveAttachmentUrl, uploadAttachments, useAttachments, type Attachment } from './attachments'
-import AttachmentPopover from './AttachmentPopover'
+import { loadStoredAttachment, resolveAttachmentUrl, type Attachment } from './attachments'
+import type { ReplyTarget } from './TicketActionBar'
 import DocumentPreview from './DocumentPreview'
-import MentionField from './MentionField'
 import ClampedComment from './ClampedComment'
-import { enterToSubmit } from './enterToSubmit'
-import { useMockVoiceInput, VoiceMicButton, VoiceStatus } from './VoiceInput'
 
 /** Entries written before comment threading have no id, so their position stands in as a stable key. */
 function commentKey(comment: TicketComment, index: number): string {
@@ -91,20 +86,16 @@ function QuoteStrip({
 }
 
 /** WhatsApp-style comment thread: the current user on the right, everyone else on the left. */
-export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me: string }) {
-  const { addComment } = useTickets()
-  const [text, setText] = useState('')
-  const [sending, setSending] = useState(false)
+/**
+ * The comment list. Writing happens in the ticket's comment bar (TicketActionBar), which is shown on every tab;
+ * Reply here hands the chosen comment to that bar.
+ */
+export default function TicketCommentThread({ ticket, me, onReply }: { ticket: Ticket; me: string; onReply?: (target: ReplyTarget) => void }) {
   const [sendError, setSendError] = useState('')
-  const [attachAnchor, setAttachAnchor] = useState<HTMLElement | null>(null)
   const [previewing, setPreviewing] = useState<Attachment | null>(null)
-  const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [highlighted, setHighlighted] = useState<string | null>(null)
-  const attachments = useAttachments()
   const listRef = useRef<HTMLDivElement>(null)
-  const formRef = useRef<HTMLFormElement>(null)
   const highlightTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const voice = useMockVoiceInput(text, setText, { disabled: sending })
 
   const byKey = useMemo(() => {
     const map = new Map<string, TicketComment>()
@@ -119,12 +110,9 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
 
   useEffect(() => () => clearTimeout(highlightTimer.current), [])
 
-  const canSend = (text.trim() !== '' || attachments.items.length > 0) && !sending
-  const replyTarget = replyingTo ? byKey.get(replyingTo) : undefined
-
   const startReply = (key: string) => {
-    setReplyingTo(key)
-    formRef.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Write a comment"]')?.focus()
+    const target = byKey.get(key)
+    if (target) onReply?.({ key, author: target.by, text: target.text })
   }
 
   const jumpTo = (key: string) => {
@@ -134,28 +122,6 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
     setHighlighted(key)
     clearTimeout(highlightTimer.current)
     highlightTimer.current = setTimeout(() => setHighlighted(null), 1600)
-  }
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!canSend) return
-    setSending(true)
-    setSendError('')
-    try {
-      const uploaded = attachments.items.length ? await uploadAttachments(ticket.id, attachments.items) : undefined
-      await addComment(ticket.id, text.trim(), me, uploaded, {
-        id: crypto.randomUUID(),
-        ...(replyingTo ? { replyTo: replyingTo } : {}),
-      })
-      voice.cancel()
-      setText('')
-      setReplyingTo(null)
-      attachments.items.forEach((item) => attachments.remove(item.id))
-    } catch (error) {
-      setSendError(error instanceof Error ? error.message : 'The comment could not be saved.')
-    } finally {
-      setSending(false)
-    }
   }
 
   const openStored = async (file: CommentAttachment) => {
@@ -337,65 +303,12 @@ export default function TicketCommentThread({ ticket, me }: { ticket: Ticket; me
         )}
       </Box>
 
-      <VoiceStatus phase={voice.phase} sx={{ mt: 1 }} />
-      {replyingTo && (
-        <Box sx={{ mt: 1 }}>
-          <QuoteStrip
-            author={replyTarget ? (replyTarget.by === me ? 'You' : replyTarget.by) : 'Original message'}
-            text={replyTarget?.text ?? ''}
-            onCancel={() => setReplyingTo(null)}
-          />
-        </Box>
-      )}
-      <Stack
-        ref={formRef}
-        component="form"
-        onSubmit={submit}
-        direction="row"
-        spacing={1}
-        sx={{ alignItems: 'flex-end', pt: 1.25, mt: 1.25, borderTop: '1px solid var(--border-light)' }}
-      >
-        <Avatar sx={{ width: 32, height: 32, fontSize: 11, fontWeight: 700, bgcolor: 'var(--primary)', mb: 0.5 }}>{initials(me)}</Avatar>
-        <MentionField value={text} onValueChange={setText} disabled={sending} sx={{ flex: 1, minWidth: 0 }}>
-          {({ inputAria, ...field }) => (
-            <TextField
-              {...field}
-              onKeyDown={enterToSubmit(field.onKeyDown)}
-              size="small"
-              fullWidth
-              multiline
-              minRows={2}
-              maxRows={5}
-              placeholder="Write a comment... use @ to mention"
-              slotProps={{
-                htmlInput: { 'aria-label': 'Write a comment', maxLength: 2000, readOnly: voice.phase === 'typing', ...inputAria },
-              }}
-            />
-          )}
-        </MentionField>
-        <VoiceMicButton voice={voice} disabled={sending} />
-        <Tooltip title="Attach files">
-          <IconButton
-            onClick={(e) => setAttachAnchor(e.currentTarget)}
-            aria-label={attachments.items.length > 0 ? `Attachments (${attachments.items.length})` : 'Attach files'}
-            sx={{ color: 'var(--text-secondary)' }}
-          >
-            <Badge badgeContent={attachments.items.length} color="error" overlap="circular">
-              <AttachFileRoundedIcon sx={{ transform: 'rotate(45deg)' }} />
-            </Badge>
-          </IconButton>
-        </Tooltip>
-        <IconButton type="submit" disabled={!canSend} aria-label="Post comment" color="primary" sx={{ borderRadius: '10px' }}>
-          <SendRoundedIcon fontSize="small" />
-        </IconButton>
-      </Stack>
       {sendError && (
         <Typography role="alert" color="error" variant="caption" sx={{ mt: 0.5 }}>
           {sendError}
         </Typography>
       )}
 
-      <AttachmentPopover anchorEl={attachAnchor} onClose={() => setAttachAnchor(null)} attachments={attachments} onPreview={setPreviewing} />
       <DocumentPreview attachment={previewing} onClose={() => setPreviewing(null)} />
     </Box>
   )

@@ -22,7 +22,9 @@ import { useTicketQuery } from '../../state/TicketQueryContext'
 export default function EarthModule() {
   const theme = useTheme()
   const { selection, select } = useCameraSelection()
-  const { tickets } = useTickets()
+  const { tickets: allTickets } = useTickets()
+  // Sub-tasks have no location: they never appear on the map.
+  const tickets = useMemo(() => allTickets.filter((t) => !t.parentTicketId), [allTickets])
   const { currentUser } = useAuth()
   const me = currentUser?.displayName ?? 'Ava Sharma'
   const canEdit = currentUser?.role !== 'Viewer'
@@ -75,7 +77,8 @@ export default function EarthModule() {
     return () => window.removeEventListener('keydown', onKey)
   }, [pickMode])
 
-  const selectedTicket = tickets.find((t) => t.id === selectedTicketId) ?? null
+  // Sub-tasks are not on the map but open from Ticket Management (Assigned to Me, Inbox).
+  const selectedTicket = allTickets.find((t) => t.id === selectedTicketId) ?? null
 
   const openSite = useCallback(
     (next: CameraSite) => {

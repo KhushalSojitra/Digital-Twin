@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Dialog, useMediaQuery, useTheme } from '@mui/material'
 import { dialogPaperSx } from '../../theme/hud'
-import { ASSIGNEES, TICKETING_SYSTEM, type Ticket, type TicketPriority } from '../../data/tickets'
+import { TICKETING_SYSTEM, UNASSIGNED, type Ticket, type TicketPriority } from '../../data/tickets'
 import { formatDateTime } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
 import { DEFAULT_TICKET_TYPE_KEY } from '../../data/ticketTypes'
@@ -45,7 +45,7 @@ function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: O
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<TicketPriority>('medium')
-  const [assignee, setAssignee] = useState(ASSIGNEES.includes(creator) ? creator : ASSIGNEES[0])
+  const [assignee, setAssignee] = useState(UNASSIGNED)
   const [touched, setTouched] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')

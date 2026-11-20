@@ -1,9 +1,10 @@
 import { Component, useState, type FormEvent, type ReactNode } from 'react'
+import { useTickets } from '../../state/TicketsContext'
 import { Dialog, DialogContent, DialogTitle, IconButton, Typography, useMediaQuery, useTheme } from '@mui/material'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import { dialogPaperSx } from '../../theme/hud'
 import {
-  ASSIGNEES,
+  UNASSIGNED,
   TICKETING_SYSTEM,
   siteName,
   snapshotFromProof,
@@ -53,9 +54,19 @@ export default function TicketEditorDialog({ open, mode, ticket, draft, initialT
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
   const canEdit = currentUser?.role !== 'Viewer' && mode !== 'view'
-  const canChangeState = Boolean(ticket && (ticket.assignee === me || currentUser?.role !== 'Viewer'))
+  // Each action is checked against the hierarchy rules (permissions.ts / database), so everyone gets the actions they may run.
+  const canChangeState = Boolean(ticket)
   const creating = mode === 'create' && Boolean(draft)
-  useMarkTicketSeen(ticket, open && !creating)
+  const { tickets } = useTickets()
+  // Main ticket ↔ sub-task navigation inside the same dialog.
+  const [navId, setNavId] = useState<string | null>(null)
+  const [navFrom, setNavFrom] = useState(ticket?.id)
+  if (navFrom !== ticket?.id) {
+    setNavFrom(ticket?.id)
+    setNavId(null)
+  }
+  const shown = (navId && tickets.find((t) => t.id === navId)) || ticket
+  useMarkTicketSeen(shown, open && !creating)
 
   return (
     <Dialog
@@ -67,13 +78,13 @@ export default function TicketEditorDialog({ open, mode, ticket, draft, initialT
       sx={{ zIndex: (t) => t.zIndex.modal + 4 }}
       slotProps={{ paper: { sx: { ...dialogPaperSx, height: { xs: '100%', sm: 'min(698px, 92dvh)' } } } }}
     >
-      <DialogGuard key={ticket?.id ?? (creating ? 'create' : 'empty')} onClose={onClose}>
+      <DialogGuard key={shown?.id ?? (creating ? 'create' : 'empty')} onClose={onClose}>
         {creating && draft && onCreate ? (
           <CreateForm draft={draft} creator={me} onClose={onClose} onCreate={onCreate} />
-        ) : ticket ? (
+        ) : shown ? (
           <Existing
-            key={`${ticket.id}:${initialTab}`}
-            ticket={ticket}
+            key={`${shown.id}:${initialTab}`}
+            ticket={shown}
             me={me}
             canEdit={canEdit}
             canChangeState={canChangeState}
@@ -81,6 +92,7 @@ export default function TicketEditorDialog({ open, mode, ticket, draft, initialT
             initialTab={initialTab}
             onClose={onClose}
             onOpenCamera={onOpenCamera}
+            onOpenTicket={(id) => setNavId(id === ticket?.id ? null : id)}
           />
         ) : (
           <>
@@ -149,7 +161,7 @@ function CreateForm({
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<TicketPriority>('medium')
-  const [assignee, setAssignee] = useState(ASSIGNEES.includes(creator) ? creator : ASSIGNEES[0])
+  const [assignee, setAssignee] = useState(UNASSIGNED)
   const [touched, setTouched] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createError, setCreateError] = useState('')
@@ -254,6 +266,7 @@ function Existing({
   initialTab,
   onClose,
   onOpenCamera,
+  onOpenTicket,
 }: {
   ticket: Ticket
   me: string
@@ -263,6 +276,7 @@ function Existing({
   initialTab: 'details' | 'activity'
   onClose: () => void
   onOpenCamera?: (ticket: Ticket) => void
+  onOpenTicket?: (id: string) => void
 }) {
   return (
     <TicketDetailView
@@ -274,6 +288,7 @@ function Existing({
       initialTab={initialTab === 'activity' ? 'activity' : 'snapshot'}
       onClose={onClose}
       onOpenCamera={onOpenCamera}
+      onOpenTicket={onOpenTicket}
     />
   )
 }

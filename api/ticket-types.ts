@@ -1,4 +1,4 @@
-import { getPublicUser, resolveUserRef } from './_lib/config.js'
+import { getPublicUser, listUsers, resolveUserRef } from './_lib/config.js'
 import { roleMayRun } from './_lib/policy.js'
 import { fail, route } from './_lib/route.js'
 import { sendJson } from './_lib/http.js'
@@ -131,8 +131,31 @@ export default route('POST', async (ctx) => {
         const assignee = input.assignee === undefined || input.assignee === null ? null : text(input.assignee, 120)
         const note = input.note === undefined || input.note === null ? null : text(input.note, 2000)
         if (!ticketId || !actionId || !ACTION_ID.test(actionId) || (input.assignee != null && assignee === null) || (input.note != null && note === null)) break
+        const newAssignee = assignee === null ? null : resolveUserRef(assignee)
+        // Optional comment posted together with the action, in one database call (both or neither).
+        const comment = input.comment === undefined || input.comment === null ? null : input.comment as Record<string, unknown>
+        if (comment !== null) {
+          const body = text(comment.text, 5000)
+          const attachments = comment.attachments === undefined || comment.attachments === null ? [] : comment.attachments
+          const commentId = text(comment.commentId, 120)
+          const replyTo = comment.replyTo === undefined || comment.replyTo === null ? null : text(comment.replyTo, 160)
+          const mentions = Array.isArray(comment.mentions) && comment.mentions.length <= 50
+            && comment.mentions.every((m) => typeof m === 'string' && m.length <= 120) ? comment.mentions as string[] : null
+          if (typeof comment !== 'object' || body === null || !Array.isArray(attachments) || attachments.length > 20 || !commentId
+              || !/^[A-Za-z0-9_-]{1,120}$/.test(commentId) || (comment.replyTo != null && !replyTo)) break
+          const lower = body.toLowerCase()
+          const mentionIds = (mentions ?? listUsers().filter((u) => lower.includes(`@${u.displayName.toLowerCase()}`)).map((u) => u.displayName))
+            .map(resolveUserRef)
+          const data = await callAdminRpc('comment_and_act_secure', {
+            p_ticket_id: ticketId, p_action_id: actionId, p_new_assignee: newAssignee, p_note: note, ...identity,
+            p_comment_text: body, p_attachments: attachments, p_comment_id: commentId, p_reply_to: replyTo,
+            p_mentions: [...new Set(mentionIds)],
+          })
+          sendJson(ctx.res, 200, { data })
+          return
+        }
         // No fallback to the legacy function: it must never run without the hardened participant checks.
-        const data = await callAdminRpc('apply_workflow_action_secure', { p_ticket_id: ticketId, p_action_id: actionId, p_new_assignee: assignee === null ? null : resolveUserRef(assignee), p_note: note, ...identity })
+        const data = await callAdminRpc('apply_workflow_action_secure', { p_ticket_id: ticketId, p_action_id: actionId, p_new_assignee: newAssignee, p_note: note, ...identity })
         sendJson(ctx.res, 200, { data })
         return
       }

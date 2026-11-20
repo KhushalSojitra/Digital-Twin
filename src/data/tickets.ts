@@ -56,6 +56,8 @@ export interface CommentAttachment {
 export interface TicketComment {
   /** Absent on entries written before comment threading; they render as standalone bubbles. */
   id?: string
+  /** Display names of the people who got a sub-task from this comment. */
+  subtaskFor?: string[]
   /** Id (or legacy key) of the comment this one replies to. */
   replyTo?: string
   at: string
@@ -123,6 +125,8 @@ export interface TicketCompletion {
 
 export interface Ticket {
   id: string
+  /** Set on sub-tasks: the main ticket they were created from. Sub-tasks have no location. */
+  parentTicketId?: string
   title: string
   description: string
   status: TicketStatus

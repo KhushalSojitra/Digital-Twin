@@ -54,7 +54,8 @@ const glass = (t: Theme) => hudOverlaySurface(t)
 export default function LiveView({ site, selectionKind, focus = null, onClose }: Props) {
   const theme = useTheme()
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
-  const { tickets, addTicket } = useTickets()
+  const { tickets: allTickets, addTicket } = useTickets()
+  const tickets = useMemo(() => allTickets.filter((t) => !t.parentTicketId), [allTickets])
   const { currentUser } = useAuth()
   const { filters, setFilters, isLiveTicketView, toggleLiveTicketView, liveTicketPreview, setLiveTicketPreview, ticketSize, setTicketSize } =
     useTicketQuery()

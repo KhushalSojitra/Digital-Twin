@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useTicketReads } from '../../state/TicketReadsContext'
 import { usePreference } from '../../state/PreferencesContext'
 import { useInbox } from '../../state/InboxContext'
 import { RELATED_LABEL } from '../../data/inbox'
@@ -185,6 +186,8 @@ const popoverZ = (t: { zIndex: { modal: number } }) => t.zIndex.modal + 6
 
 /** Inbox and Related are decided by the database, so they match on ticket id only, without the caller's filters. */
 const isInboxScope = (scope: TicketScope) => scope === 'inbox' || scope === 'related'
+/** Views whose badge counts unread tickets rather than all tickets. */
+const countsUnread = (scope: TicketScope) => scope === 'inbox' || scope === 'assigned_me'
 
 export default function TicketManageDialog({
   open,
@@ -260,15 +263,24 @@ export default function TicketManageDialog({
     )
   }, [tickets, search, filters, me, stateLabel])
 
+  const { hasUpdate } = useTicketReads()
+  const sourceFor = useCallback(
+    (s: TicketScope) =>
+      isInboxScope(s) ? allTickets : s === 'assigned_me' ? queried.concat(allTickets.filter((t) => t.parentTicketId && t.assignee === me)) : queried,
+    [allTickets, queried, me],
+  )
+
   const scopeCounts = useMemo(
     () =>
       Object.fromEntries(
         SCOPES.map((s) => [
           s.id,
-          (isInboxScope(s.id) ? allTickets : queried).filter((t) => matchesScope(t, s.id, me, scopeContext)).length,
+          sourceFor(s.id)
+            .filter((t) => matchesScope(t, s.id, me, scopeContext))
+            .filter((t) => !countsUnread(s.id) || hasUpdate(t)).length,
         ]),
       ) as Record<TicketScope, number>,
-    [queried, allTickets, me, scopeContext],
+    [sourceFor, me, scopeContext, hasUpdate],
   )
 
   const sortValue = (t: Ticket, id: ColumnId): string | number => {
@@ -297,7 +309,7 @@ export default function TicketManageDialog({
   }
 
   const rows = useMemo(() => {
-    const scoped = (isInboxScope(scope) ? allTickets : queried).filter((t) => matchesScope(t, scope, me, scopeContext))
+    const scoped = sourceFor(scope).filter((t) => matchesScope(t, scope, me, scopeContext))
     if (!sort) {
       // The Inbox lists the most recently updated waiting tickets first.
       return scope === 'inbox' ? [...scoped].sort((a, b) => inbox.inboxOrder(a.id) - inbox.inboxOrder(b.id)) : scoped
@@ -311,7 +323,7 @@ export default function TicketManageDialog({
     })
     // sortValue reads workflow labels, which change with the workflow context
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queried, allTickets, scope, me, sort, stateLabel, workflowActionsFor, scopeContext, inbox])
+  }, [sourceFor, scope, me, sort, stateLabel, workflowActionsFor, scopeContext, inbox])
 
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
   const currentPage = Math.min(page, pageCount)
@@ -348,7 +360,7 @@ export default function TicketManageDialog({
             <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
               <ButtonBase
                 onClick={() => onOpen(t)}
-                sx={{ minWidth: 0, textAlign: 'left', fontSize: 13.5, fontWeight: 600, borderRadius: '4px', '&:hover': { color: 'primary.main' } }}
+                sx={{ minWidth: 0, textAlign: 'left', fontSize: 13.5, fontWeight: hasUpdate(t) ? 800 : 500, borderRadius: '4px', '&:hover': { color: 'primary.main' } }}
                 title={t.title}
               >
                 <Typography noWrap sx={{ fontSize: 'inherit', fontWeight: 'inherit', color: 'inherit' }}>
@@ -561,6 +573,7 @@ export default function TicketManageDialog({
               {s.label}
               <Box
                 component="span"
+                aria-label={countsUnread(s.id) ? `${scopeCounts[s.id]} unread` : undefined}
                 sx={{
                   minWidth: 20,
                   px: 0.5,
@@ -569,8 +582,8 @@ export default function TicketManageDialog({
                   fontWeight: 600,
                   lineHeight: '18px',
                   textAlign: 'center',
-                  bgcolor: active ? 'rgba(255,255,255,0.22)' : s.id === 'inbox' && scopeCounts.inbox > 0 ? WAITING_COLOR : 'action.selected',
-                  color: !active && s.id === 'inbox' && scopeCounts.inbox > 0 ? '#1c1c1e' : undefined,
+                  bgcolor: active ? 'rgba(255,255,255,0.22)' : countsUnread(s.id) && scopeCounts[s.id] > 0 ? WAITING_COLOR : 'action.selected',
+                  color: !active && countsUnread(s.id) && scopeCounts[s.id] > 0 ? '#1c1c1e' : undefined,
                 }}
               >
                 {scopeCounts[s.id]}

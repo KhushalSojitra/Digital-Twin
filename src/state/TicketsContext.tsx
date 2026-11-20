@@ -30,12 +30,18 @@ export interface WorkflowActionInput {
   /** Required by actions that pass the work on to someone else. */
   assignee?: string
   note?: string
+  /** Comment saved in the same database call as the action (both or neither). */
+  comment?: { text: string; attachments?: CommentAttachment[]; replyTo?: string; mentions: string[] }
 }
 
 /** Optional threading data stored with a new comment inside tickets.replies. */
 export interface CommentThreadInfo {
   id?: string
   replyTo?: string
+  /** Display names of the people mentioned (stored as ids by the server). */
+  mentions?: string[]
+  /** Mentioned people who get a sub-task (checked in the sub-task popup). */
+  subtaskFor?: string[]
 }
 
 export interface TicketDetailsPatch {
@@ -69,6 +75,8 @@ interface TicketsValue {
   /** Moves a ticket to another ticket type's workflow; the server records the change in its audit trail. */
   changeTicketType: (id: string, typeKey: string, reason: string) => Promise<void>
   attachSnapshot: (id: string, slot: 'before' | 'after', snapshot: Snapshot) => void
+  /** Before closing a main ticket: marks each open sub-task complete or discards it. */
+  resolveSubtasks: (id: string, decisions: Record<string, 'complete' | 'discard'>) => Promise<void>
 }
 
 const TicketsContext = createContext<TicketsValue | null>(null)
@@ -227,7 +235,9 @@ function ticketFromDatabase(value: unknown): Ticket {
   const metadata = typeof ptz.metadata === 'object' && ptz.metadata !== null
     ? ptz.metadata as DatabaseRow
     : {}
-  const storedSource = isTicketSource(metadata.source) ? metadata.source : null
+  const parentTicketId = typeof row.parent_ticket_id === 'string' && row.parent_ticket_id ? row.parent_ticket_id : undefined
+  const storedSource = isTicketSource(metadata.source) ? metadata.source : parentTicketId ? 'EARTH' : null
+  // Sub-tasks have no location: no camera, no map position.
   const isEarth = storedSource === 'EARTH'
   const matchedCamera = matchingCamera(metadata.cameraId ?? row.camera_name)
   const camera = isEarth ? null : (matchedCamera ?? (storedSource ? null : legacyCameraForRow(row.camera_name)))
@@ -267,6 +277,7 @@ function ticketFromDatabase(value: unknown): Ticket {
           ...(typeof comment.reply_to === 'string' && comment.reply_to ? { replyTo: comment.reply_to } : {}),
           at: stringValue(comment.at, createdAt),
           by: userName(stringValue(comment.by, 'System')),
+          ...(Array.isArray(comment.subtask_for) ? { subtaskFor: stringArray(comment.subtask_for).map(userName) } : {}),
           text: typeof comment.text === 'string' ? comment.text : '',
           ...(attachmentsFromDatabase(comment.attachments) ? { attachments: attachmentsFromDatabase(comment.attachments) } : {}),
         }
@@ -307,6 +318,7 @@ function ticketFromDatabase(value: unknown): Ticket {
 
   return {
     id,
+    ...(parentTicketId ? { parentTicketId } : {}),
     title: stringValue(row.title, 'Untitled ticket'),
     description: stringValue(row.description, ''),
     status,
@@ -620,12 +632,16 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         attachments: attachments ?? [],
         commentId: thread?.id ?? crypto.randomUUID(),
         ...(thread?.replyTo ? { replyTo: thread.replyTo } : {}),
+        ...(thread?.mentions ? { mentions: thread.mentions } : {}),
+        ...(thread?.subtaskFor?.length ? { subtaskFor: thread.subtaskFor } : {}),
       }))
+      // New sub-tasks are separate ticket rows: pick them up.
+      if (thread?.subtaskFor?.length) void reloadTickets()
       requestInboxRefresh()
     }).catch((error) => {
       console.error(`Unable to save comment on ticket ${id}:`, error)
       throw error instanceof Error ? error : new Error('The comment could not be saved.')
-    }), [runForTicket, applySaved])
+    }), [runForTicket, applySaved, reloadTickets])
   const performAction = useCallback((id: string, actionId: string, input: WorkflowActionInput): Promise<void> => {
     if (!ticketsRef.current.some((ticket) => ticket.id === id)) return Promise.reject(new Error('Ticket not found'))
     const previousWrite = writeQueues.current.get(id) ?? Promise.resolve()
@@ -637,6 +653,15 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
         actionId,
         assignee: input.assignee ?? null,
         note: input.note ?? null,
+        comment: input.comment
+          ? {
+              text: input.comment.text,
+              attachments: input.comment.attachments ?? [],
+              commentId: crypto.randomUUID(),
+              replyTo: input.comment.replyTo ?? null,
+              mentions: input.comment.mentions,
+            }
+          : null,
       })
       const saved = ticketFromDatabase(Array.isArray(data) ? data[0] : data)
       const next = ticketsRef.current.map((ticket) => ticket.id === id ? saved : ticket)
@@ -674,9 +699,14 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     send(id, { action: 'snapshot', ticketId: id, slot, snapshot })
   }, [send])
 
+  const resolveSubtasks = useCallback(async (id: string, decisions: Record<string, 'complete' | 'discard'>) => {
+    await postTicketAction({ action: 'resolve_subtasks', ticketId: id, decisions })
+    await reloadTickets()
+  }, [reloadTickets])
+
   const value = useMemo(
-    () => ({ tickets, loadStatus, loadError, reloadTickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot }),
-    [tickets, loadStatus, loadError, reloadTickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot],
+    () => ({ resolveSubtasks, tickets, loadStatus, loadError, reloadTickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot }),
+    [resolveSubtasks, tickets, loadStatus, loadError, reloadTickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot],
   )
 
   return <TicketsContext.Provider value={value}>{children}</TicketsContext.Provider>

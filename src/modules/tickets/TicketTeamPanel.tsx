@@ -20,6 +20,7 @@ import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded'
 import PersonAddAlt1RoundedIcon from '@mui/icons-material/PersonAddAlt1Rounded'
 import { ASSIGNEES, UNASSIGNED, isUnassigned, type Ticket } from '../../data/tickets'
 import { initials } from '../../utils/format'
+import { managerName } from '../../auth/users'
 import { useTickets } from '../../state/TicketsContext'
 
 interface Props {
@@ -86,6 +87,11 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
             <Typography variant="body2" color="text.secondary">
               {unassigned ? 'No one is assigned' : ticket.assignee === me ? 'Assigned to you' : 'Assignee'}
             </Typography>
+            {!unassigned && (
+              <Typography variant="body2" color="text.secondary" noWrap>
+                Reports to: {managerName(ticket.assignee) ?? '—'}
+              </Typography>
+            )}
           </Box>
         </Stack>
       </Card>

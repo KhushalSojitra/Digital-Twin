@@ -14,11 +14,23 @@ interface TicketReadsValue {
 
 const TicketReadsContext = createContext<TicketReadsValue | null>(null)
 
+const iso = (value: string) => {
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? value : new Date(time).toISOString()
+}
+
 function latestOtherEventAt(ticket: Ticket, me: string): string | null {
   let latest: string | null = null
   for (const event of ticket.timeline) {
     if (event.by === me) continue
-    if (!latest || event.at > latest) latest = event.at
+    const at = iso(event.at)
+    if (!latest || at > latest) latest = at
+  }
+  // Comments count as activity too, so a new mention or reply turns the ticket unread again.
+  for (const comment of ticket.comments) {
+    if (comment.by === me || !comment.at) continue
+    const at = iso(comment.at)
+    if (!latest || at > latest) latest = at
   }
   return latest
 }

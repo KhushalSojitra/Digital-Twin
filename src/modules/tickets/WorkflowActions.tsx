@@ -1,6 +1,6 @@
 import { useCallback, useState, type ReactNode } from 'react'
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Snackbar, Stack, TextField, Typography } from '@mui/material'
-import { ASSIGNEES, isUnassigned, type Ticket } from '../../data/tickets'
+import { ASSIGNEES, isUnassigned, type CommentAttachment, type Ticket } from '../../data/tickets'
 import { mayReassign } from '../../data/permissions'
 import { useAuth } from '../../auth/AuthContext'
 import { stateOf, type WorkflowTransition } from '../../data/workflows'
@@ -13,6 +13,8 @@ export interface RunOptions {
   note?: string
   /** Person the ticket should be assigned to, e.g. someone @mentioned in the comment. Skips the assignee prompt. */
   assignee?: string
+  /** Comment saved in the same database call as the action (both or neither). */
+  comment?: { text: string; attachments?: CommentAttachment[]; replyTo?: string; mentions: string[] }
   /** Runs once the action has been saved. */
   onDone?: () => void | Promise<void>
   /** Runs when the attempt ends: saved, failed, or the prompt was cancelled. */
@@ -43,7 +45,7 @@ export function useTicketActions(me: string): TicketActions {
   const submit = useCallback(
     async (ticket: Ticket, action: WorkflowTransition, extra: { assignee?: string; note?: string }, options?: RunOptions) => {
       try {
-        await performAction(ticket.id, action.id, { by: me, ...extra })
+        await performAction(ticket.id, action.id, { by: me, ...extra, ...(options?.comment ? { comment: options.comment } : {}) })
         setPending(null)
         await options?.onDone?.()
       } catch (failure) {

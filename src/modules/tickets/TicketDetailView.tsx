@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import {
   alpha,
   Box,
@@ -41,9 +41,12 @@ import {
 import { formatDateTime } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
 import { useWorkflow } from '../../state/WorkflowContext'
-import { useTicketActions } from './WorkflowActions'
+import { useTicketActions, type RunOptions } from './WorkflowActions'
+import type { WorkflowTransition } from '../../data/workflows'
+import { CloseWithSubtasksDialog, isSubtaskOpen, ParentTicketLink, SubtaskList } from './TicketSubtasks'
+import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined'
 import TicketWorkflowButton from './TicketWorkflowButton'
-import TicketActionBar from './TicketActionBar'
+import TicketActionBar, { type ReplyTarget } from './TicketActionBar'
 import TicketActivity from './TicketActivity'
 import TicketCommentThread from './TicketCommentThread'
 import TicketTeamPanel from './TicketTeamPanel'
@@ -52,7 +55,7 @@ import SnapshotMarkup, { type MarkupShape } from './SnapshotMarkup'
 import { fieldSx } from './TicketCreateLayout'
 import { BREACH_OPTIONS } from './TicketAdditionalTab'
 
-export type DetailTab = 'snapshot' | 'team' | 'additional' | 'comments' | 'activity'
+export type DetailTab = 'snapshot' | 'subtasks' | 'team' | 'additional' | 'comments' | 'activity'
 
 interface Props {
   ticket: Ticket
@@ -63,6 +66,8 @@ interface Props {
   initialTab: DetailTab
   onClose: () => void
   onOpenCamera?: (ticket: Ticket) => void
+  /** Opens another ticket in this dialog (main ticket ↔ sub-task). */
+  onOpenTicket?: (id: string) => void
 }
 
 const menuZ = (t: { zIndex: { modal: number } }) => t.zIndex.modal + 10
@@ -290,21 +295,41 @@ function AdditionalPanel({ ticket }: { ticket: Ticket }) {
   )
 }
 
-export default function TicketDetailView({ ticket, me, canEdit, canChangeState, editing, initialTab, onClose, onOpenCamera }: Props) {
+export default function TicketDetailView({ ticket, me, canEdit, canChangeState, editing, initialTab, onClose, onOpenCamera, onOpenTicket }: Props) {
   const uid = useId()
-  const { updateDetails } = useTickets()
-  const { stateLabel } = useWorkflow()
+  const { updateDetails, tickets, resolveSubtasks } = useTickets()
+  const { stateLabel, versionFor } = useWorkflow()
   const ticketActions = useTicketActions(me)
-  const [tab, setTab] = useState<DetailTab>(initialTab)
+  const isSubtask = Boolean(ticket.parentTicketId)
+  const parent = isSubtask ? tickets.find((t) => t.id === ticket.parentTicketId) : undefined
+  const subtasks = useMemo(() => tickets.filter((t) => t.parentTicketId === ticket.id), [tickets, ticket.id])
+  const openSubtasks = subtasks.filter(isSubtaskOpen)
+  // Sub-tasks have no camera or location, so they open on Comments instead of Snapshot.
+  const [tab, setTab] = useState<DetailTab>(isSubtask && initialTab === 'snapshot' ? 'comments' : initialTab)
+  const [closing, setClosing] = useState<{ action: WorkflowTransition; options?: RunOptions } | null>(null)
   const [title, setTitle] = useState(ticket.title)
   const [description, setDescription] = useState(ticket.description)
   const [priority, setPriority] = useState<TicketPriority>(ticket.priority)
   const [dueDate, setDueDate] = useState(ticket.additional?.dueDate ?? '')
   const [dueTime, setDueTime] = useState(ticket.additional?.dueTime ?? '')
   const [snapshotDraft, setSnapshotDraft] = useState<Snapshot | null>(null)
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null)
   const next = canChangeState ? ticketActions.actionsFor(ticket) : []
   const currentStateLabel = stateLabel(ticket)
-  const canOpenCamera = Boolean(onOpenCamera && (ticket.cameraId || ticket.siteId))
+  const canOpenCamera = !isSubtask && Boolean(onOpenCamera && (ticket.cameraId || ticket.siteId))
+
+  // An action that finishes the main ticket first asks what happens to its open sub-tasks.
+  const finishes = (action: WorkflowTransition) => {
+    const group = versionFor(ticket)?.definition.states.find((state) => state.key === action.to)?.group
+    return group === 'done' || group === 'accepted'
+  }
+  const runAction = (target: Ticket, action: WorkflowTransition, options?: RunOptions) => {
+    if (!isSubtask && openSubtasks.length > 0 && finishes(action)) {
+      setClosing({ action, options })
+      return
+    }
+    ticketActions.run(target, action, options)
+  }
 
   const saveDetails = () => {
     if (!title.trim()) return
@@ -361,6 +386,7 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
               {ticket.title}
             </Typography>
           )}
+          {isSubtask && ticket.parentTicketId && <ParentTicketLink parent={parent} parentId={ticket.parentTicketId} onOpen={onOpenTicket} />}
         </Box>
 
         {editing ? (
@@ -386,6 +412,20 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
 
         <StatusIndicator stateName={currentStateLabel} status={ticket.status} />
         {ticketActions.dialog}
+        <CloseWithSubtasksDialog
+          open={closing !== null}
+          subtasks={openSubtasks}
+          onCancel={() => {
+            closing?.options?.onSettled?.()
+            setClosing(null)
+          }}
+          onConfirm={async (decisions) => {
+            await resolveSubtasks(ticket.id, decisions)
+            const pending = closing
+            setClosing(null)
+            if (pending) ticketActions.run(ticket, pending.action, pending.options)
+          }}
+        />
 
         {canOpenCamera && (
           <Tooltip title="Open camera live view" placement="bottom">
@@ -487,7 +527,17 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
           '& .MuiTabs-indicator': { height: 3, borderRadius: 3 },
         }}
       >
-        <Tab value="snapshot" id={tabId('snapshot')} aria-controls={`${uid}-panel`} icon={<ImageOutlinedIcon />} iconPosition="start" label="Snapshot" />
+        {!isSubtask && <Tab value="snapshot" id={tabId('snapshot')} aria-controls={`${uid}-panel`} icon={<ImageOutlinedIcon />} iconPosition="start" label="Snapshot" />}
+        {subtasks.length > 0 && (
+          <Tab
+            value="subtasks"
+            id={tabId('subtasks')}
+            aria-controls={`${uid}-panel`}
+            icon={<AccountTreeOutlinedIcon />}
+            iconPosition="start"
+            label={`Sub-tasks (${subtasks.length - openSubtasks.length}/${subtasks.length})`}
+          />
+        )}
         <Tab value="team" id={tabId('team')} aria-controls={`${uid}-panel`} icon={<GroupOutlinedIcon />} iconPosition="start" label="Team" />
         <Tab value="additional" id={tabId('additional')} aria-controls={`${uid}-panel`} icon={<TuneRoundedIcon />} iconPosition="start" label="Additional" />
         <Tab
@@ -508,13 +558,14 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
         sx={{ px: { xs: 2, sm: 3.5 }, py: 2, flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}
       >
         {tab === 'snapshot' && <SnapshotPanel ticket={ticket} editing={editing && canEdit} draft={snapshotDraft} onDraft={setSnapshotDraft} />}
+        {tab === 'subtasks' && <SubtaskList subtasks={subtasks} onOpen={onOpenTicket} />}
         {tab === 'team' && <TicketTeamPanel ticket={ticket} me={me} />}
         {tab === 'additional' && <AdditionalPanel ticket={ticket} />}
-        {tab === 'comments' && <TicketCommentThread ticket={ticket} me={me} />}
+        {tab === 'comments' && <TicketCommentThread ticket={ticket} me={me} onReply={setReplyTo} />}
         {tab === 'activity' && <TicketActivity ticket={ticket} />}
       </Box>
 
-      <TicketActionBar ticket={ticket} me={me} actions={next} onRun={ticketActions.run} hidden={tab === 'comments'} />
+      <TicketActionBar ticket={ticket} me={me} actions={next} onRun={runAction} replyTo={replyTo} onCancelReply={() => setReplyTo(null)} />
     </Box>
   )
 }

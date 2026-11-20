@@ -49,7 +49,15 @@ export type TicketTypeAction =
   | { action: 'update'; key: string; label: string; description: string; config: Record<string, boolean | string | null> }
   | { action: 'delete'; key: string }
   | { action: 'change'; ticketId: string; typeKey: string; reason: string }
-  | { action: 'workflow'; ticketId: string; actionId: string; assignee?: string | null; note?: string | null }
+  | {
+      action: 'workflow'
+      ticketId: string
+      actionId: string
+      assignee?: string | null
+      note?: string | null
+      /** Comment posted in the same database call as the action. */
+      comment?: { text: string; attachments: unknown[]; commentId: string; replyTo?: string | null; mentions: string[] } | null
+    }
   | { action: 'history'; ticketId: string }
   | { action: 'status' }
 
@@ -64,7 +72,8 @@ export interface TicketTypeServerStatus {
 export type TicketAction =
   | { action: 'create'; typeKey: string; ticket: Record<string, unknown> }
   | { action: 'details'; ticketId: string; title: string; description: string; priority: string; additional: unknown; creationSnapshot: unknown }
-  | { action: 'comment'; ticketId: string; text: string; attachments: unknown[]; commentId?: string; replyTo?: string }
+  | { action: 'comment'; ticketId: string; text: string; attachments: unknown[]; commentId?: string; replyTo?: string; mentions?: string[]; subtaskFor?: string[] }
+  | { action: 'resolve_subtasks'; ticketId: string; decisions: Record<string, 'complete' | 'discard'> }
   | { action: 'followers'; ticketId: string; op: 'toggle' | 'add' | 'remove' | 'share'; people: string[] }
   | { action: 'snapshot'; ticketId: string; slot: 'before' | 'after'; snapshot: unknown }
   | { action: 'delete'; ticketId: string }

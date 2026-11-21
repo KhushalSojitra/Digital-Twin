@@ -566,7 +566,7 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
         {tab === 'activity' && <TicketActivity ticket={ticket} />}
       </Box>
 
-      <TicketActionBar ticket={ticket} me={me} actions={next} onRun={runAction} replyTo={replyTo} onCancelReply={() => setReplyTo(null)} />
+      <TicketActionBar ticket={ticket} me={me} actions={next} onRun={runAction} isApprovalSubmit={(action) => ticketActions.submitsForApproval(ticket, action)} replyTo={replyTo} onCancelReply={() => setReplyTo(null)} />
     </Box>
   )
 }

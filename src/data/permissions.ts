@@ -44,7 +44,7 @@ function mayRunOnSubtask(ticket: Pick<Ticket, 'assignee' | 'creator'>, parent: P
 }
 
 export function mayRunAction(
-  ticket: Pick<Ticket, 'assignee' | 'creator' | 'parentTicketId'>,
+  ticket: Pick<Ticket, 'assignee' | 'creator' | 'parentTicketId' | 'approvalWorker'>,
   actionId: string,
   me: string,
   config: TicketTypeConfig | null | undefined,
@@ -70,6 +70,8 @@ export function mayRunAction(
       return isAssignee || (isReporter && !config?.postApproval)
     case 'approve_post':
     case 'reject_post':
+      // The approver chosen on Submit for Approval holds the ticket; older tickets: the worker's manager.
+      if (ticket.approvalWorker) return isAssignee
       return !unassigned && approverFor(ticket.assignee) === me
     case 'hold':
       return isManager
@@ -107,4 +109,23 @@ export function mayChangeAssignee(
     managesAssignee ||
     Boolean(parent && (parent.creator === me || (!isUnassigned(parent.assignee) && parent.assignee === me)))
   )
+}
+
+/**
+ * Who may approve work submitted for approval (spec §8.5). Mirrors eligible_approvers in
+ * supabase/2026-11-21_06_choose_approver.sql: the reporter, the worker's manager, the Director, and on
+ * Financial tickets any Finance team member — never the worker themself (the Director self-approves).
+ * The reporter comes first: it is the default choice.
+ */
+export function eligibleApprovers(ticket: Pick<Ticket, 'creator' | 'assignee' | 'type'>, worker: string = ticket.assignee): string[] {
+  const top = topUserName()
+  const finance = ticket.type === 'financial' ? DIRECTORY.filter((u) => u.team === 'Finance').map((u) => u.displayName) : []
+  const names = [ticket.creator, approverFor(worker), top, ...finance]
+  const result: string[] = []
+  for (const name of names) {
+    if (!name || isUnassigned(name) || result.includes(name) || !userByName(name)) continue
+    if (name === worker && name !== top) continue
+    result.push(name)
+  }
+  return result
 }

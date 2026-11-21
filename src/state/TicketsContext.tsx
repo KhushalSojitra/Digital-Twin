@@ -321,6 +321,7 @@ function ticketFromDatabase(value: unknown): Ticket {
   return {
     id,
     ...(parentTicketId ? { parentTicketId } : {}),
+    ...(typeof row.approval_worker === 'string' && row.approval_worker ? { approvalWorker: userName(row.approval_worker) } : {}),
     title: stringValue(row.title, 'Untitled ticket'),
     description: stringValue(row.description, ''),
     status,

@@ -47,7 +47,7 @@ interface WorkflowValue {
   actionsFor: (ticket: Pick<Ticket, 'workflowVersionId' | 'workflowState'>) => WorkflowTransition[]
   /** Whether `me` may run this action on the ticket (assignee, reporter, manager or approver rules). */
   mayRun: (
-    ticket: Pick<Ticket, 'assignee' | 'creator' | 'type' | 'parentTicketId'>,
+    ticket: Pick<Ticket, 'assignee' | 'creator' | 'type' | 'parentTicketId' | 'approvalWorker'>,
     actionId: string,
     me: string,
     parent?: Pick<Ticket, 'assignee' | 'creator'>,

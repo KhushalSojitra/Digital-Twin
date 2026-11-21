@@ -1,7 +1,7 @@
 import { useCallback, useState, type ReactNode } from 'react'
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Snackbar, Stack, TextField, Typography } from '@mui/material'
 import { ASSIGNEES, isUnassigned, type CommentAttachment, type Ticket } from '../../data/tickets'
-import { mayReassign } from '../../data/permissions'
+import { eligibleApprovers, mayReassign } from '../../data/permissions'
 import { useAuth } from '../../auth/AuthContext'
 import { stateOf, type WorkflowTransition } from '../../data/workflows'
 import { useTickets } from '../../state/TicketsContext'
@@ -33,11 +33,13 @@ interface TicketActions {
   run: (ticket: Ticket, action: WorkflowTransition, options?: RunOptions) => void
   /** Must be rendered once by the caller; hosts the assignee/note prompt and error toast. */
   dialog: ReactNode
+  /** True for Submit for Approval (the worker picks the approver). */
+  submitsForApproval: (ticket: Ticket, action: WorkflowTransition) => boolean
 }
 
 /** Single place where every ticket surface runs workflow actions. */
 export function useTicketActions(me: string): TicketActions {
-  const { actionsFor: workflowActions, mayRun } = useWorkflow()
+  const { actionsFor: workflowActions, mayRun, ticketTypes } = useWorkflow()
   const { performAction, tickets } = useTickets()
   const [pending, setPending] = useState<Pending | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -65,17 +67,23 @@ export function useTicketActions(me: string): TicketActions {
     [mayRun, workflowActions, me, tickets],
   )
 
+  const submitsForApproval = useCallback(
+    (ticket: Ticket, action: WorkflowTransition) => isSubmitForApproval(ticket, action, ticketTypes),
+    [ticketTypes],
+  )
+
   const run = useCallback(
     (ticket: Ticket, action: WorkflowTransition, options?: RunOptions) => {
       const note = options?.note?.trim()
       const assignee = options?.assignee?.trim()
       const needsNote = action.requireNote && !note
-      // 'optional' only asks for a person when nobody is assigned yet.
-      const choosesAssignee = (action.assign === 'pick' || (action.assign === 'optional' && isUnassigned(ticket.assignee))) && !assignee
+      // Submit for Approval needs an approver; 'optional' only asks for a person when nobody is assigned yet.
+      const choosesAssignee =
+        (submitsForApproval(ticket, action) || action.assign === 'pick' || (action.assign === 'optional' && isUnassigned(ticket.assignee))) && !assignee
       if (choosesAssignee || needsNote) setPending({ ticket, action, options })
       else void submit(ticket, action, { ...(assignee ? { assignee } : {}), ...(note ? { note } : {}) }, options)
     },
-    [submit],
+    [submit, submitsForApproval],
   )
 
   const cancel = () => {
@@ -97,7 +105,12 @@ export function useTicketActions(me: string): TicketActions {
     </>
   )
 
-  return { actionsFor, run, dialog }
+  return { actionsFor, run, dialog, submitsForApproval }
+}
+
+/** Submit for Approval on a main ticket whose type has post-approval: the worker picks the approver. */
+function isSubmitForApproval(ticket: Ticket, action: WorkflowTransition, ticketTypes: { key: string; config: { postApproval: boolean } | null }[]) {
+  return action.id === 'complete' && !ticket.parentTicketId && Boolean(ticketTypes.find((type) => type.key === ticket.type)?.config?.postApproval)
 }
 
 function ActionPrompt({
@@ -109,9 +122,12 @@ function ActionPrompt({
   onCancel: () => void
   onSubmit: (ticket: Ticket, action: WorkflowTransition, extra: { assignee?: string; note?: string }) => Promise<void>
 }) {
-  const { versionFor } = useWorkflow()
+  const { versionFor, ticketTypes } = useWorkflow()
   const { ticket, action } = pending
-  const [assignee, setAssignee] = useState(pending.options?.assignee ?? '')
+  const approval = isSubmitForApproval(ticket, action, ticketTypes)
+  const approvers = approval ? eligibleApprovers(ticket) : []
+  // Default approver: the reporter (first in the list) when allowed.
+  const [assignee, setAssignee] = useState(pending.options?.assignee ?? approvers[0] ?? '')
   const [note, setNote] = useState(pending.options?.note ?? '')
   const [busy, setBusy] = useState(false)
 
@@ -120,7 +136,7 @@ function ActionPrompt({
   const to = stateOf(definition, action.to)?.label
   const { currentUser } = useAuth()
   const unassigned = isUnassigned(ticket.assignee)
-  const needsAssignee = action.assign === 'pick' || (action.assign === 'optional' && unassigned)
+  const needsAssignee = approval || action.assign === 'pick' || (action.assign === 'optional' && unassigned)
   // Changing an existing assignee is the manager's call (the reporter uses the Team tab's Change assignee).
   const choosesAssignee = needsAssignee || (action.assign === 'optional' && mayReassign(ticket, action.id, currentUser?.displayName ?? ''))
   const ready = (!needsAssignee || assignee !== '') && (!action.requireNote || note.trim() !== '')
@@ -144,7 +160,26 @@ function ActionPrompt({
               {from} to {to}
             </Typography>
           )}
-          {choosesAssignee && (
+          {approval && (
+            <TextField
+              select
+              required
+              label="Approver"
+              helperText="Reporter, the assignee's manager or the Director can approve this work."
+              value={assignee}
+              onChange={(e) => setAssignee(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true }, select: { MenuProps: { sx: { zIndex: (t) => t.zIndex.modal + 14 } } } }}
+              sx={fieldSx}
+            >
+              {approvers.map((person) => (
+                <MenuItem key={person} value={person}>
+                  {person}
+                  {person === ticket.creator ? ' (reporter)' : ''}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          {choosesAssignee && !approval && (
             <TextField
               select
               required={needsAssignee}

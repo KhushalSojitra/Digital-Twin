@@ -27,6 +27,7 @@ import DocumentPreview from './DocumentPreview'
 import MentionEditor from './MentionEditor'
 import { useMockVoiceInput, VoiceMicButton, VoiceStatus } from './VoiceInput'
 import { findMentions } from './mentions'
+import { eligibleApprovers } from '../../data/permissions'
 import type { Attachment } from './attachments'
 import type { RunOptions } from './WorkflowActions'
 
@@ -47,6 +48,8 @@ interface Props {
   /** Comment being replied to (chosen in the Comments tab). */
   replyTo?: ReplyTarget | null
   onCancelReply?: () => void
+  /** True when the action is Submit for Approval: a mention picks the approver. */
+  isApprovalSubmit?: (action: WorkflowTransition) => boolean
 }
 
 /**
@@ -56,7 +59,7 @@ interface Props {
  * - Two or more mentions disable every state button; only Send stays active.
  * - A comment written with a state button is saved in the same database call as the change.
  */
-export default function TicketActionBar({ ticket, me, actions, onRun, replyTo, onCancelReply }: Props) {
+export default function TicketActionBar({ ticket, me, actions, onRun, replyTo, onCancelReply, isApprovalSubmit }: Props) {
   const { addComment } = useTickets()
   const attachments = useAttachments()
   const [text, setText] = useState('')
@@ -287,13 +290,30 @@ export default function TicketActionBar({ ticket, me, actions, onRun, replyTo, o
                 })}
               {stateActions.map((action) => {
                 const { Icon, kind } = actionLook(action.label)
+                const approval = Boolean(isApprovalSubmit?.(action))
                 return actionButton(action, {
                   primary: action.id === primaryId,
                   disabled: busy || manyMentions,
-                  label: manyMentions ? `${action.label} (mention at most one person)` : action.label,
+                  label: manyMentions
+                    ? `${action.label} (mention at most one person)`
+                    : approval && mentions.length === 1
+                      ? `${action.label} to ${mentions[0]}`
+                      : action.label,
                   Icon,
                   destructive: kind === 'destructive',
-                  onClick: () => void runAction(action),
+                  onClick: () => {
+                    // Submit for Approval: the one person mentioned is the approver, if allowed to approve.
+                    if (approval && mentions.length === 1) {
+                      const approvers = eligibleApprovers(ticket)
+                      if (!approvers.includes(mentions[0])) {
+                        setError(`${mentions[0]} can't approve this work. Allowed approvers: ${approvers.join(', ')}.`)
+                        return
+                      }
+                      void runAction(action, mentions[0])
+                      return
+                    }
+                    void runAction(action)
+                  },
                 })
               })}
             </Box>

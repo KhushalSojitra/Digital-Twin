@@ -127,6 +127,8 @@ export interface Ticket {
   id: string
   /** Set on sub-tasks: the main ticket they were created from. Sub-tasks have no location. */
   parentTicketId?: string
+  /** Who did the work while the ticket waits for the chosen approver (the approver is the assignee then). */
+  approvalWorker?: string
   title: string
   description: string
   status: TicketStatus

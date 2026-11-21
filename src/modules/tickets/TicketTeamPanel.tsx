@@ -121,7 +121,13 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
               {unassigned ? UNASSIGNED : ticket.assignee}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {unassigned ? 'No one is assigned' : ticket.assignee === me ? 'Assigned to you' : 'Assignee'}
+              {unassigned
+                ? 'No one is assigned'
+                : ticket.approvalWorker
+                  ? `${ticket.assignee === me ? 'You are the approver' : 'Approver'} · work by ${ticket.approvalWorker}`
+                  : ticket.assignee === me
+                    ? 'Assigned to you'
+                    : 'Assignee'}
             </Typography>
             {!unassigned && (
               <Typography variant="body2" color="text.secondary" noWrap>

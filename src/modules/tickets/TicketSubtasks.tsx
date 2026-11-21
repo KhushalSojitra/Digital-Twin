@@ -32,8 +32,8 @@ export function ParentTicketLink({ parent, parentId, onOpen }: { parent?: Ticket
     >
       <CornerLeftUp size={14} aria-hidden />
       <Typography variant="caption" noWrap sx={{ fontWeight: 700 }}>
-        Sub-task of {parentId}
-        {parent ? ` · ${parent.title}` : ''}
+        {/* Titles only in the UI; the id stays in the data (spec §8.1). */}
+        Main ticket: {parent?.title ?? 'open main ticket'}
       </Typography>
     </ButtonBase>
   )
@@ -68,7 +68,7 @@ export function SubtaskList({ subtasks, onOpen }: { subtasks: Ticket[]; onOpen?:
           </Avatar>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
-              {sub.assignee} <Typography component="span" variant="caption" color="text.secondary">· {sub.id}</Typography>
+              {sub.assignee}
             </Typography>
             <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
               {sub.description}
@@ -123,7 +123,7 @@ export function CloseWithSubtasksDialog({
             <Box key={sub.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
               <Box sx={{ flex: '1 1 200px', minWidth: 0 }}>
                 <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
-                  {sub.assignee} · {sub.id}
+                  {sub.assignee}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
                   {sub.description}
@@ -134,7 +134,7 @@ export function CloseWithSubtasksDialog({
                 exclusive
                 value={decisions[sub.id] ?? null}
                 onChange={(_, value: 'complete' | 'discard' | null) => value && setDecisions((prev) => ({ ...prev, [sub.id]: value }))}
-                aria-label={`Decision for ${sub.id}`}
+                aria-label={`Decision for ${sub.assignee}'s sub-task`}
               >
                 <ToggleButton value="complete">Mark complete</ToggleButton>
                 <ToggleButton value="discard">Discard</ToggleButton>

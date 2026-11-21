@@ -76,7 +76,7 @@ export default function TicketCard({ ticket, selected = false, onOpen, onGoToLoc
             <Tooltip title="Go to location">
               <IconButton
                 size="small"
-                aria-label={`Go to location of ${ticket.id}`}
+                aria-label={`Go to location of ${ticket.title}`}
                 onClick={(e) => {
                   e.stopPropagation()
                   onGoToLocation(ticket)

@@ -74,6 +74,7 @@ export type TicketAction =
   | { action: 'details'; ticketId: string; title: string; description: string; priority: string; additional: unknown; creationSnapshot: unknown }
   | { action: 'comment'; ticketId: string; text: string; attachments: unknown[]; commentId?: string; replyTo?: string; mentions?: string[]; subtaskFor?: string[] }
   | { action: 'resolve_subtasks'; ticketId: string; decisions: Record<string, 'complete' | 'discard'> }
+  | { action: 'change_assignee'; ticketId: string; assignee: string; note?: string }
   | { action: 'followers'; ticketId: string; op: 'toggle' | 'add' | 'remove' | 'share'; people: string[] }
   | { action: 'snapshot'; ticketId: string; slot: 'before' | 'after'; snapshot: unknown }
   | { action: 'delete'; ticketId: string }

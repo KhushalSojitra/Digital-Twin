@@ -22,7 +22,6 @@ export const CONFIG_OPTIONS: { key: ConfigFlag; label: string; description: stri
   { key: 'postApproval', label: 'Post-approval', description: 'Completed work waits for approval before the ticket is Done.' },
   { key: 'onHold', label: 'On Hold / Resume', description: 'Work in progress can be put on hold and resumed later.' },
   { key: 'allowReopen', label: 'Allow Reopen', description: 'Done tickets can be reopened by the reporter or the manager.' },
-  { key: 'allowPassOn', label: 'Allow Pass On', description: 'The assignee or the reporter can hand work to someone else. Without it, only the manager reassigns.' },
 ]
 
 export const DEFAULT_CONFIG: TicketTypeConfig = {
@@ -63,7 +62,8 @@ function parseConfig(value: unknown): TicketTypeConfig | null {
     postApproval: raw.post_approval === true,
     onHold: raw.on_hold === true,
     allowReopen: raw.reopen === true,
-    allowPassOn: raw.pass_on === true,
+    // Pass On is dropped (spec §8.3): the reporter changes the assignee from the Team tab instead.
+    allowPassOn: false,
     preApprover: typeof raw.pre_approver === 'string' && raw.pre_approver ? raw.pre_approver : null,
   }
 }
@@ -74,7 +74,7 @@ export function configToDatabase(config: TicketTypeConfig) {
     post_approval: config.postApproval,
     on_hold: config.onHold,
     reopen: config.allowReopen,
-    pass_on: config.allowPassOn,
+    pass_on: false,
     pre_approver: config.preApproval ? (config.preApprover ?? null) : null,
   }
 }

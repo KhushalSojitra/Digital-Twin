@@ -318,12 +318,12 @@ export default function PanoramaViewer({
       return Math.abs(markVec.x) <= 0.82 && Math.abs(markVec.y) <= 0.82
     }
 
-    const captureAt: ViewerApi['captureAt'] = (dir, fov = 30, treatment = 'none', marks = []) => {
+    const captureAt: ViewerApi['captureAt'] = (dir, fov = 30, treatment = 'none', marks = [], exact = false) => {
       if (!material.map) return null
       const centre = directionToVector(dir).clone()
       snapCamera.lookAt(centre)
       let frameFov = fov
-      for (let attempt = 0; attempt < 8; attempt++) {
+      for (let attempt = 0; attempt < (exact ? 1 : 8); attempt++) {
         snapCamera.fov = frameFov
         snapCamera.updateProjectionMatrix()
         snapCamera.updateMatrixWorld(true)

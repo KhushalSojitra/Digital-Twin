@@ -75,8 +75,6 @@ export function mayRunAction(
       return isManager
     case 'resume':
       return isManager || isAssignee
-    case 'pass_on':
-      return Boolean(config?.allowPassOn) && (isAssignee || isReporter)
     case 'reopen':
       return isReporter || isManager
     default:
@@ -87,5 +85,26 @@ export function mayRunAction(
 /** True when choosing a different assignee for this action is the caller's call to make. */
 export function mayReassign(ticket: Pick<Ticket, 'assignee' | 'creator'>, actionId: string, me: string): boolean {
   if (isUnassigned(ticket.assignee)) return true
-  return actionId === 'pass_on' || isManagerOf(me, ticket.assignee)
+  void actionId
+  return isManagerOf(me, ticket.assignee)
+}
+
+/**
+ * Team tab "Change assignee" (replaces Pass On). Mirrors change_ticket_assignee_secure:
+ * main ticket → its reporter or the assignee's manager; sub-task → the main ticket's reporter or assignee,
+ * the sub-task's creator, or the sub-task assignee's manager. Finished tickets cannot be reassigned.
+ */
+export function mayChangeAssignee(
+  ticket: Pick<Ticket, 'assignee' | 'creator' | 'parentTicketId' | 'status'>,
+  me: string,
+  parent?: Pick<Ticket, 'assignee' | 'creator'>,
+): boolean {
+  if (!me || ticket.status === 'done' || ticket.status === 'accepted' || ticket.status === 'failed') return false
+  const managesAssignee = !isUnassigned(ticket.assignee) && isManagerOf(me, ticket.assignee)
+  if (!ticket.parentTicketId) return ticket.creator === me || managesAssignee
+  return (
+    ticket.creator === me ||
+    managesAssignee ||
+    Boolean(parent && (parent.creator === me || (!isUnassigned(parent.assignee) && parent.assignee === me)))
+  )
 }

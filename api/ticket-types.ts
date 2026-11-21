@@ -19,6 +19,8 @@ function configFrom(value: unknown): Record<string, boolean | string | null> | n
     if (typeof input[flag] !== 'boolean') return null
     config[flag] = input[flag] as boolean
   }
+  // Pass On is dropped (spec §8.3): reassignment happens from the Team tab instead.
+  config.pass_on = false
   // Optional pre-approver (a user id); the database ignores anything that is not an active user.
   const preApprover = input.pre_approver
   if (preApprover !== undefined && preApprover !== null && (typeof preApprover !== 'string' || preApprover.length > 64)) return null

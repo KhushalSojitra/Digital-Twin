@@ -121,7 +121,7 @@ function ActionPrompt({
   const { currentUser } = useAuth()
   const unassigned = isUnassigned(ticket.assignee)
   const needsAssignee = action.assign === 'pick' || (action.assign === 'optional' && unassigned)
-  // Changing an existing assignee is the manager's call (or Pass On).
+  // Changing an existing assignee is the manager's call (the reporter uses the Team tab's Change assignee).
   const choosesAssignee = needsAssignee || (action.assign === 'optional' && mayReassign(ticket, action.id, currentUser?.displayName ?? ''))
   const ready = (!needsAssignee || assignee !== '') && (!action.requireNote || note.trim() !== '')
 

@@ -72,7 +72,7 @@ export function TicketDeleteDialog({ ticket, onClose }: { ticket: Ticket | null;
       <DialogTitle>Delete ticket?</DialogTitle>
       <DialogContent>
         <DialogContentText>
-          {ticket ? `Delete ticket ${ticket.id}? This cannot be undone.` : ''}
+          {ticket ? `Delete ticket "${ticket.title}"? This cannot be undone.` : ''}
         </DialogContentText>
         {failure && (
           <Typography role="alert" variant="body2" color="error" sx={{ mt: 1.5, wordBreak: 'break-word' }}>

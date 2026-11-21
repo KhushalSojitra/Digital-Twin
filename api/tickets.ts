@@ -61,6 +61,7 @@ export default route(
       inbox_tickets: 'inbox',
       related_tickets: 'inbox',
       resolve_subtasks: 'workflow',
+      change_assignee: 'workflow',
     }
     const operation = typeof input.action === 'string' ? operations[input.action] : undefined
     if (!operation) {
@@ -203,6 +204,19 @@ export default route(
               || !Object.entries(decisions).every(([key, value]) => ID.test(key) && (value === 'complete' || value === 'discard'))) break
           const data = await callAdminRpc('resolve_open_subtasks_secure', { p_ticket_id: ticketId, p_decisions: decisions, ...identity })
           sendJson(ctx.res, 200, { data })
+          return
+        }
+        // Team tab "Change assignee" (replaces Pass On). The database checks who may do it.
+        case 'change_assignee': {
+          const assignee = resolveUserRef(text(input.assignee, 120) ?? '')
+          if (!ticketId || !assignee || assignee.toLowerCase() === 'unassigned') break
+          await callAdminRpc('change_ticket_assignee_secure', {
+            p_ticket_id: ticketId,
+            p_new_assignee: assignee,
+            p_note: text(input.note, 2000) ?? null,
+            ...identity,
+          })
+          sendJson(ctx.res, 200, { data: null })
           return
         }
         case 'snapshot': {

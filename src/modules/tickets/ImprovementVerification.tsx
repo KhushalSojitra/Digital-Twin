@@ -15,6 +15,7 @@ import { formatDateTime, formatDuration } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
 import { renderSnapshot } from './snapshotRenderer'
 import { useCapture } from './captureContext'
+import { snapshotFraming } from './snapshotFraming'
 
 /** Before / after proof for a completed ticket, rendered from the camera that raised it. */
 export default function ImprovementVerification({ ticket }: { ticket: Ticket }) {
@@ -29,12 +30,14 @@ export default function ImprovementVerification({ ticket }: { ticket: Ticket }) 
   useEffect(() => {
     if (!site || !isCompleted(ticket)) return
     let cancelled = false
-    const dir = { yaw: ticket.yaw, pitch: ticket.pitch }
+    // Both frames use the creation framing (camera view + the creator's zoom/position) so they match.
+    const view = snapshotFraming(ticket)
+    const marks = [{ yaw: ticket.yaw, pitch: ticket.pitch }]
     const backfill = async (slot: 'before' | 'after', at: string, by: string) => {
-      const captured = ticket.cameraId ? capture?.(ticket.cameraId, dir, slot) : undefined
-      const src = captured ?? (await renderSnapshot(site.panorama, dir, 30, slot))
+      const captured = ticket.cameraId ? capture?.(ticket.cameraId, view, slot, { fov: view.fov, marks, exact: true }) : undefined
+      const src = captured ?? (await renderSnapshot(site.panorama, view, view.fov, slot))
       if (cancelled || !src) return
-      attachSnapshot(ticket.id, slot, { src, at, by, yaw: dir.yaw, pitch: dir.pitch })
+      attachSnapshot(ticket.id, slot, { src, at, by, yaw: view.yaw, pitch: view.pitch, cameraId: ticket.cameraId ?? undefined, view })
     }
     if (!before) void backfill('before', ticket.createdAt, ticket.creator)
     if (!after) void backfill('after', ticket.completedAt ?? ticket.updatedAt, ticket.completion?.by ?? ticket.assignee)

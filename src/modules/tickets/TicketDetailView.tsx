@@ -305,7 +305,7 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
   const subtasks = useMemo(() => tickets.filter((t) => t.parentTicketId === ticket.id), [tickets, ticket.id])
   const openSubtasks = subtasks.filter(isSubtaskOpen)
   // Sub-tasks have no camera or location, so they open on Comments instead of Snapshot.
-  const [tab, setTab] = useState<DetailTab>(isSubtask && initialTab === 'snapshot' ? 'comments' : initialTab)
+  const [tab, setTab] = useState<DetailTab>(isSubtask && (initialTab === 'snapshot' || initialTab === 'additional') ? 'comments' : initialTab)
   const [closing, setClosing] = useState<{ action: WorkflowTransition; options?: RunOptions } | null>(null)
   const [title, setTitle] = useState(ticket.title)
   const [description, setDescription] = useState(ticket.description)
@@ -539,7 +539,8 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
           />
         )}
         <Tab value="team" id={tabId('team')} aria-controls={`${uid}-panel`} icon={<GroupOutlinedIcon />} iconPosition="start" label="Team" />
-        <Tab value="additional" id={tabId('additional')} aria-controls={`${uid}-panel`} icon={<TuneRoundedIcon />} iconPosition="start" label="Additional" />
+        {/* Sub-tasks show Team, Comments and Activity only (spec §8.2). */}
+        {!isSubtask && <Tab value="additional" id={tabId('additional')} aria-controls={`${uid}-panel`} icon={<TuneRoundedIcon />} iconPosition="start" label="Additional" />}
         <Tab
           value="comments"
           id={tabId('comments')}

@@ -15,9 +15,10 @@ export type FrameListener = (project: Projector, size: { width: number; height: 
 export interface ViewerApi {
   /**
    * Renders the live scene at `dir` and returns a JPEG data URL of that frame. Any `marks` are drawn
-   * as pins on the frame, and the field of view widens as needed so every mark stays inside it.
+   * as pins on the frame, and the field of view widens as needed so every mark stays inside it —
+   * unless `exact` is set, which keeps the given field of view so a saved framing is reproduced exactly.
    */
-  captureAt: (dir: Direction, fov?: number, treatment?: SnapshotTreatment, marks?: Direction[]) => string | null
+  captureAt: (dir: Direction, fov?: number, treatment?: SnapshotTreatment, marks?: Direction[], exact?: boolean) => string | null
 }
 
 export interface ProjectionHub {

@@ -77,6 +77,8 @@ interface TicketsValue {
   attachSnapshot: (id: string, slot: 'before' | 'after', snapshot: Snapshot) => void
   /** Before closing a main ticket: marks each open sub-task complete or discards it. */
   resolveSubtasks: (id: string, decisions: Record<string, 'complete' | 'discard'>) => Promise<void>
+  /** Team tab "Change assignee" (main ticket: reporter or manager; sub-task: main reporter/assignee or manager). */
+  changeAssignee: (id: string, assignee: string, note?: string) => Promise<void>
 }
 
 const TicketsContext = createContext<TicketsValue | null>(null)
@@ -704,9 +706,14 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     await reloadTickets()
   }, [reloadTickets])
 
+  const changeAssignee = useCallback(async (id: string, assignee: string, note?: string) => {
+    await postTicketAction({ action: 'change_assignee', ticketId: id, assignee, ...(note ? { note } : {}) })
+    await reloadTickets()
+  }, [reloadTickets])
+
   const value = useMemo(
-    () => ({ resolveSubtasks, tickets, loadStatus, loadError, reloadTickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot }),
-    [resolveSubtasks, tickets, loadStatus, loadError, reloadTickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot],
+    () => ({ changeAssignee, resolveSubtasks, tickets, loadStatus, loadError, reloadTickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot }),
+    [changeAssignee, resolveSubtasks, tickets, loadStatus, loadError, reloadTickets, addTicket, deleteTicket, toggleFollow, addFollowers, shareWith, removeFollower, addComment, updateDetails, performAction, changeTicketType, attachSnapshot],
   )
 
   return <TicketsContext.Provider value={value}>{children}</TicketsContext.Provider>

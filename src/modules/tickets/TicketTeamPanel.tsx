@@ -12,9 +12,12 @@ import {
   MenuItem,
   Snackbar,
   Stack,
+  TextField,
   Typography,
   alpha,
 } from '@mui/material'
+import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded'
+import { mayChangeAssignee } from '../../data/permissions'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded'
 import PersonAddAlt1RoundedIcon from '@mui/icons-material/PersonAddAlt1Rounded'
@@ -45,7 +48,30 @@ function Card({ children }: { children: React.ReactNode }) {
 }
 
 export default function TicketTeamPanel({ ticket, me }: Props) {
-  const { addFollowers, removeFollower } = useTickets()
+  const { addFollowers, removeFollower, changeAssignee, tickets } = useTickets()
+  const parent = ticket.parentTicketId ? tickets.find((t) => t.id === ticket.parentTicketId) : undefined
+  const canChangeAssignee = mayChangeAssignee(ticket, me, parent)
+  const [assignAnchor, setAssignAnchor] = useState<HTMLElement | null>(null)
+  const [reassignTo, setReassignTo] = useState<string | null>(null)
+  const [reason, setReason] = useState('')
+  const [reassigning, setReassigning] = useState(false)
+  const [reassignError, setReassignError] = useState('')
+
+  const confirmReassign = async () => {
+    if (!reassignTo) return
+    setReassigning(true)
+    setReassignError('')
+    try {
+      await changeAssignee(ticket.id, reassignTo, reason.trim() || undefined)
+      setNote(`Assignee changed to ${reassignTo}.`)
+      setReassignTo(null)
+      setReason('')
+    } catch (cause) {
+      setReassignError(cause instanceof Error ? cause.message : 'The assignee could not be changed.')
+    } finally {
+      setReassigning(false)
+    }
+  }
   const [watchAnchor, setWatchAnchor] = useState<HTMLElement | null>(null)
   const [pending, setPending] = useState<{ action: 'add' | 'remove'; name: string } | null>(null)
   const [note, setNote] = useState<string | null>(null)
@@ -72,6 +98,16 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
       <Card>
         <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Typography sx={{ fontSize: 15, fontWeight: 700 }}>Assignee</Typography>
+          {canChangeAssignee && (
+            <Button
+              size="small"
+              startIcon={<SwapHorizRoundedIcon />}
+              onClick={(e) => setAssignAnchor(e.currentTarget)}
+              sx={{ textTransform: 'none', fontWeight: 600 }}
+            >
+              Change assignee
+            </Button>
+          )}
         </Stack>
         <Stack direction="row" spacing={1.75} sx={{ mt: 2, alignItems: 'center' }}>
           <Avatar
@@ -185,6 +221,50 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
       </Dialog>
 
       <Snackbar open={Boolean(note)} autoHideDuration={3000} onClose={() => setNote(null)} message={note ?? ''} />
+      <Menu anchorEl={assignAnchor} open={Boolean(assignAnchor)} onClose={() => setAssignAnchor(null)} sx={{ zIndex: menuZ }}>
+        {ASSIGNEES.filter((person) => person !== ticket.assignee).map((person) => (
+          <MenuItem
+            key={person}
+            onClick={() => {
+              setAssignAnchor(null)
+              setReassignError('')
+              setReassignTo(person)
+            }}
+          >
+            {person}
+          </MenuItem>
+        ))}
+      </Menu>
+      <Dialog open={reassignTo !== null} onClose={reassigning ? undefined : () => setReassignTo(null)} sx={{ zIndex: menuZ }} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: 700 }}>Change assignee</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>
+            {unassigned ? 'Assign' : `Move from ${ticket.assignee} to`} <b>{reassignTo}</b>?
+          </Typography>
+          <TextField
+            label="Reason (optional)"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            fullWidth
+            multiline
+            minRows={2}
+            slotProps={{ htmlInput: { maxLength: 500 } }}
+          />
+          {reassignError && (
+            <Typography role="alert" color="error" variant="caption" sx={{ display: 'block', mt: 1 }}>
+              {reassignError}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReassignTo(null)} disabled={reassigning}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={() => void confirmReassign()} disabled={reassigning}>
+            Change assignee
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

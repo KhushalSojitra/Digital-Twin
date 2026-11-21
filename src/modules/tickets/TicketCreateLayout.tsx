@@ -34,13 +34,14 @@ import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded'
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded'
 import EditRoundedIcon from '@mui/icons-material/EditRounded'
-import CropRoundedIcon from '@mui/icons-material/CropRounded'
+import CenterFocusStrongRoundedIcon from '@mui/icons-material/CenterFocusStrongRounded'
 import { ASSIGNEES, PRIORITY_COLOR, PRIORITY_LABEL, UNASSIGNED, type TicketPriority } from '../../data/tickets'
 import { useAttachments, type Attachment } from './attachments'
 import AttachmentPopover from './AttachmentPopover'
 import DocumentPreview from './DocumentPreview'
 import SnapshotMarkup, { type MarkupShape } from './SnapshotMarkup'
-import SnapshotCrop from './SnapshotCrop'
+import SnapshotFrame from './SnapshotFrame'
+import { NO_ADJUST, type SnapshotAdjust } from './snapshotFraming'
 import TicketAdditionalTab, { useTicketAdditional } from './TicketAdditionalTab'
 import TicketWorkflowButton from './TicketWorkflowButton'
 import { useWorkflow } from '../../state/WorkflowContext'
@@ -80,6 +81,11 @@ interface Props {
   touched: boolean
   snapshot: SnapshotControl
   snapshotPreview?: string | null
+  /** Snapshot as captured from the camera view, before the user's zoom/position adjustment. */
+  snapshotBase?: string | null
+  snapshotAdjust?: SnapshotAdjust
+  /** Saves the user's zoom/position; the parent re-captures the snapshot at that framing. */
+  onSnapshotAdjust?: (adjust: SnapshotAdjust) => void
   onMarkupChange?: (image: string | null) => void
   onSnapshotClick?: () => void
   activity: TicketCreateActivity[]
@@ -166,7 +172,7 @@ function SnapshotPanel({
   onStartEdit,
   onCancelEdit,
   onFinishEdit,
-  onStartCrop,
+  onStartAdjust,
   onExpand,
   onSnapshotClick,
 }: {
@@ -180,7 +186,7 @@ function SnapshotPanel({
   onStartEdit: () => void
   onCancelEdit: () => void
   onFinishEdit: (shapes: MarkupShape[], image: string | null) => void
-  onStartCrop: () => void
+  onStartAdjust?: () => void
   onExpand: () => void
   onSnapshotClick?: () => void
 }) {
@@ -275,11 +281,13 @@ function SnapshotPanel({
             </Typography>
           </Box>
           <Box sx={{ position: 'absolute', right: 12, bottom: 12, display: 'flex', gap: 1 }}>
-            <Tooltip title="Crop snapshot">
-              <IconButton onClick={onStartCrop} aria-label="Crop snapshot" sx={overlayButtonSx}>
-                <CropRoundedIcon sx={{ fontSize: 22 }} />
-              </IconButton>
-            </Tooltip>
+            {onStartAdjust && (
+              <Tooltip title="Adjust view (zoom and position)">
+                <IconButton onClick={onStartAdjust} aria-label="Adjust snapshot view" sx={overlayButtonSx}>
+                  <CenterFocusStrongRoundedIcon sx={{ fontSize: 22 }} />
+                </IconButton>
+              </Tooltip>
+            )}
             {Boolean(originalSrc) && (
               <Tooltip title="Mark up snapshot">
                 <IconButton onClick={onStartEdit} aria-label="Mark up snapshot" sx={overlayButtonSx}>
@@ -340,6 +348,9 @@ export default function TicketCreateLayout({
   touched,
   snapshot,
   snapshotPreview,
+  snapshotBase,
+  snapshotAdjust = NO_ADJUST,
+  onSnapshotAdjust,
   onMarkupChange,
   onSnapshotClick,
   activity,
@@ -368,19 +379,20 @@ export default function TicketCreateLayout({
   const titleInvalid = touched && !title.trim()
   const menuProps = { sx: { zIndex: (t: Theme) => t.zIndex.modal + 10 } }
   const snapshotOn = snapshot.mode === 'toggle' ? snapshot.checked : snapshot.mode === 'locked-on'
-  const [croppedImage, setCroppedImage] = useState<string | null>(null)
-  const [cropVersion, setCropVersion] = useState(0)
+  const [viewVersion, setViewVersion] = useState(0)
   const [cropMode, setCropMode] = useState<'panel' | 'fullscreen' | null>(null)
-  const baseSrc = croppedImage ?? snapshotPreview
+  const baseSrc = snapshotPreview
+  const canAdjust = Boolean(onSnapshotAdjust && snapshotBase)
   const displaySrc = markedImage ?? baseSrc
   const canExpand = snapshotOn && Boolean(displaySrc)
 
-  const saveCrop = (image: string) => {
-    setCroppedImage(image)
-    setCropVersion((v) => v + 1)
+  // A new framing re-captures the snapshot, so earlier markup no longer lines up and is cleared.
+  const saveFrame = (adjust: SnapshotAdjust) => {
+    onSnapshotAdjust?.(adjust)
+    setViewVersion((v) => v + 1)
     setShapes([])
     setMarkedImage(null)
-    onMarkupChange?.(image)
+    onMarkupChange?.(null)
     setCropMode(null)
   }
 
@@ -619,8 +631,8 @@ export default function TicketCreateLayout({
               </Box>
             </Stack>
 
-            {cropMode === 'panel' && snapshotOn && displaySrc ? (
-              <SnapshotCrop src={displaySrc} onCancel={() => setCropMode(null)} onSave={saveCrop} />
+            {cropMode === 'panel' && snapshotOn && canAdjust && snapshotBase ? (
+              <SnapshotFrame src={snapshotBase} initial={snapshotAdjust} onCancel={() => setCropMode(null)} onSave={saveFrame} />
             ) : (
               <SnapshotPanel
                 snapshot={snapshot}
@@ -633,7 +645,7 @@ export default function TicketCreateLayout({
                 onStartEdit={() => setEditing(true)}
                 onCancelEdit={() => setEditing(false)}
                 onFinishEdit={finishMarkup}
-                onStartCrop={() => setCropMode('panel')}
+                onStartAdjust={canAdjust ? () => setCropMode('panel') : undefined}
                 onExpand={() => setFullscreen(true)}
                 onSnapshotClick={onSnapshotClick}
               />
@@ -689,13 +701,15 @@ export default function TicketCreateLayout({
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 0.75, minHeight: 48, color: '#fff', bgcolor: 'rgba(14, 20, 32, 0.96)', borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
           <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Snapshot preview</Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <Tooltip title="Crop snapshot">
-              <span>
-                <IconButton onClick={() => setCropMode('fullscreen')} disabled={cropMode === 'fullscreen'} aria-label="Crop snapshot" sx={{ color: '#fff' }}>
-                  <CropRoundedIcon />
-                </IconButton>
-              </span>
-            </Tooltip>
+            {canAdjust && (
+              <Tooltip title="Adjust view (zoom and position)">
+                <span>
+                  <IconButton onClick={() => setCropMode('fullscreen')} disabled={cropMode === 'fullscreen'} aria-label="Adjust snapshot view" sx={{ color: '#fff' }}>
+                    <CenterFocusStrongRoundedIcon />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            )}
             <IconButton onClick={closeFullscreen} aria-label="Close fullscreen snapshot" sx={{ color: '#fff' }}>
               <CloseRoundedIcon />
             </IconButton>
@@ -704,7 +718,7 @@ export default function TicketCreateLayout({
         <Box sx={{ position: 'relative', flex: 1, minHeight: 0, p: { xs: 0.75, sm: 1.5 }, bgcolor: '#000' }}>
           {snapshotOn && displaySrc ? (
             <SnapshotMarkup
-              key={cropVersion}
+              key={viewVersion}
               src={baseSrc ?? displaySrc}
               initialShapes={shapes}
               defaultCollapsed
@@ -714,9 +728,9 @@ export default function TicketCreateLayout({
           ) : (
             <Box component="img" src={displaySrc ?? undefined} alt="Snapshot of the current camera view" sx={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           )}
-          {cropMode === 'fullscreen' && snapshotOn && displaySrc && (
+          {cropMode === 'fullscreen' && snapshotOn && canAdjust && snapshotBase && (
             <Box sx={{ position: 'absolute', inset: { xs: 6, sm: 12 }, zIndex: 20, display: 'flex', flexDirection: 'column', color: 'text.primary', bgcolor: 'background.paper', borderRadius: '16px', overflow: 'hidden' }}>
-              <SnapshotCrop src={displaySrc} onCancel={() => setCropMode(null)} onSave={saveCrop} />
+              <SnapshotFrame src={snapshotBase} initial={snapshotAdjust} onCancel={() => setCropMode(null)} onSave={saveFrame} />
             </Box>
           )}
         </Box>

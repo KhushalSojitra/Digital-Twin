@@ -1,5 +1,6 @@
-import { Component, useState, type FormEvent, type ReactNode } from 'react'
+import { Component, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useTickets } from '../../state/TicketsContext'
+import { DEFAULT_SNAPSHOT_FOV, frameFromAdjust, NO_ADJUST, type SnapshotAdjust } from './snapshotFraming'
 import { Dialog, DialogContent, DialogTitle, IconButton, Typography, useMediaQuery, useTheme } from '@mui/material'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import { dialogPaperSx } from '../../theme/hud'
@@ -168,11 +169,24 @@ function CreateForm({
   const [ticketType, setTicketType] = useState(DEFAULT_TICKET_TYPE_KEY)
   const snapshotPolicy = defaultIntegration.snapshotPolicy
   const [proof, setProof] = useState(snapshotPolicy !== 'disabled')
-  const [snapshotPreview] = useState<string | null>(() => {
-    const { view } = draft
-    const frame = view ? { yaw: view.yaw, pitch: view.pitch } : { yaw: draft.yaw, pitch: draft.pitch }
-    return capture?.(draft.camera.id, frame, 'before', { fov: view?.fov, marks: [{ yaw: draft.yaw, pitch: draft.pitch }] }) ?? null
-  })
+  // The camera view the ticket was raised in; the user can zoom/position within it (no free crop).
+  // The resulting framing is stored on the creation snapshot and reused for the completion snapshot,
+  // so Before and After cover exactly the same area.
+  const baseView = useMemo<PinView>(
+    () => draft.view ?? { yaw: draft.yaw, pitch: draft.pitch, fov: DEFAULT_SNAPSHOT_FOV },
+    [draft.view, draft.yaw, draft.pitch],
+  )
+  const pin = useMemo(() => [{ yaw: draft.yaw, pitch: draft.pitch }], [draft.yaw, draft.pitch])
+  const grab = (view: PinView) =>
+    capture?.(draft.camera.id, view, 'before', { fov: view.fov, marks: pin, exact: true }) ?? null
+  const [snapshotBase] = useState<string | null>(() => grab(baseView))
+  const [snapshotAdjust, setSnapshotAdjust] = useState<SnapshotAdjust>(NO_ADJUST)
+  const framing = useMemo(() => frameFromAdjust(baseView, snapshotAdjust), [baseView, snapshotAdjust])
+  const [snapshotPreview, setSnapshotPreview] = useState<string | null>(snapshotBase)
+  const adjustSnapshot = (adjust: SnapshotAdjust) => {
+    setSnapshotAdjust(adjust)
+    setSnapshotPreview(grab(frameFromAdjust(baseView, adjust)) ?? snapshotBase)
+  }
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -181,10 +195,7 @@ function CreateForm({
     const captureProof = snapshotPolicy === 'always' ? true : snapshotPolicy === 'disabled' ? false : proof
     const snapshots = snapshotFromProof(captureProof)
     const { view } = draft
-    const frame = view ? { yaw: view.yaw, pitch: view.pitch } : { yaw: draft.yaw, pitch: draft.pitch }
-    const src = snapshots.captureCreation
-      ? capture?.(draft.camera.id, frame, 'before', { fov: view?.fov, marks: [{ yaw: draft.yaw, pitch: draft.pitch }] })
-      : null
+    const src = snapshots.captureCreation ? grab(framing) : null
     setIsSubmitting(true)
     setCreateError('')
     try {
@@ -200,7 +211,7 @@ function CreateForm({
         platformName: TICKETING_SYSTEM,
         snapshotConfig: snapshots,
         creationSnapshot: src
-          ? { src, at: new Date().toISOString(), by: creator, yaw: frame.yaw, pitch: frame.pitch, cameraId: draft.camera.id, view }
+          ? { src, at: new Date().toISOString(), by: creator, yaw: framing.yaw, pitch: framing.pitch, cameraId: draft.camera.id, view: framing }
           : undefined,
         cameraId: draft.camera.id,
         yaw: draft.yaw,
@@ -242,6 +253,9 @@ function CreateForm({
       touched={touched}
       snapshot={snapshot}
       snapshotPreview={snapshotPreview}
+      snapshotBase={snapshotBase}
+      snapshotAdjust={snapshotAdjust}
+      onSnapshotAdjust={snapshotBase ? adjustSnapshot : undefined}
       activity={[
         { label: 'Ticket Created', detail: `Reported by ${creator}`, meta: 'Recorded when you create the ticket' },
         { label: 'Assigned', detail: `${assignee} on ${camera.name}`, meta: 'Assigned on creation' },

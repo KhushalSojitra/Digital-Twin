@@ -88,7 +88,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
       if (cctv?.scene) return cctv.scene
 
       const ref = cameraId === site.ptz.id ? apiPtz : cameraId === site.cam360.id ? api360 : null
-      return ref?.current?.captureAt(dir, options?.fov ?? 26, treatment, options?.marks) ?? null
+      return ref?.current?.captureAt(dir, options?.fov ?? 26, treatment, options?.marks, options?.exact) ?? null
     },
     [site.ptz.id, site.cam360.id, site.cctv],
   )

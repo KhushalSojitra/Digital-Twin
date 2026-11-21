@@ -36,6 +36,7 @@ import { useWorkflow } from '../../state/WorkflowContext'
 import { useTicketActions } from './WorkflowActions'
 import { useAuth } from '../../auth/AuthContext'
 import { useCapture } from './captureContext'
+import { snapshotFraming } from './snapshotFraming'
 import TicketAssignment from './TicketAssignment'
 import TicketActivity from './TicketActivity'
 import TicketComments from './TicketComments'
@@ -92,10 +93,14 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
   const ticketActions = useTicketActions(me)
   const actions = ticketActions.actionsFor(ticket)
 
+  // Same framing as the creation snapshot (camera view + the creator's zoom/position), so Before and After match.
   const grabSnapshot = () => {
-    const src = ticket.cameraId ? capture?.(ticket.cameraId, { yaw: ticket.yaw, pitch: ticket.pitch }, 'after') : undefined
+    const view = snapshotFraming(ticket)
+    const src = ticket.cameraId
+      ? capture?.(ticket.cameraId, view, 'after', { fov: view.fov, marks: [{ yaw: ticket.yaw, pitch: ticket.pitch }], exact: true })
+      : undefined
     if (!src) return undefined
-    return { src, at: new Date().toISOString(), by: me, yaw: ticket.yaw, pitch: ticket.pitch }
+    return { src, at: new Date().toISOString(), by: me, yaw: view.yaw, pitch: view.pitch, cameraId: ticket.cameraId ?? undefined, view }
   }
 
   const run = (action: WorkflowTransition) => {
@@ -256,7 +261,7 @@ export default function TicketDetailsContent({ ticket, onClose, onGoToLocation, 
                   <Box
                     component="img"
                     src={ticket.snapshots.before.src}
-                    alt={`Creation snapshot for ${ticket.id}`}
+                    alt={`Creation snapshot for ${ticket.title}`}
                     sx={(t) => ({ width: '100%', borderRadius: '10px', border: `1px solid ${t.palette.divider}` })}
                   />
                 </Box>

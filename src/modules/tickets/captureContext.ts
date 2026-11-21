@@ -7,6 +7,8 @@ export interface CaptureOptions {
   fov?: number
   /** Locations drawn as pins on the frame. */
   marks?: Direction[]
+  /** Keep exactly this direction and field of view (no widening to fit marks): reproduces a saved framing. */
+  exact?: boolean
 }
 
 /** Grabs a still frame from the live camera covering `dir`, or null when that camera is not open. */

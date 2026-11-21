@@ -7,9 +7,12 @@ const REFRESH_MARGIN_MS = 60_000
 
 let cached: CachedToken | null = null
 let inflight: Promise<string | null> | null = null
+/** Bumped when the signed-in user changes, so a token requested for the previous user is never kept. */
+let generation = 0
 let lastFailure: string | null = null
 
 async function requestToken(): Promise<string | null> {
+  const requestedFor = generation
   try {
     const response = await fetch('/api/db-token', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
     if (!response.ok) {
@@ -24,6 +27,7 @@ async function requestToken(): Promise<string | null> {
       lastFailure = 'The server returned an unreadable database access token.'
       return null
     }
+    if (requestedFor !== generation) return getDbToken()
     cached = { token, expiresAt }
     lastFailure = null
     return token
@@ -50,4 +54,6 @@ export function getDbToken(): Promise<string | null> {
 /** Forget the token when the signed-in user changes so the next read uses the new session. */
 export function clearDbToken(): void {
   cached = null
+  inflight = null
+  generation += 1
 }

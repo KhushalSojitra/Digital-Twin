@@ -70,7 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const switchAccount = useCallback(
     (userId: string) => {
-      setState((prev) => (prev.sessions.some((s) => s.user.id === userId) ? { ...prev, activeUserId: userId } : prev))
+      // Switch only once the server has switched the session: everything that reads the database as "me"
+      // (read tracking, preferences, tickets) must get a token for the new user, never the previous one.
       requestId.current += 1
       void postAuth('/api/switch', { userId }).then((result) => (result.ok ? apply(result) : refresh()))
     },

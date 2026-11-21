@@ -247,7 +247,10 @@ export default function TicketActionBar({ ticket, me, actions, onRun, replyTo, o
         <Avatar sx={{ width: 32, height: 32, fontSize: 11, fontWeight: 700, bgcolor: 'primary.main', mb: 0.25 }}>{initials(me)}</Avatar>
         <MentionEditor
           value={text}
-          onValueChange={setText}
+          onValueChange={(value) => {
+            setText(value)
+            setError('')
+          }}
           onSubmit={() => send()}
           disabled={busy}
           readOnly={voice.phase === 'typing'}

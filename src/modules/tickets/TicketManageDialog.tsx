@@ -207,7 +207,7 @@ export default function TicketManageDialog({
 }: Props) {
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
-  const { stateLabel, actionsFor: workflowActionsFor } = useWorkflow()
+  const { stateLabel, actionsFor: workflowActionsFor, mayRun } = useWorkflow()
   const { tickets: allTickets, loadStatus, loadError, reloadTickets } = useTickets()
   const ticketActions = useTicketActions(me)
   const [deleting, setDeleting] = useState<Ticket | null>(null)
@@ -247,7 +247,9 @@ export default function TicketManageDialog({
   }, [requestedScope, requestNonce])
 
   const nextActionLabel = (t: Ticket) => {
-    const actions = workflowActionsFor(t)
+    // Only the actions this person may run (same rule as the ticket's comment bar).
+    const parent = t.parentTicketId ? allTickets.find((p) => p.id === t.parentTicketId) : undefined
+    const actions = workflowActionsFor(t).filter((action) => mayRun(t, action.id, me, parent))
     if (actions.length === 0) return ''
     return actions.length > 1 ? `${actions[0].label} +${actions.length - 1}` : actions[0].label
   }
@@ -323,7 +325,7 @@ export default function TicketManageDialog({
     })
     // sortValue reads workflow labels, which change with the workflow context
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceFor, scope, me, sort, stateLabel, workflowActionsFor, scopeContext, inbox])
+  }, [sourceFor, scope, me, sort, stateLabel, workflowActionsFor, mayRun, allTickets, scopeContext, inbox])
 
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
   const currentPage = Math.min(page, pageCount)

@@ -30,13 +30,28 @@ function preApproverName(config: TicketTypeConfig | null | undefined): string | 
   return (id ? DIRECTORY.find((u) => u.id === id)?.displayName : null) ?? topUserName()
 }
 
+/**
+ * Sub-task rules: the main ticket's reporter or assignee, or the sub-task assignee's manager, may run any
+ * action; the sub-task assignee may only start it and mark it done.
+ */
+function mayRunOnSubtask(ticket: Pick<Ticket, 'assignee' | 'creator'>, parent: Pick<Ticket, 'assignee' | 'creator'> | undefined, actionId: string, me: string): boolean {
+  const controls =
+    ticket.creator === me ||
+    (parent && (parent.creator === me || (!isUnassigned(parent.assignee) && parent.assignee === me))) ||
+    (!isUnassigned(ticket.assignee) && isManagerOf(me, ticket.assignee))
+  if (controls) return true
+  return !isUnassigned(ticket.assignee) && ticket.assignee === me && (actionId === 'start' || actionId === 'complete')
+}
+
 export function mayRunAction(
-  ticket: Pick<Ticket, 'assignee' | 'creator'>,
+  ticket: Pick<Ticket, 'assignee' | 'creator' | 'parentTicketId'>,
   actionId: string,
   me: string,
   config: TicketTypeConfig | null | undefined,
+  parent?: Pick<Ticket, 'assignee' | 'creator'>,
 ): boolean {
   if (!me) return false
+  if (ticket.parentTicketId) return mayRunOnSubtask(ticket, parent, actionId, me)
   const unassigned = isUnassigned(ticket.assignee)
   const isAssignee = !unassigned && ticket.assignee === me
   const isReporter = ticket.creator === me

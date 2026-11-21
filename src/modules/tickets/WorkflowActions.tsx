@@ -38,7 +38,7 @@ interface TicketActions {
 /** Single place where every ticket surface runs workflow actions. */
 export function useTicketActions(me: string): TicketActions {
   const { actionsFor: workflowActions, mayRun } = useWorkflow()
-  const { performAction } = useTickets()
+  const { performAction, tickets } = useTickets()
   const [pending, setPending] = useState<Pending | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -58,8 +58,11 @@ export function useTicketActions(me: string): TicketActions {
   )
 
   const actionsFor = useCallback(
-    (ticket: Ticket) => workflowActions(ticket).filter((action) => mayRun(ticket, action.id, me)),
-    [mayRun, workflowActions, me],
+    (ticket: Ticket) => {
+      const parent = ticket.parentTicketId ? tickets.find((t) => t.id === ticket.parentTicketId) : undefined
+      return workflowActions(ticket).filter((action) => mayRun(ticket, action.id, me, parent))
+    },
+    [mayRun, workflowActions, me, tickets],
   )
 
   const run = useCallback(

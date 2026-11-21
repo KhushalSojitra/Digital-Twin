@@ -46,7 +46,12 @@ interface WorkflowValue {
   /** Actions the ticket's own workflow version offers from its current state. */
   actionsFor: (ticket: Pick<Ticket, 'workflowVersionId' | 'workflowState'>) => WorkflowTransition[]
   /** Whether `me` may run this action on the ticket (assignee, reporter, manager or approver rules). */
-  mayRun: (ticket: Pick<Ticket, 'assignee' | 'creator' | 'type'>, actionId: string, me: string) => boolean
+  mayRun: (
+    ticket: Pick<Ticket, 'assignee' | 'creator' | 'type' | 'parentTicketId'>,
+    actionId: string,
+    me: string,
+    parent?: Pick<Ticket, 'assignee' | 'creator'>,
+  ) => boolean
 }
 
 const WorkflowContext = createContext<WorkflowValue | null>(null)
@@ -158,8 +163,8 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
       versionFor,
       stateLabel: (ticket) => stateOf(versionFor(ticket)?.definition, ticket.workflowState)?.label ?? STATUS_LABEL[ticket.status],
       actionsFor: (ticket) => actionsFrom(versionFor(ticket)?.definition, ticket.workflowState),
-      mayRun: (ticket, actionId, me) =>
-        mayRunAction(ticket, actionId, me, ticketTypes.find((type) => type.key === ticket.type)?.config),
+      mayRun: (ticket, actionId, me, parent) =>
+        mayRunAction(ticket, actionId, me, ticketTypes.find((type) => type.key === ticket.type)?.config, parent),
     }
   }, [templates, loading, refresh, ticketTypes, typesAvailable, saveTicketType, deleteTicketType])
 

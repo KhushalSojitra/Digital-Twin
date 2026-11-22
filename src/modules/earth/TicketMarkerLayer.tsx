@@ -22,15 +22,19 @@ interface Props {
   targetId?: string | null
   draft?: DraftMarker | null
   compact?: boolean
+  /** Camera (site) whose own preview / size settings apply. */
+  siteId: string
   onSelect: (ticket: Ticket) => void
 }
 
 const DRAFT_KEY = '__draft'
 const TARGET_KEY = '__target'
 
-export default function TicketMarkerLayer({ tickets, selectedId, targetId = null, draft = null, compact = false, onSelect }: Props) {
+export default function TicketMarkerLayer({ tickets, selectedId, targetId = null, draft = null, compact = false, siteId, onSelect }: Props) {
   const { stateLabel } = useWorkflow()
-  const { ticketSize, liveTicketPreview } = useTicketQuery()
+  const { liveTicketSize, isLiveTicketPreview } = useTicketQuery()
+  const ticketSize = liveTicketSize(siteId)
+  const liveTicketPreview = isLiveTicketPreview(siteId)
   const { onContextMenu, menu } = useTicketMarkerMenu()
   const nodes = useRef(new Map<string, HTMLElement>())
   const ticketsRef = useRef(tickets)

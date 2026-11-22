@@ -94,7 +94,7 @@ function FixedFeed({
         pickCursor={pinning}
         cssFilter={device.scene ? 'opacity(0)' : device.status === 'offline' ? 'grayscale(1) brightness(0.4)' : 'contrast(1.04) saturate(0.92)'}
       >
-        <TicketMarkerLayer tickets={tickets} selectedId={null} draft={draft} compact={compact} onSelect={onSelectTicket} />
+        <TicketMarkerLayer tickets={tickets} siteId={site.id} selectedId={null} draft={draft} compact={compact} onSelect={onSelectTicket} />
       </PanoramaViewer>
       {pinning && (
         <Stack

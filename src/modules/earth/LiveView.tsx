@@ -57,7 +57,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   const { tickets: allTickets, addTicket } = useTickets()
   const tickets = useMemo(() => allTickets.filter((t) => !t.parentTicketId), [allTickets])
   const { currentUser } = useAuth()
-  const { filters, setFilters, isLiveTicketView, toggleLiveTicketView, liveTicketPreview, setLiveTicketPreview, ticketSize, setTicketSize } =
+  const { filters, setFilters, isLiveTicketView, toggleLiveTicketView, isLiveTicketPreview, setLiveTicketPreview, liveTicketSize, setLiveTicketSize } =
     useTicketQuery()
   const liveTicketView = isLiveTicketView(site.id)
   const me = currentUser?.displayName ?? 'Ava Sharma'
@@ -265,6 +265,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
   const markerLayer = (compact: boolean) => (
     <TicketMarkerLayer
       tickets={overlayTickets.filter((ticket) => ticket.siteId === site.id)}
+      siteId={site.id}
       selectedId={selectedTicketId}
       targetId={targetTicketId}
       draft={editor?.mode === 'create' && editor.draft && !compact ? { yaw: editor.draft.yaw, pitch: editor.draft.pitch } : null}
@@ -389,10 +390,10 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
                 if (liveTicketView) setShowImprovements(false)
                 toggleLiveTicketView(site.id)
               }}
-              ticketPreviewEnabled={liveTicketPreview}
-              onToggleTicketPreview={() => setLiveTicketPreview(!liveTicketPreview)}
-              ticketSize={ticketSize}
-              onTicketSizeChange={setTicketSize}
+              ticketPreviewEnabled={isLiveTicketPreview(site.id)}
+              onToggleTicketPreview={() => setLiveTicketPreview(site.id, !isLiveTicketPreview(site.id))}
+              ticketSize={liveTicketSize(site.id)}
+              onTicketSizeChange={(size) => setLiveTicketSize(site.id, size)}
               buttonSx={(t: Theme) => ({ ...glass(t), width: 36, height: 36 })}
             />
             <Tooltip title="Close live view">

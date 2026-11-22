@@ -9,6 +9,7 @@ import { useAuth } from '../auth/AuthContext'
  * follows that user to any browser or device and is restored on every sign-in.
  */
 const SAVE_DELAY_MS = 400
+const RETRY_DELAY_MS = 1500
 
 type PreferenceValues = Record<string, unknown>
 
@@ -48,8 +49,11 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       .then(({ error }) => {
         if (!error) return
         console.error(`Unable to save preference ${entry.key}:`, error.message)
-        // Keep the change so the next flush retries it, unless the user has since changed it again.
-        if (!pending.current[timerKey]) pending.current[timerKey] = entry
+        // Keep the change and retry shortly (e.g. the database token was still being issued),
+        // unless the user has since changed it again.
+        if (pending.current[timerKey]) return
+        pending.current[timerKey] = entry
+        timers.current[timerKey] = setTimeout(() => saveNow(timerKey), RETRY_DELAY_MS)
       })
   }, [])
 
@@ -58,19 +62,18 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     for (const timerKey of Object.keys(pending.current)) saveNow(timerKey)
   }, [saveNow])
 
-  const load = useCallback(async (user: string, isCurrent: () => boolean) => {
+  const load = useCallback(async (user: string, isCurrent: () => boolean, attempt = 0): Promise<void> => {
+    // Retries a few times: right after sign-in or an account switch the database token may not be ready.
+    const retry = (reason: string) => {
+      console.error('Unable to load preferences:', reason)
+      if (attempt < 4 && isCurrent()) setTimeout(() => void load(user, isCurrent, attempt + 1), RETRY_DELAY_MS * (attempt + 1))
+    }
     // Without a token the request would run as an anonymous visitor and return nothing, which must not
     // be mistaken for "this user has no saved preferences".
     const token = await getDbToken()
-    if (!token) {
-      console.error('Unable to load preferences:', getDbTokenFailure() ?? 'database access could not be authorised.')
-      return
-    }
+    if (!token) return retry(getDbTokenFailure() ?? 'database access could not be authorised.')
     const { data, error } = await supabase.from('user_preferences').select('key, value').eq('user_name', user)
-    if (error) {
-      console.error('Unable to load preferences:', error.message)
-      return
-    }
+    if (error) return retry(error.message)
     if (!isCurrent()) return
     const loaded: PreferenceValues = {}
     for (const row of data ?? []) loaded[String(row.key)] = row.value

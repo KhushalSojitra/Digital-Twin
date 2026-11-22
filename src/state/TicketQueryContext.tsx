@@ -53,9 +53,11 @@ export function TicketQueryProvider({ children }: { children: ReactNode }) {
   )
   const setTicketSize = useCallback((size: TicketPinSize) => setTicketSizeValue(clampTicketSize(size)), [setTicketSizeValue])
 
-  const isLiveTicketView = (siteId: string) => liveTicketView[siteId] !== false
-  const toggleLiveTicketView = (siteId: string) =>
-    setLiveTicketView((prev) => ({ ...prev, [siteId]: prev[siteId] === false }))
+  const isLiveTicketView = useCallback((siteId: string) => liveTicketView[siteId] !== false, [liveTicketView])
+  const toggleLiveTicketView = useCallback(
+    (siteId: string) => setLiveTicketView((prev) => ({ ...prev, [siteId]: prev[siteId] === false })),
+    [setLiveTicketView],
+  )
 
   const value = useMemo(
     () => ({
@@ -79,7 +81,14 @@ export function TicketQueryProvider({ children }: { children: ReactNode }) {
       ticketSize,
       setTicketSize,
     }),
-    [tab, search, filters, assignedToMe, earthTicketView, liveTicketView, earthTicketPreview, liveTicketPreview, ticketSize],
+    // The setters must be listed: they change when the signed-in user changes, and a stale setter would
+    // write for the previous (or no) user, so the toggles silently did nothing after sign-in.
+    [
+      tab, search, filters, assignedToMe,
+      earthTicketView, setEarthTicketView, liveTicketView, isLiveTicketView, toggleLiveTicketView,
+      earthTicketPreview, setEarthTicketPreview, liveTicketPreview, setLiveTicketPreview,
+      ticketSize, setTicketSize,
+    ],
   )
   return <TicketQueryContext.Provider value={value}>{children}</TicketQueryContext.Provider>
 }

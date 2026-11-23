@@ -296,6 +296,7 @@ function ticketFromDatabase(value: unknown): Ticket {
           text: stringValue(event.text, ''),
           ...(state ? { state } : {}),
           ...(state && typeof event.label === 'string' && event.label ? { label: event.label } : {}),
+          ...(typeof event.comment === 'string' && event.comment.trim() ? { comment: event.comment.trim() } : {}),
         }
       })
     : []

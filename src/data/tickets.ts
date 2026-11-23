@@ -43,6 +43,8 @@ export interface TicketEvent {
   state?: LifecycleState
   /** Name of the workflow state reached, when the workflow's own wording differs from the status group. */
   label?: string
+  /** Note written with the action, when there was one. */
+  comment?: string
 }
 
 /** A file stored in the ticket-attachments bucket and referenced from a comment. */

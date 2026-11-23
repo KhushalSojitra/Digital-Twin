@@ -489,6 +489,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
         )}
 
         <TicketManageDialog
+          cameraScoped
           open={manageOpen}
           tickets={manageTickets}
           filters={filters}

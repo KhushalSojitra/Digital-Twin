@@ -180,6 +180,11 @@ interface Props {
   onGoToCamera?: (ticket: Ticket) => void
   /** Switches the view (e.g. to Inbox from the bell); each new nonce applies once. */
   scopeRequest?: { scope: TicketScope; nonce: number } | null
+  /**
+   * Opened from a camera's live view: every tab (Inbox, Assigned to Me, Related… included) lists only
+   * this camera's tickets (and their sub-tasks). From the Earth view every ticket is listed.
+   */
+  cameraScoped?: boolean
 }
 
 const popoverZ = (t: { zIndex: { modal: number } }) => t.zIndex.modal + 6
@@ -204,6 +209,7 @@ export default function TicketManageDialog({
   onGoToLocation,
   onGoToCamera,
   scopeRequest,
+  cameraScoped = false,
 }: Props) {
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
@@ -266,10 +272,20 @@ export default function TicketManageDialog({
   }, [tickets, search, filters, me, stateLabel])
 
   const { hasUpdate } = useTicketReads()
+  // From a camera, every tab stays within that camera's tickets (and their sub-tasks).
+  const visibleTickets = useMemo(() => {
+    if (!cameraScoped) return allTickets
+    const ids = new Set(tickets.map((t) => t.id))
+    return allTickets.filter((t) => ids.has(t.id) || (t.parentTicketId !== undefined && ids.has(t.parentTicketId)))
+  }, [cameraScoped, allTickets, tickets])
   const sourceFor = useCallback(
     (s: TicketScope) =>
-      isInboxScope(s) ? allTickets : s === 'assigned_me' ? queried.concat(allTickets.filter((t) => t.parentTicketId && t.assignee === me)) : queried,
-    [allTickets, queried, me],
+      isInboxScope(s)
+        ? visibleTickets
+        : s === 'assigned_me'
+          ? queried.concat(visibleTickets.filter((t) => t.parentTicketId && t.assignee === me))
+          : queried,
+    [visibleTickets, queried, me],
   )
 
   const scopeCounts = useMemo(

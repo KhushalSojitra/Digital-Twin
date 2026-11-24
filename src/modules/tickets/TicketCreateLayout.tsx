@@ -8,10 +8,8 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
   IconButton,
   MenuItem,
-  Select,
   Stack,
   Switch,
   Tab,
@@ -112,6 +110,8 @@ export const fieldSx = {
     fontSize: TOKENS.size.bodySmall,
     bgcolor: (t: Theme) => themeColors(t.palette.mode).inputBg,
   },
+  '& .MuiInputBase-input:not(textarea)': { paddingTop: '10px', paddingBottom: '10px' },
+  '& .MuiSelect-select': { display: 'flex', alignItems: 'center', minHeight: '20px !important' },
   '& .MuiInputLabel-root': { fontSize: TOKENS.size.caption + 1, fontWeight: 500, color: 'text.secondary' },
   '& .MuiInputLabel-root.Mui-focused': { color: 'text.primary' },
   '& .MuiOutlinedInput-notchedOutline': { borderWidth: 1, borderColor: 'transparent' },
@@ -573,11 +573,12 @@ export default function TicketCreateLayout({
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
                 <TextField
                   select
+                  variant="outlined"
                   label="Ticket Type"
                   value={selectableTypes.some((type) => type.key === ticketType) ? ticketType : DEFAULT_TICKET_TYPE_KEY}
                   onChange={(e) => onTicketTypeChange?.(e.target.value)}
                   sx={[fieldSx, { gridColumn: { sm: '1 / -1' } }]}
-                  slotProps={{ select: { MenuProps: menuProps }, htmlInput: { 'aria-label': 'Ticket Type' } }}
+                  slotProps={{ inputLabel: { shrink: true }, select: { MenuProps: menuProps }, htmlInput: { 'aria-label': 'Ticket Type' } }}
                 >
                   {selectableTypes.map((type) => (
                     <MenuItem key={type.key} value={type.key}>
@@ -586,40 +587,48 @@ export default function TicketCreateLayout({
                   ))}
                 </TextField>
 
-                <FormControl fullWidth sx={fieldSx}>
-                  <Select
-                    value={priority}
-                    onChange={(e) => onPriorityChange(e.target.value as TicketPriority)}
-                    MenuProps={menuProps}
-                    inputProps={{ 'aria-label': 'Priority' }}
-                    renderValue={(value) => <PriorityOption priority={value as TicketPriority} />}
-                  >
-                    {(Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => (
-                      <MenuItem key={p} value={p}>
-                        <PriorityOption priority={p} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <FormControl fullWidth sx={fieldSx}>
-                  <Select
-                    value={assignee}
-                    onChange={(e) => onAssigneeChange(e.target.value)}
-                    MenuProps={menuProps}
-                    inputProps={{ 'aria-label': 'Assignee' }}
-                    renderValue={(value) => <AssigneeOption name={value} />}
-                  >
-                    <MenuItem value={UNASSIGNED}>
-                      <AssigneeOption name={UNASSIGNED} />
+                <TextField
+                  select
+                  variant="outlined"
+                  label="Priority"
+                  value={priority}
+                  onChange={(e) => onPriorityChange(e.target.value as TicketPriority)}
+                  sx={fieldSx}
+                  slotProps={{
+                    inputLabel: { shrink: true },
+                    select: { MenuProps: menuProps, renderValue: (value) => <PriorityOption priority={value as TicketPriority} /> },
+                    htmlInput: { 'aria-label': 'Priority' },
+                  }}
+                >
+                  {(Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => (
+                    <MenuItem key={p} value={p}>
+                      <PriorityOption priority={p} />
                     </MenuItem>
-                    {ASSIGNEES.map((person) => (
-                      <MenuItem key={person} value={person}>
-                        <AssigneeOption name={person} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                  ))}
+                </TextField>
+
+                <TextField
+                  select
+                  variant="outlined"
+                  label="Assignee"
+                  value={assignee}
+                  onChange={(e) => onAssigneeChange(e.target.value)}
+                  sx={fieldSx}
+                  slotProps={{
+                    inputLabel: { shrink: true },
+                    select: { MenuProps: menuProps, renderValue: (value) => <AssigneeOption name={value as string} /> },
+                    htmlInput: { 'aria-label': 'Assignee' },
+                  }}
+                >
+                  <MenuItem value={UNASSIGNED}>
+                    <AssigneeOption name={UNASSIGNED} />
+                  </MenuItem>
+                  {ASSIGNEES.map((person) => (
+                    <MenuItem key={person} value={person}>
+                      <AssigneeOption name={person} />
+                    </MenuItem>
+                  ))}
+                </TextField>
               </Box>
             </Stack>
 
@@ -733,9 +742,9 @@ export default function TicketCreateLayout({
 
 function PriorityOption({ priority }: { priority: TicketPriority }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-      <Box aria-hidden sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: PRIORITY_COLOR[priority], flexShrink: 0 }} />
-      <Typography component="span" sx={{ fontSize: 16, fontWeight: 500 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Box aria-hidden sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: PRIORITY_COLOR[priority], flexShrink: 0 }} />
+      <Typography component="span" sx={{ fontSize: TOKENS.size.bodySmall, fontWeight: TOKENS.weight.regular }}>
         {PRIORITY_LABEL[priority]}
       </Typography>
     </Box>
@@ -744,11 +753,11 @@ function PriorityOption({ priority }: { priority: TicketPriority }) {
 
 function AssigneeOption({ name }: { name: string }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-      <Box aria-hidden sx={{ width: 32, height: 32, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: '50%', color: 'primary.main', bgcolor: (t: Theme) => alpha(t.palette.primary.main, 0.16) }}>
-        <PersonRoundedIcon sx={{ fontSize: 20 }} />
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Box aria-hidden sx={{ width: 20, height: 20, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: '50%', color: 'text.secondary', bgcolor: (t: Theme) => alpha(t.palette.primary.main, 0.12) }}>
+        <PersonRoundedIcon sx={{ fontSize: 14 }} />
       </Box>
-      <Typography component="span" sx={{ fontSize: 16, fontWeight: 500 }}>
+      <Typography component="span" sx={{ fontSize: TOKENS.size.bodySmall, fontWeight: TOKENS.weight.regular }}>
         {name}
       </Typography>
     </Box>

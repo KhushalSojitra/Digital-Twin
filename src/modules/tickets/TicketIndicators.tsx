@@ -1,8 +1,12 @@
 import { forwardRef, type ComponentType, type HTMLAttributes } from 'react'
 import { Box, Tooltip } from '@mui/material'
 import {
+  Ban,
+  Circle,
   CircleCheck,
   Clock,
+  Hourglass,
+  LoaderCircle,
   Forward,
   OctagonAlert,
   Pause,
@@ -91,9 +95,21 @@ function Pill({ color, label, tooltip, Icon }: { color: string; label: string; t
   )
 }
 
+/** Icon per kind of state, so To Do, In Progress, waiting and finished states look different. */
+function stateIcon(stateName: string, status: TicketStatus, signal: Signal): ComponentType<LucideProps> {
+  if (/discard|cancel/i.test(stateName)) return Ban
+  if (/hold|pause|block/i.test(stateName)) return Pause
+  if (/await|pending|waiting|review|submitted|approval/i.test(stateName)) return Hourglass
+  if (/progress|rework|reopen/i.test(stateName)) return LoaderCircle
+  if (/to ?do|open|new/i.test(stateName)) return Circle
+  if (status === 'open') return Circle
+  if (status === 'in_progress') return LoaderCircle
+  return SIGNAL_ICON[signal] ?? Clock
+}
+
 export function StatusIndicator({ stateName, status }: { stateName: string; status: TicketStatus }) {
   const signal = signalFor(stateName, status)
-  return <Pill color={SIGNAL[signal]} label={`Status: ${stateName}`} tooltip={stateName} Icon={SIGNAL_ICON[signal]} />
+  return <Pill color={SIGNAL[signal]} label={`Status: ${stateName}`} tooltip={stateName} Icon={stateIcon(stateName, status, signal)} />
 }
 
 const LEVEL: Record<TicketPriority, { icon: ComponentType<LucideProps>; color: string; label: string }> = {

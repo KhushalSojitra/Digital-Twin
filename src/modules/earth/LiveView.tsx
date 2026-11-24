@@ -256,8 +256,8 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
 
   const createTicket = async (input: NewTicketInput) => {
     const created = await addTicket(input)
-    setEditor({ mode: 'view', ticket: created })
-    setSelectedTicketId(created.id)
+    // The new ticket is placed at its location; its details open only when the user opens it.
+    setEditor(null)
     setContext(null)
     return created
   }

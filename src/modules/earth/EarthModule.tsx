@@ -320,11 +320,8 @@ export default function EarthModule() {
           onCreated={(ticket) => {
             setEarthFocus(createAt?.view ? { lat: ticket.lat, lng: ticket.lng, ...createAt.view, nonce: Date.now() } : null)
             setCreateAt(null)
+            // Show the new ticket at its location; its details open only when the user opens it.
             setFlyTo({ lat: ticket.lat, lng: ticket.lng, nonce: Date.now() })
-            setSelectedTicketId(ticket.id)
-            setEditorMode('view')
-            setEditorTab('details')
-            setEditorOpen(true)
           }}
         />
 

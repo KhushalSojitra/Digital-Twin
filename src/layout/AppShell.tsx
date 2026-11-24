@@ -34,14 +34,15 @@ import PersonAddAltRoundedIcon from '@mui/icons-material/PersonAddAltRounded'
 import CheckRoundedIcon from '@mui/icons-material/CheckRounded'
 import { useAuth } from '../auth/AuthContext'
 import { useThemeMode } from '../theme/ThemeModeContext'
-import { LogoMark, Wordmark } from '../components/Logo'
+import { themeColors } from '../theme/theme'
+import { LogoMark } from '../components/Logo'
 import CameraDropdown from './CameraDropdown'
 import { MODULES } from './modules'
 import { initials } from '../utils/format'
 
 const DRAWER_OPEN = 232
 const DRAWER_MINI = 68
-const HEADER_HEIGHT = 52
+const HEADER_HEIGHT = 56
 const FOOTER_HEIGHT = 28
 
 export default function AppShell() {
@@ -74,22 +75,9 @@ export default function AppShell() {
   const drawerWidth = isMobile ? DRAWER_OPEN : expanded ? DRAWER_OPEN : DRAWER_MINI
   const showLabels = isMobile || expanded
 
-  const surface = mode === 'dark' ? 'rgba(15,18,25,0.82)' : 'rgba(255,255,255,0.80)'
 
   const nav = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Box
-        sx={{
-          height: HEADER_HEIGHT,
-          display: 'flex',
-          alignItems: 'center',
-          px: showLabels ? 2 : 0,
-          justifyContent: showLabels ? 'flex-start' : 'center',
-        }}
-      >
-        {showLabels ? <Wordmark compact /> : <LogoMark size={30} />}
-      </Box>
-      <Divider />
       <List sx={{ px: 1, py: 1.5, flex: 1 }}>
         {MODULES.map((m) => {
           const active = location.pathname.startsWith(m.path)
@@ -105,17 +93,27 @@ export default function AppShell() {
                 minHeight: 46,
                 justifyContent: showLabels ? 'initial' : 'center',
                 px: showLabels ? 1.5 : 0,
+                position: 'relative',
+                '& .MuiListItemIcon-root': { color: 'secondary.main' },
                 '&.Mui-selected': {
-                  bgcolor: mode === 'dark' ? 'rgba(10,132,255,0.18)' : 'rgba(0,122,255,0.12)',
-                  color: 'primary.main',
-                  '& .MuiListItemIcon-root': { color: 'primary.main' },
+                  color: 'text.primary',
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    left: -6,
+                    top: 8,
+                    bottom: 8,
+                    width: 3,
+                    borderRadius: 2,
+                    bgcolor: 'secondary.main',
+                  },
                 },
               }}
             >
               <ListItemIcon sx={{ minWidth: 0, mr: showLabels ? 1.5 : 0, justifyContent: 'center' }}>
                 <Icon />
               </ListItemIcon>
-              {showLabels && <ListItemText primary={m.label} slotProps={{ primary: { sx: { fontWeight: 600, fontSize: 14.5 } } }} />}
+              {showLabels && <ListItemText primary={m.label} slotProps={{ primary: { sx: { fontWeight: 500, fontSize: 14 } } }} />}
             </ListItemButton>
           )
           return (
@@ -153,13 +151,13 @@ export default function AppShell() {
         elevation={0}
         color="transparent"
         sx={{
-          left: isMobile ? 0 : drawerWidth,
-          width: isMobile ? '100%' : `calc(100% - ${drawerWidth}px)`,
-          transition: 'left 200ms, width 200ms',
-          backdropFilter: 'saturate(180%) blur(20px)',
-          backgroundColor: surface,
-          borderBottom: `1px solid ${theme.palette.divider}`,
-          color: 'text.primary',
+          left: 0,
+          width: '100%',
+          zIndex: theme.zIndex.drawer + 1,
+          backgroundColor: themeColors(mode).header,
+          color: '#FFFFFF',
+          '& .MuiIconButton-root': { color: 'rgba(255,255,255,0.88)' },
+          '& .MuiIconButton-root:hover': { backgroundColor: 'rgba(255,255,255,0.10)' },
         }}
       >
         <Toolbar sx={{ minHeight: `${HEADER_HEIGHT}px !important`, gap: 1.5, px: { xs: 1.5, sm: 2 } }}>
@@ -168,7 +166,27 @@ export default function AppShell() {
               <MenuRoundedIcon />
             </IconButton>
           )}
-          {isMobile && <LogoMark size={28} />}
+          <LogoMark size={28} />
+          <Box
+            aria-hidden
+            sx={{
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              display: { xs: 'none', md: 'flex' },
+              alignItems: 'center',
+              gap: 1.25,
+              pointerEvents: 'none',
+            }}
+          >
+            <LogoMark size={26} />
+            <Box sx={{ lineHeight: 1, textAlign: 'center' }}>
+              <Typography sx={{ fontSize: 20, fontWeight: 500, lineHeight: 1.1, color: '#FFFFFF' }}>OominiEye</Typography>
+              <Typography sx={{ fontSize: 13, fontWeight: 300, letterSpacing: 0.4, color: 'rgba(255,255,255,0.86)' }}>
+                Digital Twin Solutions
+              </Typography>
+            </Box>
+          </Box>
           <Box sx={{ minWidth: 0, flex: { xs: 1, md: '0 1 auto' }, maxWidth: { xs: '100%', md: 360 } }}>
             <CameraDropdown compact={isMobile} />
           </Box>
@@ -294,8 +312,9 @@ export default function AppShell() {
             overflowX: 'hidden',
             transition: 'width 200ms',
             borderRight: `1px solid ${theme.palette.divider}`,
-            backdropFilter: 'saturate(180%) blur(20px)',
-            backgroundColor: surface,
+            backgroundColor: themeColors(mode).sidebarBg,
+            top: isMobile ? 0 : HEADER_HEIGHT,
+            height: isMobile ? '100%' : `calc(100% - ${HEADER_HEIGHT}px)`,
           },
         }}
       >
@@ -322,14 +341,16 @@ export default function AppShell() {
             display: immersive ? 'none' : 'flex',
             height: FOOTER_HEIGHT,
             alignItems: 'center',
-            justifyContent: 'center',
+            justifyContent: 'space-between',
+            px: 2,
             borderTop: `1px solid ${theme.palette.divider}`,
-            backgroundColor: surface,
-            backdropFilter: 'saturate(180%) blur(20px)',
+            backgroundColor: 'background.paper',
           }}
         >
-          <Typography variant="caption" color="text.secondary">
-            © 2026 OominiEye. All rights reserved.
+          <Typography variant="caption" color="text.secondary">Ready</Typography>
+          <Typography variant="caption" color="text.secondary">© 2026 OominiEye. All rights reserved.</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+            Powered by OominiEye Digital Solutions
           </Typography>
         </Box>
       </Box>

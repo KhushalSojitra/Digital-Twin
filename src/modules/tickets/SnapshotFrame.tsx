@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { alpha, Box, Button, IconButton, Slider, Typography, type Theme } from '@mui/material'
+import { alpha, Box, Button, IconButton, Slider, Tooltip, Typography, type Theme } from '@mui/material'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded'
 import ZoomInRoundedIcon from '@mui/icons-material/ZoomInRounded'
 import ZoomOutRoundedIcon from '@mui/icons-material/ZoomOutRounded'
@@ -95,13 +96,15 @@ export default function SnapshotFrame({ src, initial, onCancel, onSave }: Props)
         <IconButton size="small" onClick={onCancel} aria-label="Back without changing the view">
           <ArrowBackRoundedIcon />
         </IconButton>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography component="h3" sx={{ fontSize: 18, fontWeight: 700 }}>
+        <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Typography component="h3" sx={{ fontSize: 16, fontWeight: 600 }}>
             Adjust view
           </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Zoom and drag to frame the area. The completion snapshot is taken of exactly this area.
-          </Typography>
+          <Tooltip title="Zoom and drag to frame the area. The completion snapshot is taken of exactly this area." arrow>
+            <IconButton size="small" aria-label="About adjust view" sx={{ color: 'text.secondary' }}>
+              <InfoOutlinedIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Box>
 

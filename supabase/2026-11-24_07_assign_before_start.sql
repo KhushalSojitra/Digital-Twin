@@ -1,0 +1,6 @@
+-- 24 Nov 2026: a main ticket must be assigned before work starts or sub-tasks are created.
+-- Applied as migration `assign_before_start_and_subtasks` by patching the live function definitions:
+--   apply_workflow_action_secure: 'start' allowed only when assigned (assignee or their manager);
+--     an unassigned ticket raises 'Assign the ticket to someone before starting work'.
+--   create_subtask_internal: raises 'Assign the main ticket to someone before creating sub-tasks'
+--     when the main ticket is unassigned.

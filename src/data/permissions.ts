@@ -65,7 +65,8 @@ export function mayRunAction(
     case 'assign':
       return unassigned ? isReporter || isManager : isManager
     case 'start':
-      return isAssignee || isManager || (unassigned && isReporter)
+      // Work starts only once someone is assigned (assign first, then start).
+      return !unassigned && (isAssignee || isManager)
     case 'complete':
       return isAssignee || (isReporter && !config?.postApproval)
     case 'approve_post':

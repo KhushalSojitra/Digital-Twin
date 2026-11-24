@@ -75,7 +75,8 @@ export default function TicketActionBar({ ticket, me, actions, onRun, replyTo, o
   const mentions = findMentions(text).filter((name) => name !== me)
   const manyMentions = mentions.length >= 2
   const isSubtask = Boolean(ticket.parentTicketId)
-  const canCreateSubtasks = !isSubtask && (ticket.creator === me || ticket.assignee === me)
+  // Sub-tasks only once the main ticket has an assignee.
+  const canCreateSubtasks = !isSubtask && !isUnassigned(ticket.assignee) && (ticket.creator === me || ticket.assignee === me)
 
   const unassignedTodo = isUnassigned(ticket.assignee) && ticket.workflowState === 'todo'
   const assignAction = actions.find((action) => action.id === 'assign' && unassignedTodo)

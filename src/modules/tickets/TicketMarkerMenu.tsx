@@ -150,7 +150,7 @@ export function useTicketMarkerMenu(): {
         }}
         onClick={(event) => event.stopPropagation()}
         sx={{ zIndex: (theme) => theme.zIndex.modal + 10 }}
-        slotProps={{ paper: { sx: { minWidth: 188, borderRadius: '12px' } } }}
+        slotProps={{ paper: { sx: { minWidth: 188, py: 0.5 } } }}
       >
         <MenuItem onClick={run(actions.onView)}>
           <ListItemIcon>

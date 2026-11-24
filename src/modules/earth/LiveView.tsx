@@ -449,7 +449,7 @@ export default function LiveView({ site, selectionKind, focus = null, onClose }:
           onClose={() => setContext(null)}
           anchorReference="anchorPosition"
           anchorPosition={context ? { top: context.y, left: context.x } : undefined}
-          slotProps={{ paper: { sx: { borderRadius: '12px', minWidth: 180 } } }}
+          slotProps={{ paper: { sx: { minWidth: 188, py: 0.5 } } }}
         >
           <MenuItem
             onClick={() => {

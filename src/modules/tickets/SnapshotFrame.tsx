@@ -76,7 +76,7 @@ export default function SnapshotFrame({ src, initial, onCancel, onSave }: Props)
   const imageH = height * adjust.zoom
   const left = width / 2 - adjust.u * imageW
   const top = height / 2 - adjust.v * imageH
-  const pillButtonSx = { borderRadius: 999, minWidth: 104, py: 1, fontWeight: 700, fontSize: 15, textTransform: 'none' as const }
+  const pillButtonSx = { minWidth: 96, minHeight: 34 }
 
   return (
     <Box
@@ -163,7 +163,7 @@ export default function SnapshotFrame({ src, initial, onCancel, onSave }: Props)
           </IconButton>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, ml: 'auto' }}>
-          <Button type="button" variant="outlined" color="inherit" onClick={onCancel} sx={{ ...pillButtonSx, borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.34) }}>
+          <Button type="button" variant="outlined" onClick={onCancel} sx={pillButtonSx}>
             Cancel
           </Button>
           <Button type="button" variant="contained" onClick={() => onSave(fit(adjust))} sx={pillButtonSx}>

@@ -22,6 +22,7 @@ import {
   type LucideProps,
 } from 'lucide-react'
 import type { TicketPriority, TicketStatus } from '../../data/tickets'
+import { TOKENS } from '../../theme/theme'
 
 /** Every indicator and action icon uses the same lucide set at this stroke width. */
 export const ICON_STROKE = 2
@@ -31,11 +32,11 @@ export const ICON_SIZE = 18
 export const TOOLTIP_DELAY = 300
 
 const SIGNAL = {
-  red: '#D92D20',
-  orange: '#DC6803',
-  green: '#039855',
-  yellow: '#B7791F',
-  grey: '#667085',
+  red: TOKENS.status.danger,
+  orange: TOKENS.status.warning,
+  green: TOKENS.status.success,
+  yellow: '#C9A227',
+  grey: TOKENS.light.textSecondary,
 } as const
 
 type Signal = 'red' | 'orange' | 'green'
@@ -75,15 +76,16 @@ function Pill({ color, label, tooltip, Icon }: { color: string; label: string; t
           aria-label={label}
           tabIndex={0}
           sx={{
-            height: 28,
-            minWidth: 36,
-            px: 1,
+            height: 24,
+            minWidth: 32,
+            px: 0.75,
+            border: `1px solid ${color}59`,
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             borderRadius: '999px',
             color,
-            bgcolor: `${color}1F`,
+            bgcolor: `${color}1A`,
             outline: 'none',
             '&:focus-visible': { boxShadow: `0 0 0 2px ${color}` },
           }}

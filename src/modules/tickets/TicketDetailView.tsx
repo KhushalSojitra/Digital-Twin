@@ -54,6 +54,8 @@ import ImprovementVerification from './ImprovementVerification'
 import SnapshotMarkup, { type MarkupShape } from './SnapshotMarkup'
 import { fieldSx } from './TicketCreateLayout'
 import { BREACH_OPTIONS } from './TicketAdditionalTab'
+import { closeButtonSx, dialogIconSx, toolButtonSx } from '../../components/ui/figma'
+import { TOKENS } from '../../theme/theme'
 
 export type DetailTab = 'snapshot' | 'subtasks' | 'team' | 'additional' | 'comments' | 'activity'
 
@@ -356,12 +358,9 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.75, pt: 2.5, pb: 1.5, px: { xs: 2, sm: 3.5 } }}>
-        <Box
-          aria-hidden
-          sx={{ width: 48, height: 48, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: '50%', color: 'primary.contrastText', bgcolor: 'primary.main' }}
-        >
-          <ConfirmationNumberRoundedIcon sx={{ fontSize: 26 }} />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pt: 2, pb: 1.25, px: { xs: 2, sm: 3 } }}>
+        <Box aria-hidden sx={(t) => dialogIconSx(t)}>
+          <ConfirmationNumberRoundedIcon />
         </Box>
 
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -381,7 +380,7 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
               component="h2"
               title={ticket.title}
               noWrap
-              sx={{ fontSize: { xs: 20, sm: 26 }, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}
+              sx={{ fontSize: TOKENS.size.title3, fontWeight: TOKENS.weight.heading, lineHeight: 1.2 }}
             >
               {ticket.title}
             </Typography>
@@ -432,15 +431,14 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
             <IconButton
               onClick={() => onOpenCamera?.(ticket)}
               aria-label="Open camera live view"
-              sx={{ width: 44, height: 44, flexShrink: 0, borderRadius: '12px', color: 'primary.main', bgcolor: (t: Theme) => alpha(t.palette.primary.main, 0.14) }}
+              sx={(t) => ({ ...toolButtonSx(t), flexShrink: 0, '& svg': { fontSize: 18 } })}
             >
               <CameraAltRoundedIcon />
             </IconButton>
           </Tooltip>
         )}
-        <Box aria-hidden sx={{ width: '1px', height: 28, flexShrink: 0, bgcolor: 'divider' }} />
         <TicketWorkflowButton ticket={ticket} />
-        <IconButton onClick={onClose} aria-label="Close">
+        <IconButton onClick={onClose} aria-label="Close" sx={(t) => closeButtonSx(t)}>
           <CloseRoundedIcon />
         </IconButton>
       </Box>
@@ -517,14 +515,10 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
         variant="scrollable"
         scrollButtons="auto"
         sx={{
-          mx: { xs: 2, sm: 3.5 },
+          mx: { xs: 2, sm: 3 },
           mt: 1,
-          borderBottom: 1,
-          borderColor: 'divider',
-          minHeight: 52,
-          '& .MuiTab-root': { minHeight: 52, minWidth: 0, mr: { xs: 1, sm: 4 }, px: 1.5, fontSize: 14, fontWeight: 800, letterSpacing: '0.04em', gap: 1, textTransform: 'none' },
-          '& .MuiTab-root .MuiSvgIcon-root': { fontSize: 22 },
-          '& .MuiTabs-indicator': { height: 3, borderRadius: 3 },
+          '& .MuiTab-root': { minWidth: 0, mr: { xs: 0.5, sm: 2 }, px: 1.75, gap: 1 },
+          '& .MuiTab-root .MuiSvgIcon-root': { fontSize: 18 },
         }}
       >
         {!isSubtask && <Tab value="snapshot" id={tabId('snapshot')} aria-controls={`${uid}-panel`} icon={<ImageOutlinedIcon />} iconPosition="start" label="Snapshot" />}

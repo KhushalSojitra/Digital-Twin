@@ -30,6 +30,8 @@ import { findMentions } from './mentions'
 import { eligibleApprovers } from '../../data/permissions'
 import type { Attachment } from './attachments'
 import type { RunOptions } from './WorkflowActions'
+import { toolButtonSx } from '../../components/ui/figma'
+import { TOKENS, themeColors } from '../../theme/theme'
 
 /** The server stores a workflow note in at most this many characters. */
 const MAX_NOTE_LENGTH = 2000
@@ -239,13 +241,14 @@ export default function TicketActionBar({ ticket, me, actions, onRun, replyTo, o
           gap: 1,
           px: 1.25,
           py: 0.75,
-          borderRadius: '12px',
-          border: `1px solid ${t.palette.divider}`,
-          '&:focus-within': { borderColor: t.palette.primary.main },
+          borderRadius: `${TOKENS.radius.md}px`,
+          border: '1px solid transparent',
+          backgroundColor: themeColors(t.palette.mode).inputBg,
+          '&:focus-within': { borderColor: t.palette.secondary.main },
         })}
       >
         <VoiceStatus phase={voice.phase} sx={{ flexBasis: '100%' }} />
-        <Avatar sx={{ width: 32, height: 32, fontSize: 11, fontWeight: 700, bgcolor: 'primary.main', mb: 0.25 }}>{initials(me)}</Avatar>
+        <Avatar sx={{ width: 28, height: 28, fontSize: 11, fontWeight: 600, bgcolor: 'primary.main', mb: 0.25 }}>{initials(me)}</Avatar>
         <MentionEditor
           value={text}
           onValueChange={(value) => {
@@ -273,7 +276,7 @@ export default function TicketActionBar({ ticket, me, actions, onRun, replyTo, o
         </Tooltip>
         <Tooltip title="Post comment">
           <span>
-            <IconButton type="submit" color="primary" aria-label="Post comment" disabled={!hasContent || busy} sx={{ borderRadius: '10px' }}>
+            <IconButton type="submit" aria-label="Post comment" disabled={!hasContent || busy} sx={(t) => ({ ...toolButtonSx(t), bgcolor: 'primary.main', color: 'primary.contrastText', border: 'none', '&:hover': { bgcolor: 'primary.dark' } })}>
               <SendHorizontal size={20} aria-hidden />
             </IconButton>
           </span>

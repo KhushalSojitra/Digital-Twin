@@ -46,6 +46,8 @@ import TicketAdditionalTab, { useTicketAdditional } from './TicketAdditionalTab'
 import TicketWorkflowButton from './TicketWorkflowButton'
 import { useWorkflow } from '../../state/WorkflowContext'
 import { DEFAULT_TICKET_TYPE_KEY } from '../../data/ticketTypes'
+import { closeButtonSx, dialogIconSx, toolButtonSx } from '../../components/ui/figma'
+import { TOKENS, themeColors } from '../../theme/theme'
 
 type TicketTab = 'general' | 'additional' | 'activity'
 type VoiceState = 'idle' | 'listening' | 'transcribing'
@@ -106,20 +108,17 @@ const VOICE_SAMPLE = {
 
 export const fieldSx = {
   '& .MuiInputBase-root': {
-    borderRadius: '14px',
-    fontSize: 16,
-    bgcolor: (t: Theme) => alpha(t.palette.text.primary, 0.02),
+    borderRadius: `${TOKENS.radius.md}px`,
+    fontSize: TOKENS.size.bodySmall,
+    bgcolor: (t: Theme) => themeColors(t.palette.mode).inputBg,
   },
-  '& .MuiInputLabel-root': { fontSize: 15, fontWeight: 500, color: 'text.secondary' },
-  '& .MuiInputLabel-root.Mui-focused': { color: 'primary.main' },
-  '& .MuiOutlinedInput-notchedOutline': {
-    borderWidth: 1.5,
-    borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.34),
-  },
+  '& .MuiInputLabel-root': { fontSize: TOKENS.size.caption + 1, fontWeight: 500, color: 'text.secondary' },
+  '& .MuiInputLabel-root.Mui-focused': { color: 'text.primary' },
+  '& .MuiOutlinedInput-notchedOutline': { borderWidth: 1, borderColor: 'transparent' },
   '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': {
-    borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.6),
+    borderColor: (t: Theme) => alpha(t.palette.primary.main, 0.25),
   },
-  '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main', borderWidth: 2 },
+  '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'secondary.main', borderWidth: 1.5 },
   '& .MuiOutlinedInput-root.Mui-error .MuiOutlinedInput-notchedOutline': { borderColor: 'error.main' },
 }
 
@@ -455,28 +454,24 @@ export default function TicketCreateLayout({
 
   return (
     <Box component="form" onSubmit={handleSubmit} noValidate sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1.75, pt: 2.5, pb: 1.5, px: { xs: 2, sm: 3.5 } }}>
-        <Box
-          aria-hidden
-          sx={{ width: 48, height: 48, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: '50%', color: 'primary.contrastText', bgcolor: 'primary.main' }}
-        >
-          <ConfirmationNumberRoundedIcon sx={{ fontSize: 26 }} />
+      <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1, pt: 2, pb: 1.25, px: { xs: 2, sm: 3 }, mx: { xs: 0, sm: 0 }, borderBottom: 1, borderColor: 'divider' }}>
+        <Box aria-hidden sx={(t) => dialogIconSx(t)}>
+          <ConfirmationNumberRoundedIcon />
         </Box>
-        <Typography component="h2" sx={{ flex: 1, minWidth: 0, fontSize: { xs: 22, sm: 28 }, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+        <Typography component="h2" sx={{ flex: 1, minWidth: 0, fontSize: TOKENS.size.title3, fontWeight: TOKENS.weight.heading, lineHeight: 1.2 }}>
           Create Ticket
         </Typography>
         <Tooltip title={context.name} placement="bottom">
           <IconButton
             onClick={() => canExpand && setFullscreen(true)}
             aria-label={`${context.name} camera view`}
-            sx={{ width: 44, height: 44, borderRadius: '12px', color: 'primary.main', bgcolor: (t: Theme) => alpha(t.palette.primary.main, 0.14) }}
+            sx={(t) => ({ ...toolButtonSx(t), '& svg': { fontSize: 18 } })}
           >
             {context.icon === 'earth' ? <PublicRoundedIcon /> : <CameraAltRoundedIcon />}
           </IconButton>
         </Tooltip>
-        <Box aria-hidden sx={{ width: '1px', height: 28, flexShrink: 0, bgcolor: 'divider' }} />
         <TicketWorkflowButton draftType={ticketType} onDraftTypeChange={onTicketTypeChange} />
-        <IconButton onClick={onClose} aria-label="Close">
+        <IconButton onClick={onClose} aria-label="Close" sx={(t) => closeButtonSx(t)}>
           <CloseRoundedIcon />
         </IconButton>
       </DialogTitle>
@@ -486,13 +481,10 @@ export default function TicketCreateLayout({
         onChange={(_, value: TicketTab) => setTab(value)}
         aria-label="Ticket sections"
         sx={{
-          mx: { xs: 2, sm: 3.5 },
-          borderBottom: 1,
-          borderColor: 'divider',
-          minHeight: 52,
-          '& .MuiTab-root': { minHeight: 52, minWidth: 0, mr: { xs: 1, sm: 4 }, px: 1.5, fontSize: 14, fontWeight: 800, letterSpacing: '0.04em', gap: 1 },
-          '& .MuiTab-root .MuiSvgIcon-root': { fontSize: 22 },
-          '& .MuiTabs-indicator': { height: 3, borderRadius: 3 },
+          mx: { xs: 2, sm: 3 },
+          mt: 1,
+          '& .MuiTab-root': { minWidth: 0, mr: { xs: 0.5, sm: 2 }, px: 1.75, gap: 1 },
+          '& .MuiTab-root .MuiSvgIcon-root': { fontSize: 18 },
         }}
       >
         <Tab value="general" id={tabId('general')} aria-controls={`${uid}-panel`} icon={<DescriptionRoundedIcon />} iconPosition="start" label="General" />
@@ -670,11 +662,11 @@ export default function TicketCreateLayout({
         )}
       </DialogContent>
 
-      <DialogActions sx={{ px: { xs: 2, sm: 3.5 }, py: 2.25, gap: 1.5, borderTop: 1, borderColor: 'divider' }}>
-        <Button type="button" variant="outlined" color="inherit" onClick={onClose} disabled={isSubmitting} sx={{ borderRadius: 999, minWidth: 120, py: 1.1, fontWeight: 700, fontSize: 16, borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.34) }}>
+      <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 1.75, gap: 1, borderTop: 1, borderColor: 'divider' }}>
+        <Button type="button" variant="outlined" onClick={onClose} disabled={isSubmitting} sx={{ minWidth: 96, minHeight: 34 }}>
           Cancel
         </Button>
-        <Button type="submit" variant="contained" disabled={isSubmitting} sx={{ borderRadius: 999, minWidth: 170, py: 1.1, fontWeight: 700, fontSize: 16 }}>
+        <Button type="submit" variant="contained" disabled={isSubmitting} sx={{ minWidth: 140, minHeight: 34, textTransform: 'uppercase', letterSpacing: 0.4 }}>
           {isSubmitting ? 'Creating…' : 'Create Ticket'}
         </Button>
       </DialogActions>

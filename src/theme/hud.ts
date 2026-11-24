@@ -36,7 +36,7 @@ export function hudOverlaySurface(t: Theme) {
 }
 
 export const dialogPaperSx = {
-  borderRadius: { xs: 0, sm: '16px' },
+  borderRadius: { xs: 0, sm: '20px' },
   m: { xs: 0, sm: 2 },
   width: { xs: '100%', sm: undefined },
   maxHeight: { xs: '100%', sm: 'min(860px, 92dvh)' },

@@ -10,12 +10,11 @@ import {
   Divider,
   FormControlLabel,
   IconButton,
-  Paper,
+  InputBase,
   Radio,
   RadioGroup,
   Snackbar,
   Stack,
-  TextField,
   Tooltip,
   Typography,
 } from '@mui/material'
@@ -36,6 +35,8 @@ import {
 import { useIntegrations } from '../../state/IntegrationsContext'
 import { formatDateTime, formatRelative } from '../../utils/format'
 import IntegrationEditorDialog, { type IntegrationDraft } from './IntegrationEditorDialog'
+import { NeutralChip, StatTile, StatusChip, glassCardSx, toolButtonSx } from '../../components/ui/figma'
+import { TOKENS } from '../../theme/theme'
 
 function validateIntegration(value: IntegrationDraft): string | null {
   if (!value.name.trim()) return 'Platform name is required.'
@@ -81,11 +82,13 @@ export default function TicketingIntegrations() {
         <Typography variant="subtitle1" sx={{ flex: 1 }}>
           Third-party ticketing
         </Typography>
-        <Button size="small" variant="contained" startIcon={<AddRoundedIcon />} onClick={openCreate}>
-          Add Integration
-        </Button>
+        <Tooltip title="Add integration">
+          <Button variant="contained" onClick={openCreate} aria-label="Add integration" sx={{ minWidth: 0, px: 1.5 }}>
+            <AddRoundedIcon fontSize="small" />
+          </Button>
+        </Tooltip>
       </Stack>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, display: 'none' }}>
         Jira is provided by default and cannot be deleted. Snapshot and ticket-age settings are per provider. New tickets default to{' '}
         <Box component="span" sx={{ fontWeight: 700 }}>
           {defaultIntegration.name}
@@ -93,18 +96,16 @@ export default function TicketingIntegrations() {
         .
       </Typography>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 1.5 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 400px))', gap: 2 }}>
         {integrations.map((integration) => {
           const tone = STATUS_TONE[integration.status]
           const isDefault = integration.id === defaultId
           return (
-            <Paper
+            <Box
               key={integration.id}
-              elevation={0}
               sx={(t) => ({
-                p: 1.75,
-                borderRadius: '16px',
-                border: `1px solid ${isDefault ? t.palette.primary.main : t.palette.divider}`,
+                ...glassCardSx(t),
+                p: 2,
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 1.25,
@@ -115,45 +116,54 @@ export default function TicketingIntegrations() {
                   <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
                     <Typography variant="subtitle1">{integration.name}</Typography>
                     {isDefault && <Chip size="small" color="primary" label="Default" />}
-                    {integration.locked && <Chip size="small" label="Built-in" />}
+                    {integration.locked && <NeutralChip label="Built-in" />}
                   </Stack>
                   <Typography variant="caption" color="text.secondary">
                     {PLATFORM_TYPE_LABEL[integration.platformType]}
                   </Typography>
                 </Box>
-                <Chip size="small" label={tone.label} sx={{ bgcolor: `${tone.color}22`, color: tone.color, border: `1px solid ${tone.color}55` }} />
+                <StatusChip label={tone.label} color={tone.color} />
               </Stack>
 
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
-                <TextField
-                  size="small"
-                  type="number"
-                  label="Days on Live View"
-                  value={integration.liveViewTicketDays}
-                  onChange={(e) => saveIntegration({ ...integration, liveViewTicketDays: Math.max(1, Number(e.target.value) || 1) })}
-                />
-                <TextField
-                  size="small"
-                  type="number"
-                  label="Days of data to store"
-                  value={integration.storeTicketDays}
-                  onChange={(e) => saveIntegration({ ...integration, storeTicketDays: Math.max(1, Number(e.target.value) || 1) })}
-                />
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.25 }}>
+                <StatTile label="Days on Live View">
+                  <InputBase
+                    type="number"
+                    value={integration.liveViewTicketDays}
+                    onChange={(e) => saveIntegration({ ...integration, liveViewTicketDays: Math.max(1, Number(e.target.value) || 1) })}
+                    inputProps={{ 'aria-label': 'Days on Live View', min: 1, style: { textAlign: 'center' } }}
+                    sx={{ fontSize: TOKENS.size.title1, fontWeight: TOKENS.weight.hero, width: '100%' }}
+                  />
+                </StatTile>
+                <StatTile label="Days of data to store">
+                  <InputBase
+                    type="number"
+                    value={integration.storeTicketDays}
+                    onChange={(e) => saveIntegration({ ...integration, storeTicketDays: Math.max(1, Number(e.target.value) || 1) })}
+                    inputProps={{ 'aria-label': 'Days of data to store', min: 1, style: { textAlign: 'center' } }}
+                    sx={{ fontSize: TOKENS.size.title1, fontWeight: TOKENS.weight.hero, width: '100%' }}
+                  />
+                </StatTile>
               </Box>
 
-              <Typography variant="caption" color="text.secondary">
-                Snapshot Configuration
-              </Typography>
+              <Typography variant="subtitle2">Snapshot Configuration</Typography>
               <RadioGroup
                 value={integration.snapshotPolicy}
                 onChange={(_, next) => saveIntegration({ ...integration, snapshotPolicy: next as SnapshotPolicy })}
               >
                 {(Object.keys(SNAPSHOT_POLICY_LABEL) as SnapshotPolicy[]).map((policy) => (
-                  <FormControlLabel key={policy} value={policy} control={<Radio size="small" />} label={SNAPSHOT_POLICY_LABEL[policy]} />
+                  <FormControlLabel
+                    key={policy}
+                    value={policy}
+                    control={<Radio size="small" />}
+                    label={SNAPSHOT_POLICY_LABEL[policy]}
+                    labelPlacement="start"
+                    sx={{ mx: 0, justifyContent: 'space-between', '& .MuiFormControlLabel-label': { fontSize: TOKENS.size.bodySmall } }}
+                  />
                 ))}
               </RadioGroup>
 
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>
                 Last sync{' '}
                 {integration.status === 'disconnected'
                   ? 'never completed'
@@ -161,7 +171,7 @@ export default function TicketingIntegrations() {
               </Typography>
 
               <Divider />
-              <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', '& .MuiIconButton-root': (t) => toolButtonSx(t) }}>
                 <Tooltip title="Test connection">
                   <IconButton
                     size="small"
@@ -211,7 +221,7 @@ export default function TicketingIntegrations() {
                   </Typography>
                 )}
               </Stack>
-            </Paper>
+            </Box>
           )
         })}
       </Box>

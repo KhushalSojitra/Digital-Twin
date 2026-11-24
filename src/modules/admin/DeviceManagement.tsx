@@ -1,32 +1,42 @@
-import { Chip, Paper, Stack, Typography } from '@mui/material'
+import { Box, Stack, Typography } from '@mui/material'
 import { SITES, siteStatus } from '../../data/cameras'
 import { kindLabel } from '../../components/cameraKind'
+import { NeutralChip, glassCardSx } from '../../components/ui/figma'
+
+const sep = (
+  <Box component="span" sx={{ mx: 0.75, color: 'text.secondary' }}>
+    ·
+  </Box>
+)
 
 export default function DeviceManagement() {
   return (
-    <Stack spacing={1.25}>
-      <Typography variant="body2" color="text.secondary">
-        Deployed 360 + PTZ combo sites used by Earth and Live View.
-      </Typography>
+    <Stack spacing={1.5}>
       {SITES.map((site) => (
-        <Paper key={site.id} elevation={0} sx={(t) => ({ p: 1.5, borderRadius: '14px', border: `1px solid ${t.palette.divider}` })}>
+        <Box key={site.id} sx={(t) => ({ ...glassCardSx(t), px: 2, py: 1.75 })}>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.75 }}>
-            <Typography variant="subtitle2" sx={{ flex: 1 }}>
+            <Typography variant="subtitle2" sx={{ flex: 1, fontSize: 15 }}>
               {site.name}
             </Typography>
-            <Chip size="small" label={siteStatus(site)} />
+            <NeutralChip label={siteStatus(site)} />
           </Stack>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
             {site.description}
           </Typography>
-          <Stack spacing={0.5} sx={{ mt: 1 }}>
+          <Stack spacing={0.75}>
             {[site.cam360, site.ptz, ...site.cctv].map((device) => (
               <Typography key={device.id} variant="body2">
-                {device.name} · {kindLabel(device.kind)} · {device.ip}
+                {device.name}
+                {sep}
+                {kindLabel(device.kind)}
+                {sep}
+                <Box component="span" sx={{ fontFamily: 'ui-monospace, "SFMono-Regular", Menlo, monospace', fontSize: 12.5 }}>
+                  {device.ip}
+                </Box>
               </Typography>
             ))}
           </Stack>
-        </Paper>
+        </Box>
       ))}
     </Stack>
   )

@@ -1,42 +1,33 @@
-import { Box, Paper, Tab, Tabs, Typography } from '@mui/material'
+import { Box } from '@mui/material'
 import { useState } from 'react'
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
+import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined'
+import DnsOutlinedIcon from '@mui/icons-material/DnsOutlined'
+import ConfirmationNumberOutlinedIcon from '@mui/icons-material/ConfirmationNumberOutlined'
 import TicketingIntegrations from './TicketingIntegrations'
 import UserManagement from './UserManagement'
 import DeviceManagement from './DeviceManagement'
+import { IconTabs, PageHeader, type IconTabItem } from '../../components/ui/figma'
 
 type AdminTab = 'users' | 'devices' | 'tickets'
 
+const TABS: IconTabItem<AdminTab>[] = [
+  { value: 'users', label: 'User Management', icon: <PeopleAltOutlinedIcon /> },
+  { value: 'devices', label: 'Device Management', icon: <DnsOutlinedIcon /> },
+  { value: 'tickets', label: 'Ticket Management', icon: <ConfirmationNumberOutlinedIcon /> },
+]
+
 export default function Administration() {
   const [tab, setTab] = useState<AdminTab>('tickets')
+  const current = TABS.find((t) => t.value === tab) ?? TABS[0]
 
   return (
-    <Box sx={{ height: '100%', overflow: 'auto', p: { xs: 1.5, md: 2.5 } }}>
-      <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
-        <Typography variant="overline" color="text.secondary">
-          Administration
-        </Typography>
-        <Typography variant="h5" sx={{ mb: 1.5 }}>
-          Administration
-        </Typography>
-        <Paper elevation={0} sx={(t) => ({ border: `1px solid ${t.palette.divider}`, borderRadius: '16px', overflow: 'hidden' })}>
-          <Tabs
-            value={tab}
-            onChange={(_, next) => setTab(next)}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{ px: 1, borderBottom: 1, borderColor: 'divider', minHeight: 46, '& .MuiTab-root': { minHeight: 46, textTransform: 'none' } }}
-          >
-            <Tab value="users" label="User Management" />
-            <Tab value="devices" label="Device Management" />
-            <Tab value="tickets" label="Ticket Management" />
-          </Tabs>
-          <Box sx={{ p: { xs: 1.5, md: 2 } }}>
-            {tab === 'users' && <UserManagement />}
-            {tab === 'devices' && <DeviceManagement />}
-            {tab === 'tickets' && <TicketingIntegrations />}
-          </Box>
-        </Paper>
-      </Box>
+    <Box sx={{ height: '100%', overflow: 'auto', px: { xs: 1.5, md: 2.5 }, py: { xs: 1.5, md: 2 } }}>
+      <PageHeader icon={<ShieldOutlinedIcon />} trail={['Administration', current.label]} pageIcon={current.icon} />
+      <IconTabs value={tab} onChange={setTab} items={TABS} />
+      {tab === 'users' && <UserManagement />}
+      {tab === 'devices' && <DeviceManagement />}
+      {tab === 'tickets' && <TicketingIntegrations />}
     </Box>
   )
 }

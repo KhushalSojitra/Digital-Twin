@@ -19,6 +19,9 @@ import {
 /** Fallback polling interval — realtime handles most updates, this is the safety net. */
 const POLL_MS = 300_000
 
+/** All triggers within this window collapse into a single load. */
+const DEBOUNCE_MS = 2_000
+
 export interface InboxReason {
   label: string
   preview: string
@@ -64,65 +67,83 @@ export function InboxProvider({ children }: { children: ReactNode }) {
   const userId = currentUser?.id ?? null
   const [loaded, setLoaded] = useState<Loaded>(EMPTY)
   const sequence = useRef(0)
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadInFlight = useRef(false)
 
-  const load = useCallback(async () => {
+  const loadNow = useCallback(async () => {
+    if (loadInFlight.current) return // skip if a load is already running
+    loadInFlight.current = true
     const mine = ++sequence.current
-    if (!userId) {
-      setLoaded(EMPTY)
-      return
+    try {
+      if (!userId) {
+        setLoaded(EMPTY)
+        return
+      }
+      // An account switch is a POST; wait for it so these reads run as the newly active user.
+      await whenAuthSettled()
+      if (mine !== sequence.current) return
+      const [count, items, tickets, related] = await Promise.allSettled([
+        fetchInboxCount(),
+        fetchInboxItems(),
+        fetchInboxTickets(),
+        fetchRelatedTickets(),
+      ])
+      if (mine !== sequence.current) return
+      for (const result of [count, items, tickets, related]) {
+        if (result.status === 'rejected') console.error('Unable to load inbox data:', result.reason)
+      }
+      setLoaded((prev) => ({
+        count: count.status === 'fulfilled' ? count.value : prev.count,
+        items: items.status === 'fulfilled' ? items.value : prev.items,
+        tickets: tickets.status === 'fulfilled' ? tickets.value : prev.tickets,
+        related:
+          related.status === 'fulfilled' ? new Map(related.value.map((row) => [row.ticketId, row.reasons])) : prev.related,
+      }))
+    } finally {
+      loadInFlight.current = false
     }
-    // An account switch is a POST; wait for it so these reads run as the newly active user.
-    await whenAuthSettled()
-    if (mine !== sequence.current) return
-    const [count, items, tickets, related] = await Promise.allSettled([
-      fetchInboxCount(),
-      fetchInboxItems(),
-      fetchInboxTickets(),
-      fetchRelatedTickets(),
-    ])
-    if (mine !== sequence.current) return
-    for (const result of [count, items, tickets, related]) {
-      if (result.status === 'rejected') console.error('Unable to load inbox data:', result.reason)
-    }
-    setLoaded((prev) => ({
-      count: count.status === 'fulfilled' ? count.value : prev.count,
-      items: items.status === 'fulfilled' ? items.value : prev.items,
-      tickets: tickets.status === 'fulfilled' ? tickets.value : prev.tickets,
-      related:
-        related.status === 'fulfilled' ? new Map(related.value.map((row) => [row.ticketId, row.reasons])) : prev.related,
-    }))
   }, [userId])
+
+  /** Debounced load: collapses all triggers within DEBOUNCE_MS into one API round-trip. */
+  const load = useCallback(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    debounceTimer.current = setTimeout(() => {
+      debounceTimer.current = null
+      void loadNow()
+    }, DEBOUNCE_MS)
+  }, [loadNow])
 
   // Switching users must never show the previous user's inbox, so state is cleared before the new load.
   useEffect(() => {
     setLoaded(EMPTY)
-    void load()
+    void loadNow() // Initial load is immediate, not debounced.
     if (!userId) return
 
-    // Realtime: reload inbox when any notification row changes for this user.
+    // Realtime: reload inbox only when this user's notifications change.
     const channel = supabase
       .channel('inbox-notifications')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications' },
-        () => void load(),
+        { event: '*', schema: 'public', table: 'notifications', filter: `for_user=eq.${userId}` },
+        () => load(),
       )
       .subscribe()
 
     // Fallback polling at a much longer interval (realtime handles the fast path).
-    const timer = window.setInterval(() => void load(), POLL_MS)
+    const timer = window.setInterval(load, POLL_MS)
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void load()
+      if (document.visibilityState === 'visible') load()
     }
     document.addEventListener('visibilitychange', onVisible)
-    const stopListening = onInboxRefreshRequested(() => void load())
+    const stopListening = onInboxRefreshRequested(load)
     return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current)
       void supabase.removeChannel(channel)
       window.clearInterval(timer)
       document.removeEventListener('visibilitychange', onVisible)
       stopListening()
     }
-  }, [load, userId])
+  }, [loadNow, load, userId])
 
   const value = useMemo<InboxValue>(() => {
     const inboxTicketIds = new Set(loaded.tickets.map((row) => row.ticketId))
@@ -144,7 +165,7 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       },
       relatedReasons: (ticketId) => loaded.related.get(ticketId) ?? [],
       inboxOrder: (ticketId) => order.get(ticketId) ?? Number.MAX_SAFE_INTEGER,
-      refresh: () => void load(),
+      refresh: load,
     }
   }, [loaded, load])
 

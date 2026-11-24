@@ -163,8 +163,13 @@ export function buildTheme(mode: PaletteMode) {
           },
         },
       },
+      // All fields: label sits on the top-left edge of a filled, borderless field (Figma).
       MuiTextField: {
-        defaultProps: { variant: 'filled', fullWidth: true },
+        defaultProps: { variant: 'outlined' },
+      },
+      MuiInputLabel: {
+        defaultProps: { shrink: true },
+        styleOverrides: { root: { fontSize: size.caption + 1, fontWeight: weight.medium, color: c.textSecondary, '&.Mui-focused': { color: c.text } } },
       },
       MuiFilledInput: {
         defaultProps: { disableUnderline: true },
@@ -181,6 +186,7 @@ export function buildTheme(mode: PaletteMode) {
         },
       },
       MuiOutlinedInput: {
+        defaultProps: { notched: true },
         styleOverrides: {
           root: {
             borderRadius: radius.md,

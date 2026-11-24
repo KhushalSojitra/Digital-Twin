@@ -187,7 +187,18 @@ export default function AppShell() {
               </Typography>
             </Box>
           </Box>
-          <Box sx={{ minWidth: 0, flex: { xs: 1, md: '0 1 auto' }, maxWidth: { xs: '100%', md: 360 } }}>
+          <Box
+            sx={{
+              minWidth: 0,
+              flex: { xs: 1, md: '0 1 auto' },
+              maxWidth: { xs: '100%', md: 360 },
+              // readable on the near-black header
+              '& .MuiInputBase-root': { color: '#FFFFFF', bgcolor: 'rgba(255,255,255,0.10) !important' },
+              '& .MuiInputBase-root:hover': { bgcolor: 'rgba(255,255,255,0.16) !important' },
+              '& .MuiTypography-root': { color: 'inherit' },
+              '& .MuiSelect-icon, & svg': { color: 'rgba(255,255,255,0.85) !important' },
+            }}
+          >
             <CameraDropdown compact={isMobile} />
           </Box>
           <Box sx={{ flex: 1 }} />

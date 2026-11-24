@@ -55,7 +55,7 @@ export default function TicketFilters({ value, onChange, hide = [] }: Props) {
 
   return (
     <Stack spacing={1.25}>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, columnGap: 1.25, rowGap: 2, pt: 1 }}>
         {show('from') && (
           <TextField
             label="From"

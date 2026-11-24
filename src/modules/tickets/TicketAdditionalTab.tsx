@@ -1,4 +1,5 @@
 import { useId, useState, type ChangeEvent, type MouseEvent, type ReactNode } from 'react'
+import { themeColors } from '../../theme/theme'
 import {
   alpha,
   Box,
@@ -127,7 +128,7 @@ export function useTicketAdditional(title: string) {
 
 export type TicketAdditionalState = ReturnType<typeof useTicketAdditional>
 
-const borderColor = (t: Theme) => alpha(t.palette.text.primary, 0.34)
+const borderColor = 'transparent'
 
 const cardSx: SxProps<Theme> = {
   minWidth: 0,
@@ -197,14 +198,14 @@ function DeadlineField({ state, labelId }: { state: TicketAdditionalState; label
         display: 'flex',
         alignItems: 'center',
         gap: 0.75,
-        height: 44,
+        height: 40,
         px: 1.25,
-        borderRadius: '12px',
-        border: 1.5,
+        borderRadius: '8px',
+        border: 1,
         borderColor,
-        bgcolor: (t: Theme) => alpha(t.palette.text.primary, 0.02),
-        '&:hover': { borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.6) },
-        '&:focus-within': { borderColor: 'primary.main', boxShadow: (t: Theme) => `0 0 0 1px ${t.palette.primary.main}` },
+        bgcolor: (t: Theme) => themeColors(t.palette.mode).inputBg,
+        '&:hover': { borderColor: (t: Theme) => alpha(t.palette.primary.main, 0.25) },
+        '&:focus-within': { borderColor: 'secondary.main' },
         '&:focus-within > .deadline-label': { color: 'primary.main' },
       }}
     >
@@ -212,7 +213,7 @@ function DeadlineField({ state, labelId }: { state: TicketAdditionalState; label
         id={labelId}
         className="deadline-label"
         component="span"
-        sx={{ position: 'absolute', top: -10, left: 12, px: 0.75, fontSize: 12, fontWeight: 500, lineHeight: '18px', color: 'text.secondary', bgcolor: 'background.paper' }}
+        sx={{ position: 'absolute', top: -10, left: 12, px: 0.75, fontSize: 13, fontWeight: 500, lineHeight: '18px', color: 'text.secondary' }}
       >
         Due Date &amp; Time
       </Typography>

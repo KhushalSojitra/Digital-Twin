@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { supabase } from '../supabaseClient'
 import { useAuth } from '../auth/AuthContext'
 import { whenAuthSettled } from '../auth/authApi'
 import {
@@ -15,7 +16,8 @@ import {
   type RelatedReason,
 } from '../data/inbox'
 
-const POLL_MS = 30_000
+/** Fallback polling interval — realtime handles most updates, this is the safety net. */
+const POLL_MS = 300_000
 
 export interface InboxReason {
   label: string
@@ -96,6 +98,18 @@ export function InboxProvider({ children }: { children: ReactNode }) {
     setLoaded(EMPTY)
     void load()
     if (!userId) return
+
+    // Realtime: reload inbox when any notification row changes for this user.
+    const channel = supabase
+      .channel('inbox-notifications')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications' },
+        () => void load(),
+      )
+      .subscribe()
+
+    // Fallback polling at a much longer interval (realtime handles the fast path).
     const timer = window.setInterval(() => void load(), POLL_MS)
     const onVisible = () => {
       if (document.visibilityState === 'visible') void load()
@@ -103,6 +117,7 @@ export function InboxProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', onVisible)
     const stopListening = onInboxRefreshRequested(() => void load())
     return () => {
+      void supabase.removeChannel(channel)
       window.clearInterval(timer)
       document.removeEventListener('visibilitychange', onVisible)
       stopListening()

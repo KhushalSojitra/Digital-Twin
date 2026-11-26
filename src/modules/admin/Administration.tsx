@@ -3,18 +3,18 @@ import { useState } from 'react'
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined'
 import DnsOutlinedIcon from '@mui/icons-material/DnsOutlined'
-import ConfirmationNumberOutlinedIcon from '@mui/icons-material/ConfirmationNumberOutlined'
 import TicketingIntegrations from './TicketingIntegrations'
 import UserManagement from './UserManagement'
 import DeviceManagement from './DeviceManagement'
 import { IconTabs, PageHeader, type IconTabItem } from '../../components/ui/figma'
+import TicketManagementIcon from '../../components/icons/TicketManagementIcon'
 
 type AdminTab = 'users' | 'devices' | 'tickets'
 
 const TABS: IconTabItem<AdminTab>[] = [
   { value: 'users', label: 'User Management', icon: <PeopleAltOutlinedIcon /> },
   { value: 'devices', label: 'Device Management', icon: <DnsOutlinedIcon /> },
-  { value: 'tickets', label: 'Ticket Management', icon: <ConfirmationNumberOutlinedIcon /> },
+  { value: 'tickets', label: 'Ticket Management', icon: <TicketManagementIcon /> },
 ]
 
 export default function Administration() {

@@ -15,8 +15,6 @@ import {
   type SxProps,
   type Theme,
 } from '@mui/material'
-import ConfirmationNumberOutlinedIcon from '@mui/icons-material/ConfirmationNumberOutlined'
-import ViewListRoundedIcon from '@mui/icons-material/ViewListRounded'
 import FilterListRoundedIcon from '@mui/icons-material/FilterListRounded'
 import ShowChartRoundedIcon from '@mui/icons-material/ShowChartRounded'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
@@ -28,6 +26,7 @@ import TicketFilters from './TicketFilters'
 import ImprovementSummary from './ImprovementSummary'
 import { TICKET_SIZE_DEFAULT, TICKET_SIZE_MAX, TICKET_SIZE_MIN, activeFilterCount, type TicketFilterState, type TicketPinSize } from './ticketFilters'
 import type { Ticket } from '../../data/tickets'
+import TicketManagementIcon from '../../components/icons/TicketManagementIcon'
 
 interface Props {
   tickets: Ticket[]
@@ -77,7 +76,7 @@ export default function TicketMenu({
           sx={buttonSx}
         >
           <Badge badgeContent={count} color="primary" slotProps={{ badge: { sx: { fontSize: 9, height: 15, minWidth: 15 } } }}>
-            <ConfirmationNumberOutlinedIcon fontSize="small" />
+            <TicketManagementIcon fontSize="small" />
           </Badge>
         </IconButton>
       </Tooltip>
@@ -97,7 +96,7 @@ export default function TicketMenu({
           }}
         >
           <ListItemIcon>
-            <ViewListRoundedIcon fontSize="small" />
+            <TicketManagementIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Manage Tickets</ListItemText>
         </MenuItem>

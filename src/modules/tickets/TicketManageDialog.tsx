@@ -74,7 +74,7 @@ import { formatDateTime } from '../../utils/format'
 import { useWorkflow } from '../../state/WorkflowContext'
 import { useTickets } from '../../state/TicketsContext'
 import { useTicketActions } from './WorkflowActions'
-import { dialogPaperSx } from '../../theme/hud'
+import { ticketDialogPaperSx } from '../../theme/hud'
 
 type ColumnId =
   | 'title'
@@ -487,8 +487,8 @@ export default function TicketManageDialog({
       onClose={onClose}
       fullWidth
       fullScreen={isXs}
-      maxWidth="lg"
-      slotProps={{ paper: { sx: { ...dialogPaperSx, height: isXs ? '100%' : 'min(720px, 88dvh)' } } }}
+      maxWidth={false}
+      slotProps={{ paper: { sx: ticketDialogPaperSx } }}
     >
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1, px: { xs: 1.5, sm: 2.5 }, pt: 2, pb: 1.5 }}>
         <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flexShrink: 0 }}>

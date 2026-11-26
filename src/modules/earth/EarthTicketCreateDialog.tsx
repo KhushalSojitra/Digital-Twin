@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Dialog, useMediaQuery, useTheme } from '@mui/material'
-import { dialogPaperSx } from '../../theme/hud'
+import { ticketDialogPaperSx } from '../../theme/hud'
 import { TICKETING_SYSTEM, UNASSIGNED, type Ticket, type TicketPriority } from '../../data/tickets'
 import { formatDateTime } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
@@ -31,9 +31,9 @@ export default function EarthTicketCreateDialog({ location, creator, onClose, on
       onClose={onClose}
       fullWidth
       fullScreen={isXs}
-      maxWidth="md"
+      maxWidth={false}
       sx={{ zIndex: (t) => t.zIndex.modal + 4 }}
-      slotProps={{ paper: { sx: { ...dialogPaperSx, height: { xs: '100%', sm: 'min(860px, 92dvh)' } } } }}
+      slotProps={{ paper: { sx: ticketDialogPaperSx } }}
     >
       {location && <CreateForm key={`${location.lat}:${location.lng}`} location={location} creator={creator} onClose={onClose} onCreated={onCreated} onPreviewClick={onPreviewClick} />}
     </Dialog>

@@ -24,7 +24,9 @@ import TicketTypeConfigEditor from './TicketTypeConfigEditor'
 import { DEFAULT_CONFIG, type TicketTypeConfig, type TicketTypeDef } from '../../data/ticketTypes'
 import { useWorkflow } from '../../state/WorkflowContext'
 import { useAuth } from '../../auth/AuthContext'
-import { dialogPaperSx } from '../../theme/hud'
+import { ticketDialogPaperSx } from '../../theme/hud'
+import { closeButtonSx, dialogIconSx } from '../../components/ui/figma'
+import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined'
 
 function failureMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
@@ -37,11 +39,13 @@ interface WorkflowSettingsDialogProps {
   selectedTypeKey: string | null
   /** Picks the ticket type of a ticket that is being created. Omitted for existing tickets. */
   onSelectType?: (typeKey: string) => void
+  /** Workflow state of the existing ticket the dialog was opened from. */
+  currentState?: string
 }
 
 type Selection = { kind: 'type'; key: string } | { kind: 'new' }
 
-export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey, onSelectType }: WorkflowSettingsDialogProps) {
+export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey, onSelectType, currentState }: WorkflowSettingsDialogProps) {
   const theme = useTheme()
   const isXs = useMediaQuery(theme.breakpoints.down('sm'))
   const { currentUser } = useAuth()
@@ -237,6 +241,7 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey,
           actions={actions}
           onCancel={resetEditor}
           onSave={save}
+          currentState={!creating && current?.key === selectedTypeKey ? currentState : undefined}
         />
       ) : (
         <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
@@ -253,15 +258,18 @@ export default function WorkflowSettingsDialog({ open, onClose, selectedTypeKey,
         onClose={close}
         fullWidth
         fullScreen={isXs}
-        maxWidth="md"
+        maxWidth={false}
         sx={{ zIndex: (t) => t.zIndex.modal + 30 }}
-        slotProps={{ paper: { sx: { ...dialogPaperSx, height: isXs ? '100%' : 'auto' } } }}
+        slotProps={{ paper: { sx: ticketDialogPaperSx } }}
       >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1.25, pr: 1 }}>
-          <Typography variant="h6" component="span" sx={{ flex: 1, minWidth: 0 }}>
+        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1, pt: 2, pb: 1.25, px: { xs: 2, sm: 3 } }}>
+          <Box aria-hidden sx={(t) => dialogIconSx(t)}>
+            <AccountTreeOutlinedIcon />
+          </Box>
+          <Typography component="h2" sx={{ flex: 1, minWidth: 0, fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>
             Flow Configuration
           </Typography>
-          <IconButton size="small" onClick={close} aria-label="Close">
+          <IconButton onClick={close} aria-label="Close" sx={(t) => closeButtonSx(t)}>
             <CloseRoundedIcon fontSize="small" />
           </IconButton>
         </DialogTitle>

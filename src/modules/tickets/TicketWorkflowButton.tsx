@@ -29,7 +29,7 @@ export default function TicketWorkflowButton({ ticket, draftType, onDraftTypeCha
           <SettingsRoundedIcon />
         </IconButton>
       </Tooltip>
-      {open && <WorkflowSettingsDialog open onClose={() => setOpen(false)} selectedTypeKey={selectedTypeKey} onSelectType={onSelectType} />}
+      {open && <WorkflowSettingsDialog open onClose={() => setOpen(false)} selectedTypeKey={selectedTypeKey} onSelectType={onSelectType} currentState={ticket?.workflowState} />}
     </>
   )
 }

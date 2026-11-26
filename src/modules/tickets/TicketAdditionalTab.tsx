@@ -162,7 +162,7 @@ function FieldError({ id, children }: { id?: string; children: ReactNode }) {
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 const HOURS = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'))
-const MINUTES = ['00', '15', '30', '45']
+const MINUTES = Array.from({ length: 60 }, (_, m) => String(m).padStart(2, '0'))
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const toKey = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`

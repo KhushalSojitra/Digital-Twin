@@ -1,5 +1,7 @@
 import { useId, useState, type ReactNode } from 'react'
-import { Box, Button, Checkbox, MenuItem, TextField, Typography } from '@mui/material'
+import { Box, Button, Checkbox, IconButton, MenuItem, TextField, Tooltip, Typography } from '@mui/material'
+import TuneRoundedIcon from '@mui/icons-material/TuneRounded'
+import { glassCardSx, toolButtonSx } from '../../components/ui/figma'
 import { DIRECTORY } from '../../auth/users'
 import { CONFIG_OPTIONS, DEFAULT_CONFIG, type TicketTypeConfig } from '../../data/ticketTypes'
 import { fieldSx } from './TicketCreateLayout'
@@ -7,6 +9,8 @@ import InfoTip from './InfoTip'
 import WorkflowPreview from './WorkflowPreview'
 
 interface Props {
+  /** Workflow state of the ticket the dialog was opened from (highlighted in the preview). */
+  currentState?: string
   /** Heading of the configuration column. */
   title: string
   /** Explanations shown in the tooltip next to the heading. */
@@ -36,6 +40,7 @@ export default function TicketTypeConfigEditor({
   actions,
   onCancel,
   onSave,
+  currentState,
 }: Props) {
   const idPrefix = useId()
   const [name, setName] = useState(initialName)
@@ -45,33 +50,66 @@ export default function TicketTypeConfigEditor({
     name !== initialName || description !== initialDescription || (CONFIG_OPTIONS.some(({ key }) => config[key] !== (initialConfig ?? DEFAULT_CONFIG)[key])
       || (config.preApprover ?? null) !== ((initialConfig ?? DEFAULT_CONFIG).preApprover ?? null))
   const ready = name.trim() !== '' && dirty
+  // Settings start open when building a new type; otherwise behind the gear in the preview.
+  const [showSettings, setShowSettings] = useState(!readOnly && initialName === '')
 
   return (
-    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'stretch' }}>
+    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', p: { xs: 1.5, sm: 2 }, gap: 1.5, boxSizing: 'border-box' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: 32, flexWrap: 'wrap' }}>
+        <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600, minWidth: 0, overflowWrap: 'anywhere' }}>
+          {title}
+        </Typography>
+        <InfoTip label="About this ticket type">
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            {info.map((line) => (
+              <span key={line}>{line}</span>
+            ))}
+          </Box>
+        </InfoTip>
+        <Box sx={{ flex: 1 }} />
+        {actions}
+      </Box>
+
+      <Box sx={{ flex: 1, minHeight: 0, display: 'flex', gap: 2, flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'stretch' }}>
+      <Box sx={{ flex: '1 1 320px', minWidth: 0, overflowY: 'auto' }}>
+        <WorkflowPreview
+          config={config}
+          currentState={currentState}
+          headerAction={
+            <Tooltip title={showSettings ? 'Hide flow step settings' : 'Flow step settings'}>
+              <IconButton
+                size="small"
+                aria-label="Flow step settings"
+                aria-pressed={showSettings}
+                onClick={() => setShowSettings((v) => !v)}
+                sx={(t) => ({ ...toolButtonSx(t), ...(showSettings && { bgcolor: 'primary.main', color: 'primary.contrastText', borderColor: 'primary.main', '&:hover': { bgcolor: 'primary.dark' } }) })}
+              >
+                <TuneRoundedIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          }
+        />
+      </Box>
+
+      {showSettings && (
       <Box
-        sx={{
-          flex: '1 1 250px',
-          maxWidth: { sm: 290 },
-          minWidth: 0,
+        component="section"
+        aria-label="Flow step settings"
+        sx={(t) => ({
+          ...glassCardSx(t),
+          flex: '0 1 300px',
+          minWidth: { xs: '100%', md: 280 },
           display: 'flex',
           flexDirection: 'column',
           gap: 1,
-          p: { xs: 1.5, sm: 2 },
+          p: 1.75,
           boxSizing: 'border-box',
-        }}
+          overflowY: 'auto',
+        })}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: 28 }}>
-          <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>
-            {title}
-          </Typography>
-          <InfoTip label="About this ticket type">
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              {info.map((line) => (
-                <span key={line}>{line}</span>
-              ))}
-            </Box>
-          </InfoTip>
-        </Box>
+        <Typography variant="subtitle2" component="h4">
+          Flow step settings
+        </Typography>
 
         {!readOnly && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, pt: 0.5, pb: 0.5 }}>
@@ -150,9 +188,8 @@ export default function TicketTypeConfigEditor({
           </Typography>
         )}
 
-        {(actions || !readOnly) && (
+        {!readOnly && (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, mt: 'auto', pt: 0.5 }}>
-            {actions}
             <Box sx={{ flex: 1 }} />
             {!readOnly && (
               <>
@@ -167,9 +204,7 @@ export default function TicketTypeConfigEditor({
           </Box>
         )}
       </Box>
-
-      <Box sx={{ flex: '1 1 240px', minWidth: 0, p: { xs: 1.5, sm: 2 }, pl: { sm: 0 }, boxSizing: 'border-box' }}>
-        <WorkflowPreview config={config} />
+      )}
       </Box>
     </Box>
   )

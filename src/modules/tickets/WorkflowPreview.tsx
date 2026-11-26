@@ -1,4 +1,4 @@
-import { useMemo, type ReactElement } from 'react'
+import { useMemo, type ReactElement, type ReactNode } from 'react'
 import { alpha, Box, Tooltip, Typography, type Theme } from '@mui/material'
 import ArrowDownwardRoundedIcon from '@mui/icons-material/ArrowDownwardRounded'
 import PauseCircleOutlineRoundedIcon from '@mui/icons-material/PauseCircleOutlineRounded'
@@ -76,7 +76,17 @@ function Tag({ icon, label, tip }: { icon: ReactElement; label: string; tip: str
   )
 }
 
-export default function WorkflowPreview({ config }: { config: TicketTypeConfig }) {
+export default function WorkflowPreview({
+  config,
+  currentState,
+  headerAction,
+}: {
+  config: TicketTypeConfig
+  /** Workflow state of the ticket the dialog was opened from; that step is highlighted. */
+  currentState?: string
+  headerAction?: ReactNode
+}) {
+  const currentNode = currentState === 'on_hold' ? 'in_progress' : currentState
   const mainFlow = useMemo(() => previewDefinition(config).states.filter((state) => state.key !== 'on_hold'), [config])
 
   const tagsFor = (stateKey: string) => {
@@ -129,6 +139,8 @@ export default function WorkflowPreview({ config }: { config: TicketTypeConfig }
         <InfoTip label="About the workflow preview">
           Solid steps are the main flow, including approvals. Dashed tags are optional: On Hold and Reopen are conditional transitions, and Pass On is an assignment action.
         </InfoTip>
+        <Box sx={{ flex: 1 }} />
+        {headerAction}
       </Box>
       <Box component="ol" sx={{ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         {mainFlow.map((state, index) => {
@@ -140,7 +152,35 @@ export default function WorkflowPreview({ config }: { config: TicketTypeConfig }
               key={state.key}
               sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
             >
-              <Box sx={nodeSx(tone)}>
+              <Box
+                sx={[
+                  nodeSx(tone),
+                  state.key === currentNode && {
+                    position: 'relative',
+                    boxShadow: (t: Theme) => `0 0 0 2px ${t.palette.secondary.main}`,
+                  },
+                ]}
+                aria-current={state.key === currentNode ? 'step' : undefined}
+              >
+                {state.key === currentNode && (
+                  <Box
+                    component="span"
+                    sx={(t) => ({
+                      position: 'absolute',
+                      top: -9,
+                      right: 8,
+                      px: 0.75,
+                      borderRadius: '999px',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      lineHeight: '16px',
+                      color: '#fff',
+                      bgcolor: t.palette.secondary.main,
+                    })}
+                  >
+                    {currentState === 'on_hold' ? 'This ticket · On Hold' : 'This ticket'}
+                  </Box>
+                )}
                 <Typography
                   variant="body2"
                   component="span"

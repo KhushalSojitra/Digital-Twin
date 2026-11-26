@@ -67,13 +67,13 @@ const primaryIconButtonSx = (t: Theme) => ({
 
 function DetailRow({ icon, label, value, href }: { icon: React.ReactElement; label: string; value?: string | null; href?: string }) {
   return (
-    <Box sx={(t) => ({ display: 'flex', alignItems: 'center', gap: 1.25, textAlign: 'left', border: `1px solid ${t.palette.divider}`, borderRadius: '10px', px: 1.25, py: 0.875 })}>
+    <Box sx={(t) => ({ display: 'flex', alignItems: 'center', gap: 1.25, textAlign: 'left', border: `1px solid ${t.palette.divider}`, borderRadius: '10px', px: 1.25, py: 0.5 })}>
       <Box aria-hidden sx={{ display: 'flex', color: 'primary.main', '& svg': { fontSize: 18 } }}>{icon}</Box>
       <Box sx={{ minWidth: 0 }}>
-        <Typography component="dt" variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.3 }}>
+        <Typography component="dt" variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: 11, lineHeight: 1.25 }}>
           {label}
         </Typography>
-        <Typography component="dd" variant="body2" sx={{ m: 0, fontWeight: 600, overflowWrap: 'anywhere' }}>
+        <Typography component="dd" variant="body2" sx={{ m: 0, fontWeight: 600, lineHeight: 1.35, overflowWrap: 'anywhere' }}>
           {value ? (href ? <Box component="a" href={href} sx={{ color: 'inherit', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>{value}</Box> : value) : '—'}
         </Typography>
       </Box>
@@ -141,23 +141,23 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
             </Tooltip>
           )}
         </Stack>
-        <Stack sx={{ mt: 2, alignItems: 'center', textAlign: 'center', gap: 0.5 }}>
+        <Stack sx={{ mt: 1, alignItems: 'center', textAlign: 'center', gap: 0.25 }}>
           <Avatar
             variant="rounded"
             src={assigneeUser?.avatarUrl ?? undefined}
             alt={unassigned ? '' : ticket.assignee}
             sx={{
-              width: 120,
-              height: 120,
-              mb: 1,
-              fontSize: 40,
+              width: 96,
+              height: 96,
+              mb: 0.75,
+              fontSize: 34,
               fontWeight: 700,
               borderRadius: '16px',
               bgcolor: assigneeUser?.avatarColor ?? 'primary.main',
               color: '#fff',
             }}
           >
-            {unassigned ? <PersonOutlineRoundedIcon sx={{ fontSize: 56 }} /> : initials(ticket.assignee)}
+            {unassigned ? <PersonOutlineRoundedIcon sx={{ fontSize: 48 }} /> : initials(ticket.assignee)}
           </Avatar>
           <Typography sx={{ fontSize: 19, fontWeight: 700, lineHeight: 1.25, maxWidth: '100%', overflowWrap: 'anywhere' }}>
             {unassigned ? UNASSIGNED : ticket.assignee}
@@ -171,7 +171,7 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
             </Typography>
           )}
           {!unassigned && (
-            <Box component="dl" sx={{ m: 0, mt: 1.5, width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Box component="dl" sx={{ m: 0, mt: 1, width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
               <DetailRow icon={<AccountTreeOutlinedIcon />} label="Reporting manager" value={managerName(ticket.assignee)} />
               <DetailRow icon={<PhoneOutlinedIcon />} label="Contact number" value={assigneeUser?.phone} href={assigneeUser?.phone ? `tel:${assigneeUser.phone.replace(/[^+\d]/g, '')}` : undefined} />
               <DetailRow icon={<MailOutlineRoundedIcon />} label="Email" value={assigneeUser?.email} href={assigneeUser?.email ? `mailto:${assigneeUser.email}` : undefined} />

@@ -494,7 +494,7 @@ export default function TicketCreateLayout({
 
       <DialogContent id={`${uid}-panel`} role="tabpanel" aria-labelledby={tabId(tab)} sx={{ p: { xs: 2, sm: 3.5 } }}>
         {tab === 'general' && (
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: { xs: 3, md: 4 }, alignItems: 'stretch', pt: 0.5 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 35fr) minmax(0, 65fr)' }, gap: { xs: 3, md: 4 }, alignItems: 'stretch', pt: 0.5 }}>
             <Stack spacing={3}>
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>

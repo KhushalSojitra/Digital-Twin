@@ -25,7 +25,6 @@ import PublicRoundedIcon from '@mui/icons-material/PublicRounded'
 import MicRoundedIcon from '@mui/icons-material/MicRounded'
 import StopRoundedIcon from '@mui/icons-material/StopRounded'
 import FullscreenRoundedIcon from '@mui/icons-material/FullscreenRounded'
-import ConfirmationNumberRoundedIcon from '@mui/icons-material/ConfirmationNumberRounded'
 import DescriptionRoundedIcon from '@mui/icons-material/DescriptionRounded'
 import TuneRoundedIcon from '@mui/icons-material/TuneRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
@@ -46,6 +45,7 @@ import { useWorkflow } from '../../state/WorkflowContext'
 import { DEFAULT_TICKET_TYPE_KEY } from '../../data/ticketTypes'
 import { closeButtonSx, dialogIconSx, toolButtonSx } from '../../components/ui/figma'
 import { TOKENS, themeColors } from '../../theme/theme'
+import TicketManagementIcon from '../../components/icons/TicketManagementIcon'
 
 type TicketTab = 'general' | 'additional' | 'activity'
 type VoiceState = 'idle' | 'listening' | 'transcribing'
@@ -455,8 +455,8 @@ export default function TicketCreateLayout({
   return (
     <Box component="form" onSubmit={handleSubmit} noValidate sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1, pt: 2, pb: 1.25, px: { xs: 2, sm: 3 }, mx: { xs: 0, sm: 0 }, borderBottom: 1, borderColor: 'divider' }}>
-        <Box aria-hidden sx={(t) => dialogIconSx(t)}>
-          <ConfirmationNumberRoundedIcon />
+        <Box aria-hidden sx={(t) => ({ ...dialogIconSx(t), '& svg': { fontSize: 26 } })}>
+          <TicketManagementIcon />
         </Box>
         <Typography component="h2" sx={{ flex: 1, minWidth: 0, fontSize: TOKENS.size.title3, fontWeight: TOKENS.weight.heading, lineHeight: 1.2 }}>
           Create Ticket

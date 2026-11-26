@@ -7,14 +7,14 @@ import TicketingIntegrations from './TicketingIntegrations'
 import UserManagement from './UserManagement'
 import DeviceManagement from './DeviceManagement'
 import { IconTabs, PageHeader, type IconTabItem } from '../../components/ui/figma'
-import TicketManagementIcon from '../../components/icons/TicketManagementIcon'
+import ConfirmationNumberOutlinedIcon from '@mui/icons-material/ConfirmationNumberOutlined'
 
 type AdminTab = 'users' | 'devices' | 'tickets'
 
 const TABS: IconTabItem<AdminTab>[] = [
   { value: 'users', label: 'User Management', icon: <PeopleAltOutlinedIcon /> },
   { value: 'devices', label: 'Device Management', icon: <DnsOutlinedIcon /> },
-  { value: 'tickets', label: 'Ticket Management', icon: <TicketManagementIcon /> },
+  { value: 'tickets', label: 'Ticket Management', icon: <ConfirmationNumberOutlinedIcon /> },
 ]
 
 export default function Administration() {

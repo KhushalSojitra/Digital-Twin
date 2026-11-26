@@ -26,7 +26,8 @@ import TicketFilters from './TicketFilters'
 import ImprovementSummary from './ImprovementSummary'
 import { TICKET_SIZE_DEFAULT, TICKET_SIZE_MAX, TICKET_SIZE_MIN, activeFilterCount, type TicketFilterState, type TicketPinSize } from './ticketFilters'
 import type { Ticket } from '../../data/tickets'
-import TicketManagementIcon from '../../components/icons/TicketManagementIcon'
+import ConfirmationNumberOutlinedIcon from '@mui/icons-material/ConfirmationNumberOutlined'
+import ViewListRoundedIcon from '@mui/icons-material/ViewListRounded'
 
 interface Props {
   tickets: Ticket[]
@@ -76,7 +77,7 @@ export default function TicketMenu({
           sx={buttonSx}
         >
           <Badge badgeContent={count} color="primary" slotProps={{ badge: { sx: { fontSize: 9, height: 15, minWidth: 15 } } }}>
-            <TicketManagementIcon fontSize="small" />
+            <ConfirmationNumberOutlinedIcon fontSize="small" />
           </Badge>
         </IconButton>
       </Tooltip>
@@ -96,7 +97,7 @@ export default function TicketMenu({
           }}
         >
           <ListItemIcon>
-            <TicketManagementIcon fontSize="small" />
+            <ViewListRoundedIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Manage Tickets</ListItemText>
         </MenuItem>

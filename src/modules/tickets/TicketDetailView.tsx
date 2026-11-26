@@ -22,7 +22,6 @@ import TuneRoundedIcon from '@mui/icons-material/TuneRounded'
 import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded'
-import ConfirmationNumberRoundedIcon from '@mui/icons-material/ConfirmationNumberRounded'
 import CameraAltRoundedIcon from '@mui/icons-material/CameraAltRounded'
 import EditRoundedIcon from '@mui/icons-material/EditRounded'
 import { PriorityIndicator, StatusIndicator } from './TicketIndicators'
@@ -56,6 +55,7 @@ import { fieldSx } from './TicketCreateLayout'
 import { BREACH_OPTIONS } from './TicketAdditionalTab'
 import { closeButtonSx, dialogIconSx, toolButtonSx } from '../../components/ui/figma'
 import { TOKENS } from '../../theme/theme'
+import TicketManagementIcon from '../../components/icons/TicketManagementIcon'
 
 export type DetailTab = 'snapshot' | 'subtasks' | 'team' | 'additional' | 'comments' | 'activity'
 
@@ -359,8 +359,8 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pt: 2, pb: 1.25, px: { xs: 2, sm: 3 } }}>
-        <Box aria-hidden sx={(t) => dialogIconSx(t)}>
-          <ConfirmationNumberRoundedIcon />
+        <Box aria-hidden sx={(t) => ({ ...dialogIconSx(t), '& svg': { fontSize: 26 } })}>
+          <TicketManagementIcon />
         </Box>
 
         <Box sx={{ flex: 1, minWidth: 0 }}>

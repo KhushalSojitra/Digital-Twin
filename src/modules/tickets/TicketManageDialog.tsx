@@ -494,7 +494,7 @@ export default function TicketManageDialog({
     >
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1, px: { xs: 1.5, sm: 2.5 }, pt: 2, pb: 1.5 }}>
         <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flexShrink: 0 }}>
-          <Box aria-hidden sx={(t) => dialogIconSx(t)}>
+          <Box aria-hidden sx={(t) => ({ ...dialogIconSx(t), '& svg': { fontSize: 26 } })}>
             <TicketManagementIcon />
           </Box>
           <Typography component="h2" sx={{ fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>

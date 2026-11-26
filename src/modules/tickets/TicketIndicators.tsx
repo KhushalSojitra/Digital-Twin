@@ -76,14 +76,13 @@ function Pill({ color, label, tooltip, Icon }: { color: string; label: string; t
           aria-label={label}
           tabIndex={0}
           sx={{
-            height: 24,
-            minWidth: 32,
-            px: 0.75,
-            border: `1px solid ${color}59`,
+            width: 32,
+            height: 32,
+            border: `1px solid ${color}4D`,
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            borderRadius: '999px',
+            borderRadius: '8px',
             color,
             bgcolor: `${color}1A`,
             outline: 'none',

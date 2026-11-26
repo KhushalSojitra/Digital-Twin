@@ -256,11 +256,7 @@ function CreateForm({
       snapshotBase={snapshotBase}
       snapshotAdjust={snapshotAdjust}
       onSnapshotAdjust={snapshotBase ? adjustSnapshot : undefined}
-      activity={[
-        { label: 'Ticket Created', detail: `Reported by ${creator}`, meta: 'Recorded when you create the ticket' },
-        { label: 'Assigned', detail: `${assignee} on ${camera.name}`, meta: 'Assigned on creation' },
-        { label: 'Status', detail: 'To Do', meta: 'Default status' },
-      ]}
+      activity={[]}
       error={createError}
       isSubmitting={isSubmitting}
       onSubmit={submit}

@@ -1,5 +1,6 @@
-import { useId, useState, type ChangeEvent, type MouseEvent, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { themeColors } from '../../theme/theme'
+import { glassCardSx } from '../../components/ui/figma'
 import {
   alpha,
   Box,
@@ -13,14 +14,15 @@ import {
   Select,
   Stack,
   TextField,
+  Tooltip,
   Typography,
   type SxProps,
   type Theme,
 } from '@mui/material'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import BlockRoundedIcon from '@mui/icons-material/BlockRounded'
-import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded'
-import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded'
+import ChevronLeftRoundedIcon from '@mui/icons-material/ChevronLeftRounded'
+import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded'
@@ -128,23 +130,21 @@ export function useTicketAdditional(title: string) {
 
 export type TicketAdditionalState = ReturnType<typeof useTicketAdditional>
 
-const borderColor = 'transparent'
-
-const cardSx: SxProps<Theme> = {
+const cardSx: SxProps<Theme> = (t: Theme) => ({
+  ...glassCardSx(t),
   minWidth: 0,
-  p: 1.5,
-  borderRadius: '14px',
-  border: 1,
-  borderColor: 'divider',
-}
+  p: 2,
+  display: 'flex',
+  flexDirection: 'column',
+})
 
 function SectionHeading({ icon, children, action }: { icon: ReactNode; children: ReactNode; action?: ReactNode }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 32 }}>
-      <Box aria-hidden sx={{ display: 'grid', placeItems: 'center', color: 'primary.main', '& .MuiSvgIcon-root': { fontSize: 22 } }}>
+      <Box aria-hidden sx={{ display: 'grid', placeItems: 'center', color: 'text.secondary', '& .MuiSvgIcon-root': { fontSize: 20 } }}>
         {icon}
       </Box>
-      <Typography component="h3" sx={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 800 }}>
+      <Typography component="h3" sx={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600 }}>
         {children}
       </Typography>
       {action}
@@ -160,94 +160,145 @@ function FieldError({ id, children }: { id?: string; children: ReactNode }) {
   )
 }
 
-const bareInputSx: SxProps<Theme> = {
-  minWidth: 0,
-  p: 0,
-  border: 0,
-  outline: 0,
-  bgcolor: 'transparent',
-  color: 'text.primary',
-  font: 'inherit',
-  fontSize: 14,
-  fontWeight: 500,
-  colorScheme: (t: Theme) => t.palette.mode,
-  '&::-webkit-calendar-picker-indicator': { display: 'none' },
-  '&::placeholder': { color: 'text.secondary' },
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+const HOURS = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'))
+const MINUTES = ['00', '15', '30', '45']
+
+const pad = (n: number) => String(n).padStart(2, '0')
+const toKey = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`
+
+/** Small square selectable cell used by the calendar and the time columns. */
+function pickCellSx(selected: boolean, today = false): SxProps<Theme> {
+  return (t: Theme) => ({
+    minWidth: 0,
+    width: '100%',
+    height: 32,
+    p: 0,
+    borderRadius: '8px',
+    fontSize: 13,
+    fontWeight: selected ? 600 : 400,
+    color: selected ? t.palette.primary.contrastText : t.palette.text.primary,
+    bgcolor: selected ? t.palette.primary.main : 'transparent',
+    border: today && !selected ? `1px solid ${alpha(t.palette.secondary.main, 0.7)}` : '1px solid transparent',
+    '&:hover': { bgcolor: selected ? t.palette.primary.dark : alpha(t.palette.primary.main, 0.1) },
+    '&.Mui-disabled': { color: t.palette.text.disabled },
+  })
 }
 
-function DeadlineField({ state, labelId }: { state: TicketAdditionalState; labelId: string }) {
+/** Inline, always-open date + time picker in the app theme (replaces the browser's native pickers). */
+function DeadlinePicker({ state, labelId }: { state: TicketAdditionalState; labelId: string }) {
   const { dueDate, dueTime, setDueDate, setDueTime, clearDeadline } = state
-  const hasValue = Boolean(dueDate || dueTime)
+  const now = new Date()
+  const todayKey = toKey(now.getFullYear(), now.getMonth(), now.getDate())
+  const initial = dueDate ? new Date(`${dueDate}T00:00:00`) : now
+  const [view, setView] = useState({ y: initial.getFullYear(), m: initial.getMonth() })
+  const [hh, mm] = (dueTime || '').split(':')
 
-  const openPicker = (input: HTMLInputElement | null) => {
-    if (!input) return
-    input.focus()
-    try {
-      input.showPicker()
-    } catch {
-      // Browsers without showPicker still open it on focus/click of the input itself.
-    }
+  const first = new Date(view.y, view.m, 1).getDay()
+  const days = new Date(view.y, view.m + 1, 0).getDate()
+  const cells: (number | null)[] = [...Array(first).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)]
+  const shift = (delta: number) => setView((v) => {
+    const d = new Date(v.y, v.m + delta, 1)
+    return { y: d.getFullYear(), m: d.getMonth() }
+  })
+  const monthLabel = new Date(view.y, view.m, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  const minutes = mm && !MINUTES.includes(mm) ? [...MINUTES, mm].sort() : MINUTES
+  const pickTime = (h: string, m: string) => {
+    if (!dueDate) setDueDate(todayKey)
+    setDueTime(`${h}:${m}`)
   }
+  const summary = dueDate
+    ? `${new Date(`${dueDate}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}${dueTime ? `, ${dueTime}` : ''}`
+    : 'No deadline set'
 
   return (
-    <Box
-      role="group"
-      aria-labelledby={labelId}
-      sx={{
-        position: 'relative',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 0.75,
-        height: 40,
-        px: 1.25,
-        borderRadius: '8px',
-        border: 1,
-        borderColor,
-        bgcolor: (t: Theme) => themeColors(t.palette.mode).inputBg,
-        '&:hover': { borderColor: (t: Theme) => alpha(t.palette.primary.main, 0.25) },
-        '&:focus-within': { borderColor: 'secondary.main' },
-        '&:focus-within > .deadline-label': { color: 'primary.main' },
-      }}
-    >
-      <Typography
-        id={labelId}
-        className="deadline-label"
-        component="span"
-        sx={{ position: 'absolute', top: -10, left: 12, px: 0.75, fontSize: 13, fontWeight: 500, lineHeight: '18px', color: 'text.secondary' }}
-      >
-        Due Date &amp; Time
-      </Typography>
+    <Box role="group" aria-labelledby={labelId}>
+      <Stack direction="row" sx={{ alignItems: 'center', mb: 1, gap: 1 }}>
+        <Typography id={labelId} component="span" sx={{ fontSize: 13, fontWeight: 500, color: 'text.secondary' }}>
+          Due Date &amp; Time
+        </Typography>
+        <Typography component="span" sx={{ flex: 1, fontSize: 13, fontWeight: 600, textAlign: 'right' }}>
+          {summary}
+        </Typography>
+        <Tooltip title="Clear deadline">
+          <span>
+            <IconButton size="small" onClick={clearDeadline} aria-label="Clear deadline" disabled={!dueDate && !dueTime} sx={{ color: 'text.secondary' }}>
+              <CloseRoundedIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Stack>
 
-      <CalendarMonthRoundedIcon aria-hidden sx={{ fontSize: 20, color: 'text.secondary', flexShrink: 0 }} />
       <Box
-        component="input"
-        type="date"
-        value={dueDate}
-        onChange={(e: ChangeEvent<HTMLInputElement>) => setDueDate(e.target.value)}
-        onClick={(e: MouseEvent<HTMLInputElement>) => openPicker(e.currentTarget)}
-        aria-label="Due date"
-        sx={{ ...bareInputSx, flex: '1 1 auto', width: 0, minWidth: 104 }}
-      />
-      <Box aria-hidden sx={{ width: '1px', height: 22, flexShrink: 0, bgcolor: 'divider' }} />
-      <AccessTimeRoundedIcon aria-hidden sx={{ fontSize: 20, color: 'text.secondary', flexShrink: 0 }} />
-      <Box
-        component="input"
-        type="time"
-        value={dueTime}
-        onChange={(e: ChangeEvent<HTMLInputElement>) => setDueTime(e.target.value)}
-        onClick={(e: MouseEvent<HTMLInputElement>) => openPicker(e.currentTarget)}
-        aria-label="Due time"
-        sx={{ ...bareInputSx, flex: '0 0 auto', width: 78 }}
-      />
-      <IconButton
-        size="small"
-        onClick={clearDeadline}
-        aria-label="Clear deadline"
-        disabled={!hasValue}
-        sx={{ flexShrink: 0, visibility: hasValue ? 'visible' : 'hidden', color: 'text.secondary' }}
+        sx={(t) => ({
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) 112px',
+          gap: 1.5,
+          p: 1.25,
+          borderRadius: '12px',
+          bgcolor: themeColors(t.palette.mode).inputBg,
+        })}
       >
-        <CloseRoundedIcon sx={{ fontSize: 18 }} />
-      </IconButton>
+        {/* calendar */}
+        <Box>
+          <Stack direction="row" sx={{ alignItems: 'center', mb: 0.75 }}>
+            <IconButton size="small" onClick={() => shift(-1)} aria-label="Previous month">
+              <ChevronLeftRoundedIcon fontSize="small" />
+            </IconButton>
+            <Typography sx={{ flex: 1, textAlign: 'center', fontSize: 14, fontWeight: 600 }} aria-live="polite">
+              {monthLabel}
+            </Typography>
+            <IconButton size="small" onClick={() => shift(1)} aria-label="Next month">
+              <ChevronRightRoundedIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+          <Box role="grid" aria-label={monthLabel} sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 0.25 }}>
+            {WEEKDAYS.map((d) => (
+              <Typography key={d} role="columnheader" sx={{ textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'text.secondary', py: 0.5 }}>
+                {d}
+              </Typography>
+            ))}
+            {cells.map((day, i) => {
+              if (!day) return <Box key={`e${i}`} />
+              const key = toKey(view.y, view.m, day)
+              return (
+                <Button
+                  key={key}
+                  role="gridcell"
+                  aria-selected={key === dueDate}
+                  aria-label={new Date(view.y, view.m, day).toDateString()}
+                  disabled={key < todayKey}
+                  onClick={() => setDueDate(key)}
+                  sx={pickCellSx(key === dueDate, key === todayKey)}
+                >
+                  {day}
+                </Button>
+              )
+            })}
+          </Box>
+        </Box>
+
+        {/* time */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <Typography sx={{ textAlign: 'center', fontSize: 14, fontWeight: 600, mb: 0.75, lineHeight: '30px' }}>Time</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5, flex: 1, minHeight: 0 }}>
+            <Box role="listbox" aria-label="Hour" sx={{ overflowY: 'auto', maxHeight: 236, pr: 0.25 }}>
+              {HOURS.map((h) => (
+                <Button key={h} role="option" aria-selected={h === hh} onClick={() => pickTime(h, mm || '00')} sx={[pickCellSx(h === hh), { mb: 0.25 }] as SxProps<Theme>}>
+                  {h}
+                </Button>
+              ))}
+            </Box>
+            <Box role="listbox" aria-label="Minute" sx={{ overflowY: 'auto', maxHeight: 236 }}>
+              {minutes.map((m) => (
+                <Button key={m} role="option" aria-selected={m === mm} onClick={() => pickTime(hh || '17', m)} sx={[pickCellSx(m === mm), { mb: 0.25 }] as SxProps<Theme>}>
+                  {m}
+                </Button>
+              ))}
+            </Box>
+          </Box>
+        </Box>
+      </Box>
     </Box>
   )
 }
@@ -307,7 +358,7 @@ function LinkPanelBody({
           }}
           sx={{
             '& .MuiInputBase-root': { borderRadius: '10px', fontSize: 14 },
-            '& .MuiOutlinedInput-notchedOutline': { borderWidth: 1.5, borderColor },
+            '& .MuiOutlinedInput-notchedOutline': { borderWidth: 1, borderColor: 'transparent' },
             '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
           }}
         />
@@ -457,14 +508,13 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps }: Props
   const breachId = `${uid}-breach-error`
 
   return (
-    <Stack spacing={1.5}>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 5fr) minmax(0, 7fr)' }, gap: 1.5, alignItems: 'start' }}>
+    <Stack spacing={1.5} sx={{ height: '100%' }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 5fr) minmax(0, 7fr)' }, gap: 2, alignItems: 'stretch', flex: 1, minHeight: 0 }}>
       <Box component="section" aria-labelledby={`${uid}-deadline-heading`} sx={cardSx}>
         <Box id={`${uid}-deadline-heading`}>
           <SectionHeading icon={<ScheduleRoundedIcon />}>Deadline &amp; Action</SectionHeading>
         </Box>
-        <Stack spacing={2.75} sx={{ mt: 2 }}>
-          <DeadlineField state={state} labelId={`${uid}-due-label`} />
+        <Stack spacing={2.5} sx={{ mt: 2 }}>
           <Box>
             <FormControl fullWidth sx={fieldSx} error={Boolean(state.breachError)}>
               <InputLabel shrink id={`${uid}-breach-label`}>
@@ -483,7 +533,7 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps }: Props
                   const option = BREACH_OPTIONS.find((o) => o.value === value)
                   if (!option) {
                     return (
-                      <Typography component="span" color="text.secondary" sx={{ fontSize: 15 }}>
+                      <Typography component="span" color="text.secondary" sx={{ fontSize: 13 }}>
                         Select action
                       </Typography>
                     )
@@ -493,13 +543,13 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps }: Props
                       <Box aria-hidden sx={{ display: 'grid', placeItems: 'center', color: 'text.secondary', '& .MuiSvgIcon-root': { fontSize: 20 } }}>
                         {option.icon}
                       </Box>
-                      <Typography noWrap component="span" sx={{ fontSize: 15, fontWeight: 500 }}>
+                      <Typography noWrap component="span" sx={{ fontSize: 13 }}>
                         {option.label}
                       </Typography>
                     </Box>
                   )
                 }}
-                sx={{ height: 44, borderRadius: '12px', '& .MuiSelect-select': { display: 'flex', alignItems: 'center', py: 0 } }}
+                sx={{ height: 40, '& .MuiSelect-select': { display: 'flex', alignItems: 'center', py: 0 } }}
               >
                 {BREACH_OPTIONS.map((o) => (
                   <MenuItem key={o.value} value={o.value} sx={{ gap: 1.25, '& .MuiSvgIcon-root': { fontSize: 20, color: 'text.secondary' } }}>
@@ -509,9 +559,10 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps }: Props
                 ))}
               </Select>
             </FormControl>
+            {state.breachError && <FieldError id={breachId}>{state.breachError}</FieldError>}
           </Box>
+          <DeadlinePicker state={state} labelId={`${uid}-due-label`} />
         </Stack>
-        {state.breachError && <FieldError id={breachId}>{state.breachError}</FieldError>}
       </Box>
 
       <Box component="section" aria-labelledby={`${uid}-deps-heading`} sx={cardSx}>
@@ -519,16 +570,16 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps }: Props
           <SectionHeading
             icon={<LinkRoundedIcon />}
             action={
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<AddRoundedIcon />}
-                onClick={(e) => setAnchor(e.currentTarget)}
-                aria-haspopup="dialog"
-                sx={{ borderRadius: 999, px: 1.5, py: 0.25, fontWeight: 700, whiteSpace: 'nowrap' }}
-              >
-                Link Ticket
-              </Button>
+              <Tooltip title="Link Ticket">
+                <IconButton
+                  onClick={(e) => setAnchor(e.currentTarget)}
+                  aria-haspopup="dialog"
+                  aria-label="Link Ticket"
+                  sx={(t) => ({ width: 32, height: 32, borderRadius: '8px', bgcolor: t.palette.primary.main, color: t.palette.primary.contrastText, '&:hover': { bgcolor: t.palette.primary.dark } })}
+                >
+                  <AddRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             }
           >
             Ticket Dependencies
@@ -538,7 +589,9 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps }: Props
         {state.links.length === 0 ? (
           <Box
             sx={{
-              mt: 1.25,
+              mt: 1.5,
+              flex: 1,
+              justifyContent: 'center',
               px: 2,
               py: 1.5,
               display: 'flex',
@@ -547,13 +600,13 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps }: Props
               gap: 0.25,
               textAlign: 'center',
               borderRadius: '12px',
-              border: '1.5px dashed',
-              borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.28),
+              border: '1px dashed',
+              borderColor: (t: Theme) => alpha(t.palette.text.primary, 0.22),
               color: 'text.secondary',
             }}
           >
             <LinkRoundedIcon aria-hidden sx={{ fontSize: 28, opacity: 0.7 }} />
-            <Typography sx={{ fontSize: 15, fontWeight: 600, color: 'text.primary' }}>No linked tickets yet</Typography>
+            <Typography sx={{ fontSize: 14, fontWeight: 600, color: 'text.primary' }}>No linked tickets yet</Typography>
             <Typography variant="caption">Link related tickets to show dependencies.</Typography>
           </Box>
         ) : (

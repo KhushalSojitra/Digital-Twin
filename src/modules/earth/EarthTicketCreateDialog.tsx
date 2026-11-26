@@ -2,7 +2,6 @@ import { useState, type FormEvent } from 'react'
 import { Dialog, useMediaQuery, useTheme } from '@mui/material'
 import { ticketDialogPaperSx } from '../../theme/hud'
 import { TICKETING_SYSTEM, UNASSIGNED, type Ticket, type TicketPriority } from '../../data/tickets'
-import { formatDateTime } from '../../utils/format'
 import { useTickets } from '../../state/TicketsContext'
 import { DEFAULT_TICKET_TYPE_KEY } from '../../data/ticketTypes'
 import TicketCreateLayout from '../tickets/TicketCreateLayout'
@@ -50,7 +49,6 @@ function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: O
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [ticketType, setTicketType] = useState(DEFAULT_TICKET_TYPE_KEY)
-  const [openedAt] = useState(() => new Date().toISOString())
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -99,11 +97,7 @@ function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: O
       snapshot={{ mode: 'unavailable' }}
       snapshotPreview={location.preview}
       onSnapshotClick={location.view ? () => onPreviewClick?.(location) : undefined}
-      activity={[
-        { label: 'Ticket Created', detail: `Reported by ${creator}`, meta: `Opened ${formatDateTime(openedAt)}` },
-        { label: 'Assigned', detail: assignee, meta: 'Assigned on creation' },
-        { label: 'Status', detail: 'Open', meta: 'Default status' },
-      ]}
+      activity={[]}
       error={error}
       isSubmitting={isSubmitting}
       onSubmit={submit}

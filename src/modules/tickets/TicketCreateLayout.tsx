@@ -495,7 +495,7 @@ export default function TicketCreateLayout({
       <DialogContent id={`${uid}-panel`} role="tabpanel" aria-labelledby={tabId(tab)} sx={{ p: { xs: 2, sm: 3.5 } }}>
         {tab === 'general' && (
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 35fr) minmax(0, 65fr)' }, gap: { xs: 3, md: 4 }, alignItems: 'stretch', pt: 0.5 }}>
-            <Stack spacing={3}>
+            <Stack spacing={2.5} sx={{ minHeight: '100%' }}>
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                   <TextField
@@ -541,33 +541,6 @@ export default function TicketCreateLayout({
                     {voice === 'listening' ? 'Listening…' : `“${VOICE_SAMPLE.transcript}”`}
                   </Typography>
                 )}
-              </Box>
-
-              <Box sx={{ position: 'relative' }}>
-                <TextField
-                  variant="outlined"
-                  id={`${uid}-description`}
-                  label="Description"
-                  fullWidth
-                  placeholder="Enter detailed description of the issue..."
-                  value={description}
-                  onChange={(e) => onDescriptionChange(e.target.value)}
-                  multiline
-                  minRows={5}
-                  slotProps={{ inputLabel: { shrink: true }, htmlInput: { style: { paddingBottom: 28 } } }}
-                  sx={fieldSx}
-                />
-                <Tooltip title="Attach files">
-                  <IconButton
-                    onClick={(e) => setAttachAnchor(e.currentTarget)}
-                    aria-label={attachments.items.length > 0 ? `Attachments (${attachments.items.length})` : 'Attach files'}
-                    sx={{ position: 'absolute', right: 10, bottom: 8, color: 'text.secondary' }}
-                  >
-                    <Badge badgeContent={attachments.items.length} color="error" overlap="circular">
-                      <AttachFileRoundedIcon sx={{ transform: 'rotate(45deg)' }} />
-                    </Badge>
-                  </IconButton>
-                </Tooltip>
               </Box>
 
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
@@ -630,6 +603,40 @@ export default function TicketCreateLayout({
                   ))}
                 </TextField>
               </Box>
+
+              <Box sx={{ position: 'relative', flex: 1, minHeight: 140, display: 'flex' }}>
+                <TextField
+                  variant="outlined"
+                  id={`${uid}-description`}
+                  label="Description"
+                  fullWidth
+                  placeholder="Enter detailed description of the issue..."
+                  value={description}
+                  onChange={(e) => onDescriptionChange(e.target.value)}
+                  multiline
+                  minRows={4}
+                  slotProps={{ inputLabel: { shrink: true }, htmlInput: { style: { paddingBottom: 28 } } }}
+                  sx={[
+                    fieldSx,
+                    {
+                      flex: 1,
+                      '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' },
+                      '& textarea': { height: '100% !important', overflow: 'auto !important' },
+                    },
+                  ]}
+                />
+                <Tooltip title="Attach files">
+                  <IconButton
+                    onClick={(e) => setAttachAnchor(e.currentTarget)}
+                    aria-label={attachments.items.length > 0 ? `Attachments (${attachments.items.length})` : 'Attach files'}
+                    sx={{ position: 'absolute', right: 10, bottom: 8, color: 'text.secondary' }}
+                  >
+                    <Badge badgeContent={attachments.items.length} color="error" overlap="circular">
+                      <AttachFileRoundedIcon sx={{ transform: 'rotate(45deg)' }} />
+                    </Badge>
+                  </IconButton>
+                </Tooltip>
+              </Box>
             </Stack>
 
             {cropMode === 'panel' && snapshotOn && canAdjust && snapshotBase ? (
@@ -655,14 +662,23 @@ export default function TicketCreateLayout({
         )}
 
         {tab === 'additional' && (
-          <TicketAdditionalTab state={additional} fieldSx={fieldSx} menuProps={menuProps} />
-        )}
-
-        {tab === 'activity' && (
-          <Box sx={{ maxWidth: 560 }}>
-            <Timeline items={activity} />
+          <Box sx={{ height: '100%' }}>
+            <TicketAdditionalTab state={additional} fieldSx={fieldSx} menuProps={menuProps} />
           </Box>
         )}
+
+        {tab === 'activity' &&
+          (activity.length > 0 ? (
+            <Box sx={{ maxWidth: 560 }}>
+              <Timeline items={activity} />
+            </Box>
+          ) : (
+            <Box sx={{ height: '100%', minHeight: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.75, color: 'text.secondary', textAlign: 'center' }}>
+              <HistoryRoundedIcon aria-hidden sx={{ fontSize: 32, opacity: 0.6 }} />
+              <Typography sx={{ fontSize: 14, fontWeight: 600, color: 'text.primary' }}>No activities recorded yet</Typography>
+              <Typography variant="caption">Activity will appear here once the ticket is created.</Typography>
+            </Box>
+          ))}
 
         {error && (
           <Typography role="alert" color="error" variant="body2" sx={{ mt: 2 }}>

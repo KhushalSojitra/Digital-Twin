@@ -134,6 +134,7 @@ export default function TicketTypeConfigEditor({
         open={showSettings}
         anchorEl={settingsAnchor}
         onClose={() => setSettingsAnchor(null)}
+        sx={{ zIndex: (t) => t.zIndex.modal + 40 }}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         slotProps={{
@@ -204,7 +205,7 @@ export default function TicketTypeConfigEditor({
             value={config.preApprover ?? ''}
             disabled={readOnly}
             onChange={(e) => setConfig((prev) => ({ ...prev, preApprover: e.target.value || null }))}
-            slotProps={{ inputLabel: { shrink: true }, select: { displayEmpty: true } }}
+            slotProps={{ inputLabel: { shrink: true }, select: { displayEmpty: true, MenuProps: { sx: { zIndex: (t) => t.zIndex.modal + 50 } } } }}
             sx={{ ...fieldSx, mt: 1.5 }}
           >
             <MenuItem value="">Top of hierarchy (default)</MenuItem>

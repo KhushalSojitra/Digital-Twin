@@ -10,6 +10,9 @@ export interface User {
   team?: string | null
   /** Id of this user's manager; null for the top of the hierarchy. */
   reportsTo?: string | null
+  phone?: string | null
+  /** https URL of the profile picture; initials are shown when empty. */
+  avatarUrl?: string | null
 }
 
 /**

@@ -13,9 +13,14 @@ import {
   Snackbar,
   Stack,
   TextField,
+  Tooltip,
   Typography,
   alpha,
+  type Theme,
 } from '@mui/material'
+import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined'
+import PhoneOutlinedIcon from '@mui/icons-material/PhoneOutlined'
+import MailOutlineRoundedIcon from '@mui/icons-material/MailOutlineRounded'
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded'
 import { mayChangeAssignee } from '../../data/permissions'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
@@ -23,7 +28,7 @@ import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded'
 import PersonAddAlt1RoundedIcon from '@mui/icons-material/PersonAddAlt1Rounded'
 import { ASSIGNEES, UNASSIGNED, isUnassigned, type Ticket } from '../../data/tickets'
 import { initials } from '../../utils/format'
-import { managerName } from '../../auth/users'
+import { managerName, userByName } from '../../auth/users'
 import { useTickets } from '../../state/TicketsContext'
 
 interface Props {
@@ -45,6 +50,33 @@ function Card({ children }: { children: React.ReactNode }) {
       })}
     >
       {children}
+    </Box>
+  )
+}
+
+/** Primary 32px icon button, same as Link Ticket; its label is shown on hover. */
+const primaryIconButtonSx = (t: Theme) => ({
+  width: 32,
+  height: 32,
+  borderRadius: '8px',
+  bgcolor: t.palette.primary.main,
+  color: t.palette.primary.contrastText,
+  '&:hover': { bgcolor: t.palette.primary.dark },
+  '&.Mui-disabled': { bgcolor: t.palette.action.disabledBackground, color: t.palette.action.disabled },
+})
+
+function DetailRow({ icon, label, value, href }: { icon: React.ReactElement; label: string; value?: string | null; href?: string }) {
+  return (
+    <Box sx={(t) => ({ display: 'flex', alignItems: 'center', gap: 1.25, textAlign: 'left', border: `1px solid ${t.palette.divider}`, borderRadius: '10px', px: 1.25, py: 0.875 })}>
+      <Box aria-hidden sx={{ display: 'flex', color: 'primary.main', '& svg': { fontSize: 18 } }}>{icon}</Box>
+      <Box sx={{ minWidth: 0 }}>
+        <Typography component="dt" variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.3 }}>
+          {label}
+        </Typography>
+        <Typography component="dd" variant="body2" sx={{ m: 0, fontWeight: 600, overflowWrap: 'anywhere' }}>
+          {value ? (href ? <Box component="a" href={href} sx={{ color: 'inherit', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>{value}</Box> : value) : '—'}
+        </Typography>
+      </Box>
     </Box>
   )
 }
@@ -79,6 +111,7 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
   const [note, setNote] = useState<string | null>(null)
 
   const unassigned = isUnassigned(ticket.assignee)
+  const assigneeUser = unassigned ? undefined : userByName(ticket.assignee)
   const followers = ticket.followers ?? []
   const candidates = ASSIGNEES.filter((p) => !followers.includes(p))
   const menuZ = (t: { zIndex: { modal: number } }) => t.zIndex.modal + 10
@@ -101,57 +134,68 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
         <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Typography sx={{ fontSize: 15, fontWeight: 700 }}>Assignee</Typography>
           {canChangeAssignee && (
-            <Button
-              size="small"
-              startIcon={<SwapHorizRoundedIcon />}
-              onClick={(e) => setAssignAnchor(e.currentTarget)}
-              sx={{ textTransform: 'none', fontWeight: 600 }}
-            >
-              Change assignee
-            </Button>
+            <Tooltip title="Change assignee">
+              <IconButton aria-label="Change assignee" aria-haspopup="menu" onClick={(e) => setAssignAnchor(e.currentTarget)} sx={primaryIconButtonSx}>
+                <SwapHorizRoundedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           )}
         </Stack>
-        <Stack direction="row" spacing={1.75} sx={{ mt: 2, alignItems: 'center' }}>
+        <Stack sx={{ mt: 2, alignItems: 'center', textAlign: 'center', gap: 0.5 }}>
           <Avatar
             variant="rounded"
-            sx={{ width: 72, height: 72, fontSize: 24, fontWeight: 700, borderRadius: '14px', bgcolor: 'primary.main' }}
+            src={assigneeUser?.avatarUrl ?? undefined}
+            alt={unassigned ? '' : ticket.assignee}
+            sx={{
+              width: 120,
+              height: 120,
+              mb: 1,
+              fontSize: 40,
+              fontWeight: 700,
+              borderRadius: '16px',
+              bgcolor: assigneeUser?.avatarColor ?? 'primary.main',
+              color: '#fff',
+            }}
           >
-            {unassigned ? <PersonOutlineRoundedIcon sx={{ fontSize: 34 }} /> : initials(ticket.assignee)}
+            {unassigned ? <PersonOutlineRoundedIcon sx={{ fontSize: 56 }} /> : initials(ticket.assignee)}
           </Avatar>
-          <Box sx={{ minWidth: 0 }}>
-            <Typography sx={{ fontSize: 19, fontWeight: 700, lineHeight: 1.2 }} noWrap>
-              {unassigned ? UNASSIGNED : ticket.assignee}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {unassigned
-                ? 'No one is assigned'
-                : ticket.approvalWorker
-                  ? `${ticket.assignee === me ? 'You are the approver' : 'Approver'} · work by ${ticket.approvalWorker}`
-                  : ticket.assignee === me
-                    ? 'Assigned to you'
-                    : 'Assignee'}
-            </Typography>
-            {!unassigned && (
-              <Typography variant="body2" color="text.secondary" noWrap>
-                Reports to: {managerName(ticket.assignee) ?? '—'}
-              </Typography>
+          <Typography sx={{ fontSize: 19, fontWeight: 700, lineHeight: 1.25, maxWidth: '100%', overflowWrap: 'anywhere' }}>
+            {unassigned ? UNASSIGNED : ticket.assignee}
+            {!unassigned && ticket.assignee === me && (
+              <Typography component="span" variant="body2" color="text.secondary"> (you)</Typography>
             )}
-          </Box>
+          </Typography>
+          {ticket.approvalWorker && (
+            <Typography variant="body2" color="text.secondary">
+              Approver · work by {ticket.approvalWorker}
+            </Typography>
+          )}
+          {!unassigned && (
+            <Box component="dl" sx={{ m: 0, mt: 1.5, width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <DetailRow icon={<AccountTreeOutlinedIcon />} label="Reporting manager" value={managerName(ticket.assignee)} />
+              <DetailRow icon={<PhoneOutlinedIcon />} label="Contact number" value={assigneeUser?.phone} href={assigneeUser?.phone ? `tel:${assigneeUser.phone.replace(/[^+\d]/g, '')}` : undefined} />
+              <DetailRow icon={<MailOutlineRoundedIcon />} label="Email" value={assigneeUser?.email} href={assigneeUser?.email ? `mailto:${assigneeUser.email}` : undefined} />
+            </Box>
+          )}
         </Stack>
       </Card>
 
       <Card>
         <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Typography sx={{ fontSize: 15, fontWeight: 700 }}>Watchers ({followers.length})</Typography>
-          <Button
-            size="small"
-            startIcon={<PersonAddAlt1RoundedIcon />}
-            disabled={candidates.length === 0}
-            onClick={(e) => setWatchAnchor(e.currentTarget)}
-            sx={{ textTransform: 'none', fontWeight: 600 }}
-          >
-            Add Watcher
-          </Button>
+          <Tooltip title={candidates.length === 0 ? 'Everyone is already watching' : 'Add watcher'}>
+            <span>
+              <IconButton
+                aria-label="Add watcher"
+                aria-haspopup="menu"
+                disabled={candidates.length === 0}
+                onClick={(e) => setWatchAnchor(e.currentTarget)}
+                sx={primaryIconButtonSx}
+              >
+                <PersonAddAlt1RoundedIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
         </Stack>
 
         {followers.length === 0 ? (

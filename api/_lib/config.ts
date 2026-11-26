@@ -12,6 +12,9 @@ export interface PublicUser {
   team: string | null
   /** Id of this user's manager; null for the top of the hierarchy. */
   reportsTo: string | null
+  phone: string | null
+  /** https URL of the profile picture; null shows initials. */
+  avatarUrl: string | null
 }
 
 interface UserRow {
@@ -23,6 +26,8 @@ interface UserRow {
   reports_to: string | null
   email: string | null
   avatar_color: string | null
+  phone: string | null
+  avatar_url: string | null
 }
 
 const USERS_TTL_MS = 30_000
@@ -40,6 +45,8 @@ function toPublic(row: UserRow): PublicUser {
     avatarColor: row.avatar_color ?? '#0A84FF',
     team: row.team,
     reportsTo: row.reports_to,
+    phone: row.phone?.trim() || null,
+    avatarUrl: row.avatar_url && /^https:\/\//i.test(row.avatar_url) ? row.avatar_url : null,
   }
 }
 
@@ -56,7 +63,7 @@ export async function loadUsers(force = false): Promise<PublicUser[]> {
     throw new Error(`User directory unavailable: ${config.problem}`)
   }
   const endpoint = new URL('/rest/v1/app_users', config.url)
-  endpoint.searchParams.set('select', 'id,username,display_name,role,team,reports_to,email,avatar_color')
+  endpoint.searchParams.set('select', 'id,username,display_name,role,team,reports_to,email,avatar_color,phone,avatar_url')
   endpoint.searchParams.set('active', 'eq.true')
   endpoint.searchParams.set('order', 'created_at.asc')
   try {

@@ -76,6 +76,9 @@ function Tag({ icon, label, tip }: { icon: ReactElement; label: string; tip: str
   )
 }
 
+/** On Hold is shown as a tag; Rejected and Closed are side exits with no step of their own in the preview. */
+const HIDDEN_IN_PREVIEW = new Set(['on_hold', 'rejected', 'closed'])
+
 export default function WorkflowPreview({
   config,
   currentState,
@@ -87,7 +90,7 @@ export default function WorkflowPreview({
   headerAction?: ReactNode
 }) {
   const currentNode = currentState === 'on_hold' ? 'in_progress' : currentState
-  const mainFlow = useMemo(() => previewDefinition(config).states.filter((state) => state.key !== 'on_hold'), [config])
+  const mainFlow = useMemo(() => previewDefinition(config).states.filter((state) => !HIDDEN_IN_PREVIEW.has(state.key)), [config])
 
   const tagsFor = (stateKey: string) => {
     const tags: ReactElement[] = []

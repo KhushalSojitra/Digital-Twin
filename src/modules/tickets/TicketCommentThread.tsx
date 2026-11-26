@@ -154,9 +154,9 @@ export default function TicketCommentThread({ ticket, me, onReply }: { ticket: T
         '--font-size-caption': typeof t.typography.caption.fontSize === 'number' ? `${t.typography.caption.fontSize}px` : t.typography.caption.fontSize,
       })}
     >
-      <Box ref={listRef} sx={{ flex: 1, minHeight: 120, overflowY: 'auto', pr: 0.5 }}>
+      <Box ref={listRef} sx={{ flex: 1, minHeight: 120, overflowY: 'auto', pr: 0.5, display: 'flex', flexDirection: 'column' }}>
         {ticket.comments.length === 0 ? (
-          <Box sx={{ py: 4, textAlign: 'center' }}>
+          <Box sx={{ py: 4, my: 'auto', textAlign: 'center' }}>
             <ChatBubbleOutlineRoundedIcon sx={{ fontSize: 26, color: 'var(--text-muted)' }} />
             <Typography sx={{ display: 'block', fontSize: captionSize, color: 'var(--text-secondary)' }}>
               No comments yet. Add the first note for the site team.

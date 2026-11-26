@@ -130,7 +130,7 @@ export default function WorkflowPreview({
     <Box
       component="section"
       aria-label="Workflow preview"
-      sx={{ border: 1, borderColor: 'divider', borderRadius: '12px', p: 1.5, height: '100%', boxSizing: 'border-box' }}
+      sx={{ border: 1, borderColor: 'divider', borderRadius: '12px', p: 1.5, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1.25 }}>
         <Typography variant="subtitle2" component="h3" sx={{ fontWeight: 700 }}>
@@ -142,7 +142,8 @@ export default function WorkflowPreview({
         <Box sx={{ flex: 1 }} />
         {headerAction}
       </Box>
-      <Box component="ol" sx={{ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      {/* my: auto centres the flow vertically in the card and still scrolls from the top when it is taller. */}
+      <Box component="ol" sx={{ listStyle: 'none', mx: 0, my: 'auto', p: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         {mainFlow.map((state, index) => {
           const tone = TONE_BY_STATE[state.key] ?? 'neutral'
           const tags = tagsFor(state.key)

@@ -39,6 +39,8 @@ function Card({ children }: { children: React.ReactNode }) {
         borderRadius: '12px',
         p: 1.75,
         minWidth: 0,
+        minHeight: 0,
+        overflowY: 'auto',
         bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.015)',
       })}
     >
@@ -94,7 +96,7 @@ export default function TicketTeamPanel({ ticket, me }: Props) {
   }
 
   return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '5fr 6fr' }, gap: 1.5 }}>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '5fr 6fr' }, gridAutoRows: 'minmax(0, 1fr)', gap: 1.5, flex: 1, minHeight: 0 }}>
       <Card>
         <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Typography sx={{ fontSize: 15, fontWeight: 700 }}>Assignee</Typography>

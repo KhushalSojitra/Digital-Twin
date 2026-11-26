@@ -147,7 +147,7 @@ declare
   v_tr jsonb := '[]'::jsonb;
 begin
   if v_pre then
-    v_states := v_states || '[{"key":"pending_approval","label":"Pending Approval","group":"open"},{"key":"approved","label":"Approved","group":"open"}]'::jsonb;
+    v_states := v_states || '[{"key":"pending_approval","label":"Pre-approval","group":"open"},{"key":"approved","label":"Approved","group":"open"}]'::jsonb;
     v_tr := v_tr || '[
       {"id":"submit_approval","label":"Submit for Approval","from":["todo"],"to":"pending_approval","assign":"none","requireNote":false},
       {"id":"approve","label":"Approve","from":["pending_approval"],"to":"approved","assign":"none","requireNote":false},
@@ -160,7 +160,7 @@ begin
     v_states := v_states || '[{"key":"on_hold","label":"On Hold","group":"in_progress"}]'::jsonb;
   end if;
   if v_post then
-    v_states := v_states || '[{"key":"pending_post_approval","label":"Pending Post-approval","group":"in_progress"}]'::jsonb;
+    v_states := v_states || '[{"key":"pending_post_approval","label":"Post-approval","group":"in_progress"}]'::jsonb;
   end if;
   v_states := v_states || '[{"key":"done","label":"Done","group":"done"}]'::jsonb;
 

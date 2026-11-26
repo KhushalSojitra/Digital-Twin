@@ -115,10 +115,10 @@ export function previewDefinition(config: TicketTypeConfig): WorkflowDefinition 
   const action = (id: string, label: string, from: string, to: string, assign: WorkflowTransition['assign'] = 'none', requireNote = false) =>
     transitions.push({ id, label, from: [from], to, assign, requireNote })
 
-  if (config.preApproval) states.push({ key: 'pending_approval', label: 'Pending Approval', group: 'open' })
+  if (config.preApproval) states.push({ key: 'pending_approval', label: 'Pre-approval', group: 'open' })
   states.push({ key: 'todo', label: 'To Do', group: 'open' }, { key: 'in_progress', label: 'In Progress', group: 'in_progress' })
   if (config.onHold) states.push({ key: 'on_hold', label: 'On Hold', group: 'in_progress' })
-  if (config.postApproval) states.push({ key: 'pending_post_approval', label: 'Pending Post-approval', group: 'in_progress' })
+  if (config.postApproval) states.push({ key: 'pending_post_approval', label: 'Post-approval', group: 'in_progress' })
   states.push({ key: 'done', label: 'Done', group: 'done' })
   if (config.preApproval) {
     states.push({ key: 'rejected', label: 'Rejected', group: 'open' }, { key: 'closed', label: 'Closed', group: 'failed' })

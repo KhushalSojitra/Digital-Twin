@@ -30,14 +30,14 @@ declare
   v_tr jsonb := '[]'::jsonb;
 begin
   if v_pre then
-    v_states := v_states || '[{"key":"pending_approval","label":"Pending Approval","group":"open"}]'::jsonb;
+    v_states := v_states || '[{"key":"pending_approval","label":"Pre-approval","group":"open"}]'::jsonb;
   end if;
   v_states := v_states || '[{"key":"todo","label":"To Do","group":"open"},{"key":"in_progress","label":"In Progress","group":"in_progress"}]'::jsonb;
   if v_hold then
     v_states := v_states || '[{"key":"on_hold","label":"On Hold","group":"in_progress"}]'::jsonb;
   end if;
   if v_post then
-    v_states := v_states || '[{"key":"pending_post_approval","label":"Pending Post-approval","group":"in_progress"}]'::jsonb;
+    v_states := v_states || '[{"key":"pending_post_approval","label":"Post-approval","group":"in_progress"}]'::jsonb;
   end if;
   v_states := v_states || '[{"key":"done","label":"Done","group":"done"}]'::jsonb;
   if v_pre then

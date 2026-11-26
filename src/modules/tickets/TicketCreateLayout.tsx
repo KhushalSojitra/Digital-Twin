@@ -740,7 +740,7 @@ export default function TicketCreateLayout({
   )
 }
 
-function PriorityOption({ priority }: { priority: TicketPriority }) {
+export function PriorityOption({ priority }: { priority: TicketPriority }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
       <Box aria-hidden sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: PRIORITY_COLOR[priority], flexShrink: 0 }} />

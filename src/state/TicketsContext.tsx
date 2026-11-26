@@ -69,7 +69,7 @@ interface TicketsValue {
   shareWith: (id: string, person: string, by?: string) => void
   removeFollower: (id: string, person: string, by?: string) => void
   addComment: (id: string, text: string, by: string, attachments?: CommentAttachment[], thread?: CommentThreadInfo) => Promise<void>
-  updateDetails: (id: string, patch: TicketDetailsPatch, by?: string) => void
+  updateDetails: (id: string, patch: TicketDetailsPatch, by?: string) => Promise<void>
   /** Runs one action of the ticket's workflow; rejects with the server's reason when it is not allowed. */
   performAction: (id: string, actionId: string, input: WorkflowActionInput) => Promise<void>
   /** Moves a ticket to another ticket type's workflow; the server records the change in its audit trail. */
@@ -615,17 +615,22 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
   const removeFollower = useCallback((id: string, person: string) => {
     send(id, { action: 'followers', ticketId: id, op: 'remove', people: [person] })
   }, [send])
-  const updateDetails = useCallback((id: string, next: TicketDetailsPatch) => {
-    send(id, {
-      action: 'details',
-      ticketId: id,
-      title: next.title,
-      description: next.description,
-      priority: next.priority,
-      additional: next.additional ?? null,
-      creationSnapshot: next.creationSnapshot ?? null,
-    })
-  }, [send])
+  // Reports success/failure to the caller so the edit form can show "Saved" or the error.
+  const updateDetails = useCallback((id: string, next: TicketDetailsPatch): Promise<void> =>
+    runForTicket(id, async () =>
+      applySaved(await postTicketAction({
+        action: 'details',
+        ticketId: id,
+        title: next.title,
+        description: next.description,
+        priority: next.priority,
+        additional: next.additional ?? null,
+        creationSnapshot: next.creationSnapshot ?? null,
+      })),
+    ).then(() => undefined, (error) => {
+      console.error(`Unable to save ticket ${id}:`, error)
+      throw error instanceof Error ? error : new Error('The ticket details could not be saved.')
+    }), [runForTicket, applySaved])
   // Unlike the other writes, a comment reports its failure to the caller so the form can show the error.
   const addComment = useCallback((id: string, text: string, _by: string, attachments?: CommentAttachment[], thread?: CommentThreadInfo): Promise<void> =>
     runForTicket(id, async () => {

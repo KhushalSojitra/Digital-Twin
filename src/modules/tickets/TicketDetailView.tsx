@@ -14,6 +14,8 @@ import {
   Tooltip,
   Typography,
   type Theme,
+  Alert,
+  Snackbar,
 } from '@mui/material'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
@@ -51,7 +53,7 @@ import TicketCommentThread from './TicketCommentThread'
 import TicketTeamPanel from './TicketTeamPanel'
 import ImprovementVerification from './ImprovementVerification'
 import SnapshotMarkup, { type MarkupShape } from './SnapshotMarkup'
-import { fieldSx } from './TicketCreateLayout'
+import { PriorityOption, fieldSx } from './TicketCreateLayout'
 import { BREACH_OPTIONS } from './TicketAdditionalTab'
 import { closeButtonSx, dialogIconSx, toolButtonSx } from '../../components/ui/figma'
 import { TOKENS } from '../../theme/theme'
@@ -333,9 +335,13 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
     ticketActions.run(target, action, options)
   }
 
-  const saveDetails = () => {
-    if (!title.trim()) return
-    updateDetails(
+  const [saving, setSaving] = useState(false)
+  const [saveResult, setSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const saveDetails = async () => {
+    if (!title.trim() || saving) return
+    setSaving(true)
+    try {
+      await updateDetails(
       ticket.id,
       {
         title: title.trim(),
@@ -345,7 +351,13 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
         ...(snapshotDraft ? { creationSnapshot: snapshotDraft } : {}),
       },
       me,
-    )
+      )
+      setSaveResult({ ok: true, message: 'Ticket details saved' })
+    } catch (error) {
+      setSaveResult({ ok: false, message: error instanceof Error && error.message ? `Not saved: ${error.message}` : 'Not saved. Please try again.' })
+    } finally {
+      setSaving(false)
+    }
   }
 
   const onDueDateChange = (value: string) => {
@@ -396,12 +408,15 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
             label="Priority"
             value={priority}
             onChange={(e) => setPriority(e.target.value as TicketPriority)}
-            slotProps={{ inputLabel: { shrink: true }, select: { MenuProps: menuProps } }}
-            sx={{ ...fieldSx, width: 140, flexShrink: 0 }}
+            slotProps={{
+              inputLabel: { shrink: true },
+              select: { MenuProps: menuProps, renderValue: (value) => <PriorityOption priority={value as TicketPriority} /> },
+            }}
+            sx={{ ...fieldSx, width: 150, flexShrink: 0 }}
           >
             {(Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => (
               <MenuItem key={p} value={p}>
-                {PRIORITY_LABEL[p]}
+                <PriorityOption priority={p} />
               </MenuItem>
             ))}
           </TextField>
@@ -499,13 +514,24 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
         {editing && canEdit && (
           <Button
             variant="contained"
-            onClick={saveDetails}
-            disabled={!title.trim()}
-            sx={{ flexShrink: 0, height: 56, borderRadius: 999, px: 2.5, fontWeight: 700 }}
+            onClick={() => void saveDetails()}
+            disabled={!title.trim() || saving}
+            sx={{ flexShrink: 0, minHeight: 34, alignSelf: 'center' }}
           >
-            Save details
+            {saving ? 'Saving…' : 'Save details'}
           </Button>
         )}
+        <Snackbar
+          open={Boolean(saveResult)}
+          autoHideDuration={saveResult?.ok ? 2500 : 6000}
+          onClose={() => setSaveResult(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          sx={{ zIndex: (t) => t.zIndex.modal + 10 }}
+        >
+          <Alert severity={saveResult?.ok ? 'success' : 'error'} variant="filled" onClose={() => setSaveResult(null)} sx={{ alignItems: 'center' }}>
+            {saveResult?.message}
+          </Alert>
+        </Snackbar>
       </Box>
 
       <Tabs

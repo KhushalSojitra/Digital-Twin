@@ -41,16 +41,3 @@ export const dialogPaperSx = {
   width: { xs: '100%', sm: undefined },
   maxHeight: { xs: '100%', sm: 'min(860px, 92dvh)' },
 } as const
-
-/**
- * One shared size for Create Ticket, Ticket Management and View/Edit Ticket.
- * Currently midway between the old Create (900 x 698) and Manage (1200 x 720) sizes.
- */
-export const TICKET_DIALOG_SIZE = { width: 1050, height: 710 } as const
-
-export const ticketDialogPaperSx = {
-  ...dialogPaperSx,
-  width: { xs: '100%', sm: `min(${TICKET_DIALOG_SIZE.width}px, calc(100vw - 32px))` },
-  maxWidth: { xs: '100%', sm: 'none' },
-  height: { xs: '100%', sm: `min(${TICKET_DIALOG_SIZE.height}px, 92dvh)` },
-} as const

@@ -3,7 +3,7 @@ import { useTickets } from '../../state/TicketsContext'
 import { DEFAULT_SNAPSHOT_FOV, frameFromAdjust, NO_ADJUST, type SnapshotAdjust } from './snapshotFraming'
 import { Dialog, DialogContent, DialogTitle, IconButton, Typography, useMediaQuery, useTheme } from '@mui/material'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
-import { ticketDialogPaperSx } from '../../theme/hud'
+import { dialogPaperSx } from '../../theme/hud'
 import {
   UNASSIGNED,
   TICKETING_SYSTEM,
@@ -75,9 +75,9 @@ export default function TicketEditorDialog({ open, mode, ticket, draft, initialT
       onClose={onClose}
       fullWidth
       fullScreen={isXs}
-      maxWidth={false}
+      maxWidth="md"
       sx={{ zIndex: (t) => t.zIndex.modal + 4 }}
-      slotProps={{ paper: { sx: ticketDialogPaperSx } }}
+      slotProps={{ paper: { sx: { ...dialogPaperSx, height: { xs: '100%', sm: 'min(698px, 92dvh)' } } } }}
     >
       <DialogGuard key={shown?.id ?? (creating ? 'create' : 'empty')} onClose={onClose}>
         {creating && draft && onCreate ? (

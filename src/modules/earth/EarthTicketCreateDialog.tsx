@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Dialog, useMediaQuery, useTheme } from '@mui/material'
 import { ticketDialogPaperSx } from '../../theme/hud'
-import { TICKETING_SYSTEM, UNASSIGNED, type Ticket, type TicketPriority } from '../../data/tickets'
+import { TICKETING_SYSTEM, UNASSIGNED, type Ticket, type TicketAdditional, type TicketPriority } from '../../data/tickets'
 import { useTickets } from '../../state/TicketsContext'
 import { DEFAULT_TICKET_TYPE_KEY } from '../../data/ticketTypes'
 import TicketCreateLayout from '../tickets/TicketCreateLayout'
@@ -50,7 +50,7 @@ function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: O
   const [error, setError] = useState('')
   const [ticketType, setTicketType] = useState(DEFAULT_TICKET_TYPE_KEY)
 
-  const submit = async (e: FormEvent) => {
+  const submit = async (e: FormEvent, additional?: TicketAdditional) => {
     e.preventDefault()
     setTouched(true)
     if (!title.trim()) return
@@ -71,6 +71,7 @@ function CreateForm({ location, creator, onClose, onCreated, onPreviewClick }: O
         snapshotConfig: { captureCreation: false, captureCompletion: false, showInImprovementHistory: false },
         lat: location.lat,
         lng: location.lng,
+        additional,
       })
       onCreated(created)
     } catch (err) {

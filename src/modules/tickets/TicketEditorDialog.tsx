@@ -12,6 +12,7 @@ import {
   type NewTicketInput,
   type PinView,
   type Ticket,
+  type TicketAdditional,
   type TicketPriority,
 } from '../../data/tickets'
 import type { CameraDevice } from '../../data/cameras'
@@ -188,7 +189,7 @@ function CreateForm({
     setSnapshotPreview(grab(frameFromAdjust(baseView, adjust)) ?? snapshotBase)
   }
 
-  const submit = async (e: FormEvent) => {
+  const submit = async (e: FormEvent, additional?: TicketAdditional) => {
     e.preventDefault()
     setTouched(true)
     if (!title.trim()) return
@@ -218,6 +219,7 @@ function CreateForm({
         pitch: draft.pitch,
         zoom: draft.zoom,
         pinView: view,
+        additional,
       })
     } catch (error) {
       setCreateError(error instanceof Error ? error.message : 'Ticket could not be saved to the cloud.')

@@ -39,6 +39,7 @@ import DocumentPreview from './DocumentPreview'
 import SnapshotMarkup, { type MarkupShape } from './SnapshotMarkup'
 import SnapshotFrame from './SnapshotFrame'
 import { NO_ADJUST, type SnapshotAdjust } from './snapshotFraming'
+import type { TicketAdditional } from '../../data/tickets'
 import TicketAdditionalTab, { useTicketAdditional } from './TicketAdditionalTab'
 import TicketWorkflowButton from './TicketWorkflowButton'
 import { useWorkflow } from '../../state/WorkflowContext'
@@ -91,7 +92,8 @@ interface Props {
   activity: TicketCreateActivity[]
   error?: string
   isSubmitting: boolean
-  onSubmit: (e: FormEvent) => void
+  /** Called with the Additional tab's deadline, breach action and links, saved on the new ticket. */
+  onSubmit: (e: FormEvent, additional: TicketAdditional) => void
   onClose: () => void
   ticketType?: string
   onTicketTypeChange?: (typeKey: string) => void
@@ -416,7 +418,7 @@ export default function TicketCreateLayout({
   const handleSubmit = (e: FormEvent) => {
     if (!title.trim()) {
       setTab('general')
-      onSubmit(e)
+      onSubmit(e, additional.toAdditional())
       return
     }
     if (!additional.validate()) {
@@ -424,7 +426,7 @@ export default function TicketCreateLayout({
       setTab('additional')
       return
     }
-    onSubmit(e)
+    onSubmit(e, additional.toAdditional())
   }
 
   const stopVoice = () => {

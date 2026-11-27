@@ -51,6 +51,8 @@ export function mayRunAction(
   parent?: Pick<Ticket, 'assignee' | 'creator'>,
 ): boolean {
   if (!me) return false
+  // Reopen after an SLA rejection: reporter only (main tickets and sub-tasks).
+  if (actionId === 'reopen_breached') return ticket.creator === me
   if (ticket.parentTicketId) return mayRunOnSubtask(ticket, parent, actionId, me)
   const unassigned = isUnassigned(ticket.assignee)
   const isAssignee = !unassigned && ticket.assignee === me

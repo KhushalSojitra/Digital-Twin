@@ -152,6 +152,18 @@ function snapshotFromDatabase(value: unknown): Snapshot | undefined {
   }
 }
 
+/** Breached = the SLA job recorded a breach for the deadline the ticket still has (India time). */
+function slaFromRow(row: DatabaseRow, additional: unknown): Pick<Ticket, 'slaBreached' | 'slaBreachedAt'> {
+  const recorded = typeof row.sla_breach_deadline === 'string' ? Date.parse(row.sla_breach_deadline) : NaN
+  if (Number.isNaN(recorded)) return {}
+  const a = additional && typeof additional === 'object' ? (additional as DatabaseRow) : {}
+  const date = typeof a.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(a.dueDate) ? a.dueDate : ''
+  const time = typeof a.dueTime === 'string' && /^\d{2}:\d{2}$/.test(a.dueTime) ? a.dueTime : '23:59'
+  const deadline = date ? Date.parse(`${date}T${time}:00+05:30`) : NaN
+  if (deadline !== recorded) return {}
+  return { slaBreached: true, slaBreachedAt: typeof row.sla_breached_at === 'string' ? row.sla_breached_at : undefined }
+}
+
 function additionalFromDatabase(value: unknown): Ticket['additional'] {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
   const data = value as DatabaseRow
@@ -169,6 +181,8 @@ function additionalFromDatabase(value: unknown): Ticket['additional'] {
     dueTime: typeof data.dueTime === 'string' ? data.dueTime : '',
     onBreach: typeof data.onBreach === 'string' ? data.onBreach : '',
     links,
+    ...(Array.isArray(data.notifyUsers) ? { notifyUsers: data.notifyUsers.filter((v): v is string => typeof v === 'string') } : {}),
+    ...(Array.isArray(data.notifyEmails) ? { notifyEmails: data.notifyEmails.filter((v): v is string => typeof v === 'string') } : {}),
   }
 }
 
@@ -322,6 +336,7 @@ function ticketFromDatabase(value: unknown): Ticket {
   return {
     id,
     ...(parentTicketId ? { parentTicketId } : {}),
+    ...slaFromRow(row, metadata.additional),
     ...(typeof row.approval_worker === 'string' && row.approval_worker ? { approvalWorker: userName(row.approval_worker) } : {}),
     title: stringValue(row.title, 'Untitled ticket'),
     description: stringValue(row.description, ''),

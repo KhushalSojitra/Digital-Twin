@@ -80,6 +80,10 @@ export interface TicketAdditional {
   dueTime: string
   onBreach: string
   links: TicketLink[]
+  /** SLA "Notify Custom Users": app_users ids. */
+  notifyUsers?: string[]
+  /** SLA "Notify Custom Users": extra email addresses (not users). */
+  notifyEmails?: string[]
 }
 
 /** The camera view (centre and vertical field of view) an incident was pinned in. */
@@ -129,6 +133,9 @@ export interface Ticket {
   id: string
   /** Set on sub-tasks: the main ticket they were created from. Sub-tasks have no location. */
   parentTicketId?: string
+  /** Missed its current deadline (set by the SLA job; cleared when the deadline is moved). */
+  slaBreached?: boolean
+  slaBreachedAt?: string
   /** Who did the work while the ticket waits for the chosen approver (the approver is the assignee then). */
   approvalWorker?: string
   title: string

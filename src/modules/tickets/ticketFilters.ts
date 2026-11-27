@@ -81,6 +81,7 @@ export type TicketScope =
   | 'unassigned'
   | 'unassigned_reported_me'
   | 'related'
+  | 'sla_breached'
 
 export const SCOPES: { id: TicketScope; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -89,6 +90,7 @@ export const SCOPES: { id: TicketScope; label: string }[] = [
   { id: 'reported_me', label: 'Reported by Me' },
   { id: 'unassigned', label: 'Unassigned' },
   { id: 'related', label: 'Related to Me' },
+  { id: 'sla_breached', label: 'SLA Breached' },
 ]
 
 /** Ticket ids the signed-in user is involved in, supplied by the database for the Inbox and Related views. */
@@ -109,6 +111,8 @@ export function matchesScope(t: Ticket, scope: TicketScope, me: string, context?
       return t.creator === me
     case 'unassigned':
       return isUnassigned(t.assignee)
+    case 'sla_breached':
+      return Boolean(t.slaBreached)
     case 'unassigned_reported_me':
       return isUnassigned(t.assignee) && t.creator === me
     default:

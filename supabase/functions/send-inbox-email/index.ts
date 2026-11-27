@@ -49,38 +49,59 @@ Deno.serve(async (req) => {
   const from = Deno.env.get("EMAIL_FROM");
   const appUrl = (Deno.env.get("APP_URL") ?? "").replace(/\/$/, "");
   if (!apiKey || !from || !appUrl) return fail("email not configured");
-  if (!UUID.test(claimed.for_user ?? "")) return fail("recipient is not a user id");
-
-  const { data: user } = await supabase
-    .from("app_users")
-    .select("email, email_enabled, active")
-    .eq("id", claimed.for_user)
-    .maybeSingle();
-  if (!user?.active) return fail("no active user");
-  if (!user.email) return fail("no email for user");
-  if (!user.email_enabled) return fail("email disabled for user");
-
-  let who = "Someone";
-  if (claimed.from_user && UUID.test(claimed.from_user)) {
-    const { data: sender } = await supabase.from("app_users").select("display_name").eq("id", claimed.from_user).maybeSingle();
-    if (sender?.display_name) who = sender.display_name;
+  // Recipient: a user (app_users id), or for SLA breach "Notify Custom Users" an extra address ("email:<addr>").
+  const target = claimed.for_user ?? "";
+  let to: string;
+  if (target.startsWith("email:")) {
+    to = target.slice(6).trim();
+    if (claimed.type !== "sla_breach" || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return fail("bad email recipient");
+  } else {
+    if (!UUID.test(target)) return fail("recipient is not a user id");
+    const { data: user } = await supabase
+      .from("app_users")
+      .select("email, email_enabled, active")
+      .eq("id", target)
+      .maybeSingle();
+    if (!user?.active) return fail("no active user");
+    if (!user.email) return fail("no email for user");
+    if (!user.email_enabled) return fail("email disabled for user");
+    to = user.email;
   }
+
   const title = claimed.ticket_title || "a ticket";
-  const verb = claimed.type === "assignment" ? "assigned you" : claimed.type === "reply" ? "replied to you on" : "mentioned you on";
   const link = `${appUrl}/?ticket=${encodeURIComponent(claimed.ticket_id)}`;
-  const subject = `${who} ${verb} "${title}"`;
-  const html = `
+  let subject: string;
+  let html: string;
+  if (claimed.type === "sla_breach") {
+    subject = `SLA breached: "${title}"`;
+    html = `
+  <div style="font-family:Inter,Arial,sans-serif;font-size:14px;color:#0F172A;max-width:560px">
+    <p style="margin:0 0 12px"><strong style="color:#DC2626">SLA breached</strong> on <strong>${esc(title)}</strong>.</p>
+    ${claimed.message ? `<p style="margin:0 0 16px;color:#475569">${esc(claimed.message)}.</p>` : ""}
+    <p style="margin:0 0 16px"><a href="${esc(link)}" style="display:inline-block;background:#2563EB;color:#fff;text-decoration:none;padding:9px 16px;border-radius:8px;font-weight:500">Open ticket</a></p>
+    <p style="margin:0;color:#94A3B8;font-size:12px">Sent automatically by OomniEye Digital Twin.</p>
+  </div>`;
+  } else {
+    let who = "Someone";
+    if (claimed.from_user && UUID.test(claimed.from_user)) {
+      const { data: sender } = await supabase.from("app_users").select("display_name").eq("id", claimed.from_user).maybeSingle();
+      if (sender?.display_name) who = sender.display_name;
+    }
+    const verb = claimed.type === "assignment" ? "assigned you" : claimed.type === "reply" ? "replied to you on" : "mentioned you on";
+    subject = `${who} ${verb} "${title}"`;
+    html = `
   <div style="font-family:Inter,Arial,sans-serif;font-size:14px;color:#0F172A;max-width:560px">
     <p style="margin:0 0 12px"><strong>${esc(who)}</strong> ${esc(verb)} <strong>${esc(title)}</strong>.</p>
     ${claimed.message ? `<blockquote style="margin:0 0 16px;padding:8px 12px;border-left:3px solid #2563EB;background:#F1F5F9;color:#475569">${esc(claimed.message)}</blockquote>` : ""}
     <p style="margin:0 0 16px"><a href="${esc(link)}" style="display:inline-block;background:#2563EB;color:#fff;text-decoration:none;padding:9px 16px;border-radius:8px;font-weight:500">Open ticket and reply</a></p>
     <p style="margin:0;color:#94A3B8;font-size:12px">Reply on the ticket, not to this email. OomniEye Digital Twin</p>
   </div>`;
+  }
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: [user.email], subject, html }),
+    body: JSON.stringify({ from, to: [to], subject, html }),
   });
   if (!res.ok) return fail(`send failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
 

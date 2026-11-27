@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTicketReads } from '../../state/TicketReadsContext'
+import { SlaBreachedChip } from './SlaBreachedChip'
 import { usePreference } from '../../state/PreferencesContext'
 import { useInbox } from '../../state/InboxContext'
 import { RELATED_LABEL } from '../../data/inbox'
@@ -389,6 +390,7 @@ export default function TicketManageDialog({
               </ButtonBase>
               <WaitingDot ticketId={t.id} />
               <TicketUpdateDot ticket={t} />
+              {t.slaBreached && <SlaBreachedChip compact />}
             </Stack>
             {scope === 'inbox' && <InboxReasonLine ticketId={t.id} />}
             {scope === 'related' && <RelatedChips ticketId={t.id} />}

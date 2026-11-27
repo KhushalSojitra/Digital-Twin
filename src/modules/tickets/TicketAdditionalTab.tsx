@@ -2,6 +2,7 @@ import { useId, useState, type ReactNode } from 'react'
 import { themeColors } from '../../theme/theme'
 import { glassCardSx } from '../../components/ui/figma'
 import {
+  Autocomplete,
   alpha,
   Box,
   Button,
@@ -33,8 +34,10 @@ import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded'
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import SupervisorAccountRoundedIcon from '@mui/icons-material/SupervisorAccountRounded'
 import { useTickets } from '../../state/TicketsContext'
+import { PEOPLE_NAMES, userByName } from '../../auth/users'
+import type { TicketAdditional } from '../../data/tickets'
 
-export type BreachAction = 'fail' | 'escalate_reporter' | 'escalate_assignee' | 'notify_custom' | 'follow_up' | 'none'
+export type BreachAction = 'fail' | 'escalate_reporter' | 'escalate_assignee' | 'notify_custom' | 'none'
 export type DependencyRelation = 'blocks' | 'blocked_by'
 
 export interface LinkedTicket {
@@ -48,7 +51,6 @@ export const BREACH_OPTIONS: { value: BreachAction; label: string; icon: ReactNo
   { value: 'escalate_reporter', label: 'Escalate to Reporter', icon: <PersonOutlineRoundedIcon /> },
   { value: 'escalate_assignee', label: 'Escalate to Assignee', icon: <SupervisorAccountRoundedIcon /> },
   { value: 'notify_custom', label: 'Notify Custom Users', icon: <GroupsRoundedIcon /> },
-  { value: 'follow_up', label: 'Create Follow-up Ticket', icon: <DescriptionOutlinedIcon /> },
   { value: 'none', label: 'No Action', icon: <BlockRoundedIcon /> },
 ]
 
@@ -58,6 +60,7 @@ const RELATION_OPTIONS: { value: DependencyRelation; label: string }[] = [
 ]
 
 const DEFAULT_DUE_TIME = '18:00'
+export const NOTIFY_NEEDS_PEOPLE = 'Choose at least one person or email to notify.'
 export const BREACH_NEEDS_DEADLINE = 'Set a deadline before selecting an SLA breach action.'
 export const RELATION_REQUIRED = 'Select a relationship for all linked tickets.'
 export const SELF_LINK = 'A ticket cannot be linked to itself.'
@@ -73,6 +76,9 @@ export function useTicketAdditional(title: string) {
   const [dueTime, setDueTime] = useState('')
   const [onBreach, setOnBreach] = useState<BreachAction | ''>('')
   const [links, setLinks] = useState<LinkedTicket[]>([])
+  /** "Notify Custom Users": people from the user list (display names) and extra email addresses. */
+  const [notifyPeople, setNotifyPeople] = useState<string[]>([])
+  const [notifyEmails, setNotifyEmails] = useState<string[]>([])
   const [attempted, setAttempted] = useState(false)
 
   const setDueDate = (value: string) => {
@@ -98,7 +104,12 @@ export function useTicketAdditional(title: string) {
 
   const removeLink = (id: string) => setLinks((current) => current.filter((l) => l.id !== id))
 
-  const breachError = onBreach && onBreach !== 'none' && !dueDate ? BREACH_NEEDS_DEADLINE : ''
+  const breachError =
+    onBreach && onBreach !== 'none' && !dueDate
+      ? BREACH_NEEDS_DEADLINE
+      : onBreach === 'notify_custom' && notifyPeople.length === 0 && notifyEmails.length === 0
+        ? NOTIFY_NEEDS_PEOPLE
+        : ''
   const missingRelation = links.some((l) => !l.relation)
   const relationError = attempted && missingRelation ? RELATION_REQUIRED : ''
   const selfLinked = (linkTitle: string) => sameTitle(title, linkTitle)
@@ -109,7 +120,26 @@ export function useTicketAdditional(title: string) {
     return !breachError && !missingRelation && !hasSelfLink
   }
 
+  /** What is saved on the ticket (ticket.additional). */
+  const toAdditional = (): TicketAdditional => ({
+    dueDate,
+    dueTime: dueDate ? dueTime || DEFAULT_DUE_TIME : '',
+    onBreach,
+    links: links.map((l) => ({ id: l.id, title: l.title, relation: l.relation })),
+    ...(onBreach === 'notify_custom'
+      ? {
+          notifyUsers: notifyPeople.map((name) => userByName(name)?.id).filter((id): id is string => Boolean(id)),
+          notifyEmails,
+        }
+      : {}),
+  })
+
   return {
+    toAdditional,
+    notifyPeople,
+    setNotifyPeople,
+    notifyEmails,
+    setNotifyEmails,
     dueDate,
     dueTime,
     setDueDate,
@@ -559,6 +589,7 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps }: Props
                 ))}
               </Select>
             </FormControl>
+            {state.onBreach === 'notify_custom' && <NotifyPicker state={state} fieldSx={fieldSx} />}
             {state.breachError && <FieldError id={breachId}>{state.breachError}</FieldError>}
           </Box>
           <DeadlinePicker state={state} labelId={`${uid}-due-label`} />
@@ -640,5 +671,46 @@ export default function TicketAdditionalTab({ state, fieldSx, menuProps }: Props
         <LinkPanelBody candidates={candidates} isSelf={state.selfLinked} onLink={state.addLinks} onClose={() => setAnchor(null)} />
       </Popover>
     </Stack>
+  )
+}
+
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+
+/** Who to notify on breach: pick users from the list, or type an email address and press Enter. */
+function NotifyPicker({ state, fieldSx }: { state: TicketAdditionalState; fieldSx: SxProps<Theme> }) {
+  const [input, setInput] = useState('')
+  const [inputError, setInputError] = useState('')
+  const value = [...state.notifyPeople, ...state.notifyEmails]
+  const onChange = (next: string[]) => {
+    const people = next.filter((v) => PEOPLE_NAMES.includes(v))
+    const typed = next.filter((v) => !PEOPLE_NAMES.includes(v)).map((v) => v.trim().toLowerCase())
+    const bad = typed.find((v) => !EMAIL.test(v))
+    setInputError(bad ? `"${bad}" is not a valid email address` : '')
+    state.setNotifyPeople(people)
+    state.setNotifyEmails([...new Set(typed.filter((v) => EMAIL.test(v)))])
+  }
+  return (
+    <Box sx={{ mt: 1.5 }}>
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={PEOPLE_NAMES.filter((n) => !state.notifyPeople.includes(n))}
+        value={value}
+        inputValue={input}
+        onInputChange={(_, v) => setInput(v)}
+        onChange={(_, next) => onChange(next as string[])}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Notify"
+            placeholder={value.length ? '' : 'Choose users or type an email and press Enter'}
+            slotProps={{ inputLabel: { shrink: true } }}
+            sx={fieldSx}
+          />
+        )}
+      />
+      {inputError && <FieldError>{inputError}</FieldError>}
+    </Box>
   )
 }

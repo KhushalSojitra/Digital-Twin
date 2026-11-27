@@ -44,6 +44,8 @@ import { useTickets } from '../../state/TicketsContext'
 import { useWorkflow } from '../../state/WorkflowContext'
 import { useTicketActions, type RunOptions } from './WorkflowActions'
 import type { WorkflowTransition } from '../../data/workflows'
+import { SlaBreachedChip } from './SlaBreachedChip'
+import { userName } from '../../auth/users'
 import { CloseWithSubtasksDialog, isSubtaskOpen, ParentTicketLink, SubtaskList } from './TicketSubtasks'
 import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined'
 import TicketWorkflowButton from './TicketWorkflowButton'
@@ -288,6 +290,13 @@ function AdditionalPanel({ ticket }: { ticket: Ticket }) {
       <ReadField label="Created" value={formatDateTime(ticket.createdAt)} />
       <ReadField label="Completed" value={ticket.completedAt ? formatDateTime(ticket.completedAt) : '—'} />
       {breach && <ReadField label="On Breach" value={breach} />}
+      {ticket.additional?.onBreach === 'notify_custom' && (
+        <ReadField
+          label="Notify on Breach"
+          value={[...(ticket.additional.notifyUsers ?? []).map(userName), ...(ticket.additional.notifyEmails ?? [])].join(', ') || '—'}
+        />
+      )}
+      {ticket.slaBreachedAt && <ReadField label="SLA Breached" value={formatDateTime(ticket.slaBreachedAt)} />}
       {links.length > 0 && (
         <ReadField
           label="Ticket Dependencies"
@@ -425,6 +434,7 @@ export default function TicketDetailView({ ticket, me, canEdit, canChangeState, 
         )}
 
         <StatusIndicator stateName={currentStateLabel} status={ticket.status} />
+        {ticket.slaBreached && <SlaBreachedChip />}
         {ticketActions.dialog}
         <CloseWithSubtasksDialog
           open={closing !== null}

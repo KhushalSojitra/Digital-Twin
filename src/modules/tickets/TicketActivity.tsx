@@ -22,6 +22,8 @@ export function toActivityRow(event: TicketEvent): ActivityRow {
   const base = { by: event.by, at: event.at }
   let m: RegExpMatchArray | null
 
+  if ((m = text.match(/^SLA breached: (.+)$/))) return { ...base, action: 'SLA breach', update: m[1] }
+  if ((m = text.match(/^SLA breach: (.+) to (.+)$/))) return { ...base, action: 'SLA breach', update: `Status: ${arrow(m[1], m[2])}` }
   if (/^ticket created/i.test(text)) return { ...base, action: 'Created', update: 'Ticket created' }
   if ((m = text.match(/^Assignee changed from (.+?) to (.+?)(?:: (.+))?$/)))
     return { ...base, action: 'Change assignee', update: `Assignee: ${arrow(m[1], m[2])}` }

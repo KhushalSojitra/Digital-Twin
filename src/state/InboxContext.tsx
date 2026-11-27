@@ -117,15 +117,21 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       .channel('inbox-notifications')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications', filter: `for_user=eq.${userId}` },
+        // INSERT only: the email sender updates each new row (emailed_at / email_error), which must not
+        // trigger extra inbox reloads. Items resolved by my own actions already request a refresh.
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `for_user=eq.${userId}` },
         () => load(),
       )
       .subscribe()
 
     // Fallback polling at a much longer interval (realtime handles the fast path).
     const timer = window.setInterval(load, POLL_MS)
+    // Coming back to the tab reloads at most once a minute (realtime covers anything new meanwhile).
+    let lastVisibleLoad = Date.now()
     const onVisible = () => {
-      if (document.visibilityState === 'visible') load()
+      if (document.visibilityState !== 'visible' || Date.now() - lastVisibleLoad < 60_000) return
+      lastVisibleLoad = Date.now()
+      load()
     }
     document.addEventListener('visibilitychange', onVisible)
     const stopListening = onInboxRefreshRequested(load)

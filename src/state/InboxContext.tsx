@@ -3,10 +3,7 @@ import { supabase } from '../supabaseClient'
 import { useAuth } from '../auth/AuthContext'
 import { whenAuthSettled } from '../auth/authApi'
 import {
-  fetchInboxCount,
-  fetchInboxItems,
-  fetchInboxTickets,
-  fetchRelatedTickets,
+  fetchInboxAll,
   inboxItemReason,
   inboxPreview,
   inboxTicketFallbackReason,
@@ -82,23 +79,19 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       // An account switch is a POST; wait for it so these reads run as the newly active user.
       await whenAuthSettled()
       if (mine !== sequence.current) return
-      const [count, items, tickets, related] = await Promise.allSettled([
-        fetchInboxCount(),
-        fetchInboxItems(),
-        fetchInboxTickets(),
-        fetchRelatedTickets(),
-      ])
-      if (mine !== sequence.current) return
-      for (const result of [count, items, tickets, related]) {
-        if (result.status === 'rejected') console.error('Unable to load inbox data:', result.reason)
+      // One request for all inbox data (was four serverless calls per refresh).
+      try {
+        const all = await fetchInboxAll()
+        if (mine !== sequence.current) return
+        setLoaded({
+          count: all.count,
+          items: all.items,
+          tickets: all.tickets,
+          related: new Map(all.related.map((row) => [row.ticketId, row.reasons])),
+        })
+      } catch (error) {
+        console.error('Unable to load inbox data:', error)
       }
-      setLoaded((prev) => ({
-        count: count.status === 'fulfilled' ? count.value : prev.count,
-        items: items.status === 'fulfilled' ? items.value : prev.items,
-        tickets: tickets.status === 'fulfilled' ? tickets.value : prev.tickets,
-        related:
-          related.status === 'fulfilled' ? new Map(related.value.map((row) => [row.ticketId, row.reasons])) : prev.related,
-      }))
     } finally {
       loadInFlight.current = false
     }

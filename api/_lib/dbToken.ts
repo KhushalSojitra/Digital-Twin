@@ -1,6 +1,6 @@
 import { createHash, createHmac } from 'node:crypto'
 
-export const DB_TOKEN_TTL_SECONDS = 600
+export const DB_TOKEN_TTL_SECONDS = 3600 // fewer /api/db-token calls (Vercel CPU)
 
 export interface DbTokenIdentity {
   id: string

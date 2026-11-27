@@ -111,11 +111,33 @@ function dataOf(response: unknown): unknown {
   return r && 'data' in r ? r.data : response
 }
 
-export async function fetchInboxCount(): Promise<number> {
-  const data = dataOf(await postInboxAction({ action: 'inbox_count' }))
+function parseCount(data: unknown): number {
   const value = Array.isArray(data) ? (record(data[0]) ? Object.values(record(data[0]) ?? {})[0] : data[0]) : data
   const count = Number(value)
   return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0
+}
+
+/** Inbox count, items, inbox tickets and related tickets in one request (one serverless call instead of four). */
+export async function fetchInboxAll(): Promise<{ count: number; items: InboxItem[]; tickets: InboxTicket[]; related: RelatedTicket[] }> {
+  const data = record(dataOf(await postInboxAction({ action: 'inbox_all' }))) ?? {}
+  return {
+    count: parseCount(data.count),
+    items: rowsOf(data.items)
+      .map(parseItem)
+      .filter((item): item is InboxItem => item !== null && item.resolvedAt === null)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    tickets: rowsOf(data.tickets)
+      .map(parseInboxTicket)
+      .filter((row): row is InboxTicket => row !== null)
+      .sort((a, b) => b.latestAt.localeCompare(a.latestAt)),
+    related: rowsOf(data.related)
+      .map(parseRelated)
+      .filter((row): row is RelatedTicket => row !== null),
+  }
+}
+
+export async function fetchInboxCount(): Promise<number> {
+  return parseCount(dataOf(await postInboxAction({ action: 'inbox_count' })))
 }
 
 export async function fetchInboxItems(): Promise<InboxItem[]> {

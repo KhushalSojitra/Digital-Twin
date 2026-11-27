@@ -52,8 +52,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh])
 
   useEffect(() => {
+    // Re-check the session when the tab comes back, but at most once a minute (each check is a serverless call).
+    let last = Date.now()
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void refresh()
+      if (document.visibilityState !== 'visible' || Date.now() - last < 60_000) return
+      last = Date.now()
+      void refresh()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)

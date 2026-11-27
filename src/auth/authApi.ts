@@ -84,6 +84,7 @@ export type InboxAction =
   | { action: 'inbox_count' }
   | { action: 'inbox_tickets' }
   | { action: 'related_tickets' }
+  | { action: 'inbox_all' }
 
 /** Reads the signed-in user's inbox and related tickets; the server decides who is asking. */
 export function postInboxAction(body: InboxAction): Promise<unknown> {

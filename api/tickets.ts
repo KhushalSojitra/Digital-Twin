@@ -60,6 +60,7 @@ export default route(
       inbox_count: 'inbox',
       inbox_tickets: 'inbox',
       related_tickets: 'inbox',
+      inbox_all: 'inbox',
       resolve_subtasks: 'workflow',
       change_assignee: 'workflow',
     }
@@ -180,6 +181,17 @@ export default route(
             p_limit: limit,
           })
           sendJson(ctx.res, 200, { data })
+          return
+        }
+        // Everything the inbox needs in ONE function call (keeps Vercel CPU/invocations low).
+        case 'inbox_all': {
+          const [items, count, tickets, related] = await Promise.all([
+            callAdminRpc('get_inbox_secure', { ...identity, p_include_resolved: false, p_limit: 200 }),
+            callAdminRpc('inbox_count_secure', { ...identity }),
+            callAdminRpc('inbox_tickets_secure', { ...identity }),
+            callAdminRpc('related_tickets_secure', { ...identity }),
+          ])
+          sendJson(ctx.res, 200, { data: { items, count, tickets, related } })
           return
         }
         case 'inbox_count': {

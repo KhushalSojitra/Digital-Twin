@@ -30,7 +30,7 @@ interface UserRow {
   avatar_url: string | null
 }
 
-const USERS_TTL_MS = 30_000
+const USERS_TTL_MS = 300_000 // user list rarely changes; fewer database reads per request
 const REQUEST_TIMEOUT_MS = 15_000
 
 let cache: { at: number; users: PublicUser[] } | null = null

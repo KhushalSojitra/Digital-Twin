@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 // Called by a database trigger when an inbox item is created.
 // No JWT: the function only ever sends the email that belongs to a fresh,
@@ -45,10 +46,13 @@ Deno.serve(async (req) => {
     return json({ skipped: reason });
   };
 
+  // Sending: Gmail SMTP when SMTP_USER/SMTP_PASS are set (demo), else Resend (RESEND_API_KEY + EMAIL_FROM).
+  const smtpUser = Deno.env.get("SMTP_USER");
+  const smtpPass = (Deno.env.get("SMTP_PASS") ?? "").replace(/\s/g, "");
   const apiKey = Deno.env.get("RESEND_API_KEY");
-  const from = Deno.env.get("EMAIL_FROM");
+  const from = smtpUser ? `OomniEye Digital Twin <${smtpUser}>` : Deno.env.get("EMAIL_FROM");
   const appUrl = (Deno.env.get("APP_URL") ?? "").replace(/\/$/, "");
-  if (!apiKey || !from || !appUrl) return fail("email not configured");
+  if (!from || !appUrl || !(smtpUser ? smtpPass : apiKey)) return fail("email not configured");
   // Recipient: a user (app_users id), or for SLA breach "Notify Custom Users" an extra address ("email:<addr>").
   const target = claimed.for_user ?? "";
   let to: string;
@@ -98,12 +102,25 @@ Deno.serve(async (req) => {
   </div>`;
   }
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: [to], subject, html }),
-  });
-  if (!res.ok) return fail(`send failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  if (smtpUser) {
+    const client = new SMTPClient({
+      connection: { hostname: Deno.env.get("SMTP_HOST") ?? "smtp.gmail.com", port: 465, tls: true, auth: { username: smtpUser, password: smtpPass } },
+    });
+    try {
+      await client.send({ from, to, subject, html, content: "auto" });
+    } catch (e) {
+      return fail(`send failed: ${String((e as Error)?.message ?? e).slice(0, 200)}`);
+    } finally {
+      try { await client.close(); } catch { /* ignore */ }
+    }
+  } else {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: [to], subject, html }),
+    });
+    if (!res.ok) return fail(`send failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  }
 
   await supabase.from("notifications").update({ email_error: null }).eq("id", id);
   return json({ sent: true });
